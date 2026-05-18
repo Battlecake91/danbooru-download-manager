@@ -318,3 +318,60 @@ delete_staging_file_after_sort: true
 The sorted file remains in the target category folder.
 
 Add a license file if you intend to publish or share the project.
+
+# CLI and Credential Notes
+
+## Credentials
+
+Credentials should be stored in a local `.env` file, not in `config.yaml`.
+
+Example `.env`:
+
+```env
+DANBOORU_USERNAME=your_username
+DANBOORU_API_KEY=your_api_key
+```
+
+The script loads `.env` by default. Use a different file with:
+
+```bash
+python danbooru_downloader.py --env-file .env.local
+```
+
+## Manual Tag Search
+
+Use `--tag` to run a manual Danbooru search without using saved searches:
+
+```bash
+python danbooru_downloader.py --tag "solo looking_at_viewer sarashina_ruka" -i 100
+```
+
+When `--tag` is provided, `use_saved_searches` is disabled for that run.
+
+## Custom Config File
+
+Use `--config` to select a different YAML configuration:
+
+```bash
+python danbooru_downloader.py --config config_sarashina.yaml
+```
+
+## Per-run Limits
+
+`-i` or `--iterations` overrides `max_posts_per_query`:
+
+```bash
+python danbooru_downloader.py --tag "solo looking_at_viewer" -i 100
+```
+
+`--limit` overrides the Danbooru API page size:
+
+```bash
+python danbooru_downloader.py --limit 50
+```
+
+`--max-total-posts` limits the total number of checked posts across all queries:
+
+```bash
+python danbooru_downloader.py --max-total-posts 500
+```

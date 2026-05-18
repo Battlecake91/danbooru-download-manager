@@ -1,0 +1,10 @@
+{
+  "VsCodeTaskButtons.showCounter": true,
+  "VsCodeTaskButtons.tasks": [
+    {
+      "label": "$(play) Run",
+      "task": "Run",
+      "tooltip": "Start the application"
+    }    
+  ]
+}

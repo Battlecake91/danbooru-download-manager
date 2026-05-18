@@ -7,10 +7,14 @@ Downloads posts from Danbooru and sorts them into local folders based on post ta
 
 Supported features:
 - Direct Danbooru tag searches
+- Command-line tag search override
 - Authenticated Danbooru saved searches
+- Credentials from environment variables or .env
 - Saved search filtering by labels or exact query names
 - Persistent download history by post ID
-- Category include/exclude rules
+- Category include/exclude rules with exact tag matching
+- Flat include mode: any or all
+- Include groups: group A OR group B, where every tag inside a group is required
 - Optional skipping of posts that match no category
 - Descriptive filenames based on important Danbooru tags
 - Per-query and global post limits
@@ -30,6 +34,48 @@ from urllib.parse import urlparse
 
 import requests
 import yaml
+
+
+VALID_INCLUDE_MODES = {"any", "all"}
+
+
+def load_dotenv(path: Path) -> None:
+    """
+    Load simple KEY=VALUE entries from a .env file into os.environ.
+
+    Existing environment variables are not overwritten.
+    Lines starting with # are ignored.
+    Quoted values are supported.
+    """
+
+    if not path.exists():
+        return
+
+    with path.open("r", encoding="utf-8", errors="replace") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+
+            if not line or line.startswith("#"):
+                continue
+
+            if "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+
+            if not key:
+                continue
+
+            if (
+                len(value) >= 2
+                and value[0] == value[-1]
+                and value[0] in {"'", '"'}
+            ):
+                value = value[1:-1]
+
+            os.environ.setdefault(key, value)
 
 
 def load_config(path: Path) -> Dict[str, Any]:
@@ -100,6 +146,52 @@ def load_config(path: Path) -> Dict[str, Any]:
     return config
 
 
+def apply_credentials_from_environment(config: Dict[str, Any]) -> None:
+    """
+    Apply Danbooru credentials from environment variables.
+
+    Supported names:
+    - DANBOORU_USERNAME
+    - DANBOORU_API_KEY
+
+    Environment variables override empty config values.
+    """
+
+    env_username = os.environ.get("DANBOORU_USERNAME", "").strip()
+    env_api_key = os.environ.get("DANBOORU_API_KEY", "").strip()
+
+    if env_username:
+        config["username"] = env_username
+
+    if env_api_key:
+        config["api_key"] = env_api_key
+
+
+def apply_cli_overrides(config: Dict[str, Any], args: argparse.Namespace) -> None:
+    """
+    Apply command-line overrides to the loaded configuration.
+    """
+
+    if args.tag:
+        config["search_tags"] = args.tag.strip()
+        config["use_saved_searches"] = False
+
+    if args.iterations is not None:
+        config["max_posts_per_query"] = int(args.iterations)
+
+    if args.limit is not None:
+        config["limit"] = int(args.limit)
+
+    if args.max_total_posts is not None:
+        config["max_total_posts"] = int(args.max_total_posts)
+
+    if args.output_dir:
+        config["output_dir"] = args.output_dir
+
+    if args.history_file:
+        config["history_file"] = args.history_file
+
+
 def load_history(path: Path) -> Set[int]:
     """
     Load already processed Danbooru post IDs from the history file.
@@ -136,6 +228,29 @@ def append_history(path: Path, post_id: int, filename: str) -> None:
 
     with path.open("a", encoding="utf-8") as f:
         f.write(f"{post_id}\t{filename}\n")
+
+
+def normalize_tag(tag: Any) -> str:
+    """
+    Normalize a tag for exact comparisons.
+
+    Danbooru tags are matched as complete tags only.
+    This function never performs substring or wildcard matching.
+    """
+
+    return str(tag).strip().lower()
+
+
+def normalize_tag_set(tags: Iterable[Any]) -> Set[str]:
+    """
+    Normalize a sequence of tags into a set.
+    """
+
+    return {
+        normalize_tag(tag)
+        for tag in tags
+        if normalize_tag(tag)
+    }
 
 
 def safe_folder_name(name: str) -> str:
@@ -176,7 +291,44 @@ def normalize_string_list(value: Any, field_name: str) -> List[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
-def normalize_category_rule(rule: Any, folder: str) -> Dict[str, Set[str]]:
+def normalize_include_groups(value: Any, field_name: str) -> List[Set[str]]:
+    """
+    Validate and normalize include groups.
+
+    Format:
+      include_groups:
+        - ["tag_a", "tag_b"]
+        - ["tag_c", "tag_d"]
+
+    Each inner group is an AND condition.
+    The list of groups is an OR condition by default.
+    """
+
+    if value is None:
+        return []
+
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list of tag groups.")
+
+    groups: List[Set[str]] = []
+
+    for index, group in enumerate(value):
+        group_name = f"{field_name}[{index}]"
+
+        if not isinstance(group, list):
+            raise ValueError(f"{group_name} must be a list of tags.")
+
+        normalized_group = normalize_tag_set(group)
+
+        if not normalized_group:
+            raise ValueError(f"{group_name} must not be empty.")
+
+        groups.append(normalized_group)
+
+    return groups
+
+
+def normalize_category_rule(rule: Any, folder: str) -> Dict[str, Any]:
     """
     Normalize a category rule.
 
@@ -186,27 +338,46 @@ def normalize_category_rule(rule: Any, folder: str) -> Dict[str, Set[str]]:
       category_name:
         - "included_tag"
 
-    Full format:
+    Full flat format:
       category_name:
         include:
-          - "included_tag"
+          - "tag_a"
+          - "tag_b"
+        include_mode: "any"  # "any" or "all"
         exclude:
-          - "excluded_tag"
+          - "blocked_tag"
+
+    Group format:
+      category_name:
+        include_groups:
+          - ["tag_a", "tag_b"]
+          - ["tag_c", "tag_d"]
+        include_groups_mode: "any"  # "any" or "all"
+        exclude:
+          - "blocked_tag"
+
+    Matching is exact. The tag "feet" does not match "feet_on_table".
     """
 
     if isinstance(rule, list):
         return {
-            "include": {
-                str(tag).strip()
-                for tag in rule
-                if str(tag).strip()
-            },
+            "include": normalize_tag_set(rule),
+            "include_mode": "any",
+            "include_groups": [],
+            "include_groups_mode": "any",
             "exclude": set(),
         }
 
     if isinstance(rule, dict):
         include_raw = rule.get("include", [])
         exclude_raw = rule.get("exclude", [])
+        include_groups_raw = rule.get("include_groups", [])
+
+        if include_raw is None:
+            include_raw = []
+
+        if exclude_raw is None:
+            exclude_raw = []
 
         if not isinstance(include_raw, list):
             raise ValueError(f"categories.{folder}.include must be a list.")
@@ -214,21 +385,41 @@ def normalize_category_rule(rule: Any, folder: str) -> Dict[str, Set[str]]:
         if not isinstance(exclude_raw, list):
             raise ValueError(f"categories.{folder}.exclude must be a list.")
 
+        include_mode = str(rule.get("include_mode", "any")).strip().lower()
+        include_groups_mode = str(rule.get("include_groups_mode", "any")).strip().lower()
+
+        if include_mode not in VALID_INCLUDE_MODES:
+            raise ValueError(
+                f"categories.{folder}.include_mode must be either 'any' or 'all'."
+            )
+
+        if include_groups_mode not in VALID_INCLUDE_MODES:
+            raise ValueError(
+                f"categories.{folder}.include_groups_mode must be either 'any' or 'all'."
+            )
+
+        include = normalize_tag_set(include_raw)
+        include_groups = normalize_include_groups(
+            include_groups_raw,
+            f"categories.{folder}.include_groups",
+        )
+        exclude = normalize_tag_set(exclude_raw)
+
+        if not include and not include_groups:
+            raise ValueError(
+                f"categories.{folder} must define at least one include tag or include group."
+            )
+
         return {
-            "include": {
-                str(tag).strip()
-                for tag in include_raw
-                if str(tag).strip()
-            },
-            "exclude": {
-                str(tag).strip()
-                for tag in exclude_raw
-                if str(tag).strip()
-            },
+            "include": include,
+            "include_mode": include_mode,
+            "include_groups": include_groups,
+            "include_groups_mode": include_groups_mode,
+            "exclude": exclude,
         }
 
     raise ValueError(
-        f"categories.{folder} must be either a list or a mapping with include/exclude."
+        f"categories.{folder} must be either a list or a mapping with include/exclude rules."
     )
 
 
@@ -247,7 +438,7 @@ def get_tag_list_from_field(post: Dict[str, Any], field: str) -> List[str]:
 
 def get_post_tags(post: Dict[str, Any]) -> Set[str]:
     """
-    Collect all relevant tag fields from a Danbooru post into one set.
+    Collect all relevant tag fields from a Danbooru post into one normalized set.
     """
 
     tags: Set[str] = set()
@@ -262,7 +453,7 @@ def get_post_tags(post: Dict[str, Any]) -> Set[str]:
     ]
 
     for field in fields:
-        tags.update(get_tag_list_from_field(post, field))
+        tags.update(normalize_tag_set(get_tag_list_from_field(post, field)))
 
     return tags
 
@@ -296,7 +487,7 @@ def get_filename_priority_tags(
 
     for field in ordered_fields:
         for tag in get_tag_list_from_field(post, field):
-            normalized = tag.strip().lower()
+            normalized = normalize_tag(tag)
 
             if not normalized:
                 continue
@@ -316,6 +507,81 @@ def get_filename_priority_tags(
     return result
 
 
+def flat_include_matches(
+    post_tags: Set[str],
+    include_tags: Set[str],
+    include_mode: str,
+) -> bool:
+    """
+    Evaluate flat include tags against the post tag set.
+    """
+
+    if not include_tags:
+        return False
+
+    if include_mode == "all":
+        return include_tags.issubset(post_tags)
+
+    return bool(post_tags & include_tags)
+
+
+def include_groups_match(
+    post_tags: Set[str],
+    include_groups: List[Set[str]],
+    include_groups_mode: str,
+) -> bool:
+    """
+    Evaluate include groups against the post tag set.
+
+    Each group is always an AND condition:
+      ["feet", "looking_at_viewer"]
+
+    With include_groups_mode: "any":
+      group A OR group B
+
+    With include_groups_mode: "all":
+      group A AND group B
+    """
+
+    if not include_groups:
+        return False
+
+    group_results = [
+        group.issubset(post_tags)
+        for group in include_groups
+    ]
+
+    if include_groups_mode == "all":
+        return all(group_results)
+
+    return any(group_results)
+
+
+def category_rule_matches(post_tags: Set[str], normalized_rule: Dict[str, Any]) -> bool:
+    """
+    Check whether a normalized category rule matches the given post tags.
+    """
+
+    exclude_tags: Set[str] = normalized_rule["exclude"]
+
+    if post_tags & exclude_tags:
+        return False
+
+    include_matches = flat_include_matches(
+        post_tags=post_tags,
+        include_tags=normalized_rule["include"],
+        include_mode=normalized_rule["include_mode"],
+    )
+
+    group_matches = include_groups_match(
+        post_tags=post_tags,
+        include_groups=normalized_rule["include_groups"],
+        include_groups_mode=normalized_rule["include_groups_mode"],
+    )
+
+    return include_matches or group_matches
+
+
 def matching_categories(
     post_tags: Set[str],
     categories: Dict[str, Any],
@@ -323,9 +589,16 @@ def matching_categories(
     """
     Return all category names that match a post's tags.
 
-    A category matches when:
-    - at least one include tag is present
-    - no exclude tag is present
+    Tag comparisons are exact set comparisons.
+    Example:
+      include: ["feet"]
+
+    matches:
+      feet
+
+    does not match:
+      feet_on_table
+      bare_feet
     """
 
     matches: List[str] = []
@@ -333,13 +606,7 @@ def matching_categories(
     for folder, rule in categories.items():
         normalized = normalize_category_rule(rule, folder)
 
-        include_tags = normalized["include"]
-        exclude_tags = normalized["exclude"]
-
-        has_include = bool(post_tags & include_tags)
-        has_exclude = bool(post_tags & exclude_tags)
-
-        if has_include and not has_exclude:
+        if category_rule_matches(post_tags, normalized):
             matches.append(folder)
 
     return matches
@@ -835,9 +1102,9 @@ def process_post(
     )
 
     filename_excluded_tags = {
-        tag.strip().lower()
+        normalize_tag(tag)
         for tag in excluded_tags_raw
-        if tag.strip()
+        if normalize_tag(tag)
     }
 
     post_tags = get_post_tags(post)
@@ -925,7 +1192,7 @@ def run_downloader(config: Dict[str, Any]) -> int:
     session = requests.Session()
     session.headers.update(
         {
-            "User-Agent": "danbooru-tag-sorter/1.5; personal archive script",
+            "User-Agent": "danbooru-tag-sorter/1.7; personal archive script",
         }
     )
 
@@ -1055,9 +1322,9 @@ def run_downloader(config: Dict[str, Any]) -> int:
     return 0
 
 
-def main() -> int:
+def build_argument_parser() -> argparse.ArgumentParser:
     """
-    Command-line entry point.
+    Build the command-line argument parser.
     """
 
     parser = argparse.ArgumentParser(
@@ -1071,10 +1338,71 @@ def main() -> int:
         help="Path to the YAML configuration file.",
     )
 
+    parser.add_argument(
+        "--env-file",
+        default=".env",
+        help="Path to the .env file containing credentials.",
+    )
+
+    parser.add_argument(
+        "--tag",
+        help=(
+            "Manual Danbooru tag query. "
+            "When set, saved searches are disabled for this run."
+        ),
+    )
+
+    parser.add_argument(
+        "-i",
+        "--iterations",
+        type=int,
+        help=(
+            "Maximum number of posts to check per query for this run. "
+            "Overrides max_posts_per_query."
+        ),
+    )
+
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Danbooru API page size for this run. Overrides limit.",
+    )
+
+    parser.add_argument(
+        "--max-total-posts",
+        type=int,
+        help="Maximum number of posts to check across all queries for this run.",
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        help="Override the output directory for this run.",
+    )
+
+    parser.add_argument(
+        "--history-file",
+        help="Override the history file for this run.",
+    )
+
+    return parser
+
+
+def main() -> int:
+    """
+    Command-line entry point.
+    """
+
+    parser = build_argument_parser()
     args = parser.parse_args()
+
+    env_path = Path(args.env_file)
+    load_dotenv(env_path)
 
     config_path = Path(args.config)
     config = load_config(config_path)
+
+    apply_credentials_from_environment(config)
+    apply_cli_overrides(config, args)
 
     return run_downloader(config)
 

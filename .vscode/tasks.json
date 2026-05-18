@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run",
+      "type": "shell",
+      "command": "py",
+      "args": [
+        "./danbooru_downloader.py"
+      ],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}
+  
