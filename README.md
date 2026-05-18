@@ -1,4 +1,4 @@
-# Danbooru Tag Sorter
+# Danbooru Tag Downloader
 
 A Python utility for downloading posts from Danbooru and sorting them into local folders based on post tags.
 
@@ -316,28 +316,5 @@ delete_staging_file_after_sort: true
 ```
 
 The sorted file remains in the target category folder.
-
-## Encoding Notes
-
-Save `config.yaml` as UTF-8. The script includes a fallback for UTF-8 with BOM and Windows-1252, but UTF-8 is the recommended format.
-
-## Safety Notes
-
-- Do not commit your real `config.yaml` if it contains credentials.
-- Use `config.example.yaml` in the repository instead.
-- Add `config.yaml`, downloaded files, and history files to `.gitignore`.
-- Review rating filters before running large downloads.
-- Respect Danbooru's API usage expectations and avoid aggressive request rates.
-
-Suggested `.gitignore` entries:
-
-```gitignore
-config.yaml
-downloaded_ids.txt
-danbooru_downloads/
-*.part
-```
-
-## License
 
 Add a license file if you intend to publish or share the project.
