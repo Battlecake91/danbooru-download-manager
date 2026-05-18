@@ -1,0 +1,112 @@
+# Danbooru Tag Sorter example configuration
+#
+# Copy this file to config.yaml and adjust it for your local setup.
+# Do not commit config.yaml if it contains credentials or private search settings.
+
+base_url: "https://danbooru.donmai.us"
+
+# Optional for normal searches.
+# Required when using saved searches.
+username: "YOUR_USERNAME"
+api_key: "YOUR_API_KEY"
+
+# Used only when use_saved_searches is false.
+search_tags: "example_copyright_tag rating:s"
+
+# Set to true to load saved searches from your Danbooru account.
+use_saved_searches: false
+
+# Only use saved searches that have at least one of these labels.
+# Leave empty to allow all labels.
+saved_search_labels:
+  - "artists"
+
+# Only use these exact saved search queries.
+# Leave empty to allow all saved search queries that pass the label filter.
+saved_search_queries: []
+
+# Extra tags appended to every saved search query.
+# Example result:
+#   saved search: example_artist
+#   extra tags:   example_copyright_tag ( rating:q or rating:e )
+#   final query:  example_artist example_copyright_tag ( rating:q or rating:e )
+saved_search_extra_tags: "example_copyright_tag ( rating:s or rating:q )"
+
+# Output settings.
+output_dir: "./danbooru_downloads"
+history_file: "./downloaded_ids.txt"
+
+# Danbooru API page size. This is not a total download limit.
+# Danbooru usually caps this at 200.
+limit: 100
+
+# Delay after successful downloads.
+delay_seconds: 1.0
+
+# Maximum number of posts checked per search query.
+# 0 means unlimited.
+max_posts_per_query: 100
+
+# Maximum number of posts checked across all queries.
+# 0 means unlimited.
+max_total_posts: 0
+
+# Sort behavior when multiple categories match:
+#   first    - use the first matching category from this file
+#   copy_all - place the file into every matching category
+multi_match_mode: "first"
+
+# Folder used when a post does not match any category.
+unmatched_folder: "_unsorted"
+
+# If true, posts that do not match any category are skipped before download.
+download_only_matching_categories: true
+
+# If true, the temporary file in _downloads is removed after sorting.
+delete_staging_file_after_sort: true
+
+# Filename generation.
+filename_tags_count: 10
+filename_max_length: 180
+
+# Tags excluded from generated filenames.
+filename_excluded_tags:
+  - "1girl"
+  - "1boy"
+  - "solo"
+  - "looking_at_viewer"
+
+# Sorting categories.
+#
+# A post matches a category if:
+#   1. it has at least one include tag
+#   2. it has none of the exclude tags
+#
+# The folder name is the category key.
+categories:
+  character_a:
+    include:
+      - "example_character_a"
+      - "alternate_character_a_name"
+    exclude:
+      - "comic"
+      - "manga"
+
+  character_b:
+    include:
+      - "example_character_b"
+    exclude:
+      - "comic"
+      - "manga"
+
+  character_c:
+    include:
+      - "example_character_c"
+    exclude: []
+
+  group_images:
+    include:
+      - "multiple_girls"
+      - "multiple_boys"
+    exclude:
+      - "comic"
