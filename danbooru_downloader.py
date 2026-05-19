@@ -1221,6 +1221,12 @@ def run_downloader(config: Dict[str, Any]) -> int:
 
     base_url = str(config["base_url"])
     output_dir = build_run_output_dir(config)
+
+    # Important: process_post() reads output_dir from config.
+    # Store the resolved per-run output directory back into config so every
+    # later step uses the same dated folder instead of the base output folder.
+    config["output_dir"] = str(output_dir)
+
     history_file = Path(config["history_file"])
     limit = int(config["limit"])
 
