@@ -19,6 +19,7 @@ Supported features:
 - Descriptive filenames based on important Danbooru tags
 - Per-query and global post limits
 - Temporary staging folder cleanup after sorting
+- Optional dated output subfolder per run, configured from YAML
 """
 
 import argparse
@@ -143,6 +144,9 @@ def load_config(path: Path) -> Dict[str, Any]:
     config.setdefault("filename_max_length", 180)
     config.setdefault("filename_excluded_tags", [])
 
+    config.setdefault("use_dated_output_folder", False)
+    config.setdefault("dated_output_folder_format", "%Y-%m-%d_%H-%M-%S")
+
     return config
 
 
@@ -262,6 +266,32 @@ def safe_folder_name(name: str) -> str:
     cleaned = "".join("_" if c in bad_chars else c for c in name)
     cleaned = cleaned.strip().strip(".")
     return cleaned or "_invalid"
+
+
+def build_run_output_dir(config: Dict[str, Any]) -> Path:
+    """
+    Build the effective output directory for this run.
+
+    If use_dated_output_folder is enabled in the YAML configuration, a
+    timestamped subfolder is appended to output_dir. The folder name is
+    created with time.strftime() using dated_output_folder_format.
+    """
+
+    output_dir = Path(config["output_dir"])
+
+    if not bool(config.get("use_dated_output_folder", False)):
+        return output_dir
+
+    folder_format = str(
+        config.get("dated_output_folder_format") or "%Y-%m-%d_%H-%M-%S"
+    )
+    run_folder = time.strftime(folder_format)
+    safe_run_folder = safe_folder_name(run_folder)
+
+    if not safe_run_folder or safe_run_folder == "_invalid":
+        raise ValueError("dated_output_folder_format produced an invalid folder name.")
+
+    return output_dir / safe_run_folder
 
 
 def safe_filename_part(value: str) -> str:
@@ -996,6 +1026,19 @@ def validate_config(config: Dict[str, Any]) -> None:
         "saved_search_queries",
     )
 
+    use_dated_output_folder = bool(config.get("use_dated_output_folder", False))
+    folder_format = str(
+        config.get("dated_output_folder_format") or "%Y-%m-%d_%H-%M-%S"
+    )
+
+    if use_dated_output_folder:
+        sample_folder = safe_folder_name(time.strftime(folder_format))
+
+        if not sample_folder or sample_folder == "_invalid":
+            raise ValueError(
+                "dated_output_folder_format must produce a valid folder name."
+            )
+
 
 def prepare_search_queries(
     session: requests.Session,
@@ -1177,7 +1220,7 @@ def run_downloader(config: Dict[str, Any]) -> int:
     validate_config(config)
 
     base_url = str(config["base_url"])
-    output_dir = Path(config["output_dir"])
+    output_dir = build_run_output_dir(config)
     history_file = Path(config["history_file"])
     limit = int(config["limit"])
 
@@ -1317,6 +1360,7 @@ def run_downloader(config: Dict[str, Any]) -> int:
     print(f"Downloaded:          {total_downloaded}")
     print(f"Skipped:             {total_skipped}")
     print(f"Failed:              {total_failed}")
+    print(f"Output directory:    {output_dir}")
     print(f"History file:        {history_file}")
 
     return 0

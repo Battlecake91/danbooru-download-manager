@@ -24,6 +24,22 @@ saved_search_extra_tags: "example_copyright_tag ( rating:q or rating:e )"
 output_dir: "./danbooru_downloads"
 history_file: "./downloaded_ids.txt"
 
+# If enabled, every run creates a subfolder inside output_dir.
+# Example:
+#   ./danbooru_downloads/2026-05-19_22-43-12/
+#
+# The history_file stays global and is not moved into this dated folder.
+use_dated_output_folder: false
+
+# Python strftime format for the dated output folder.
+# Recommended:
+#   "%Y-%m-%d_%H-%M-%S"
+#
+# Other examples:
+#   "%Y-%m-%d"
+#   "%d.%m.%Y_%H-%M"
+dated_output_folder_format: "%Y-%m-%d_%H-%M-%S"
+
 limit: 100
 delay_seconds: 1.0
 
