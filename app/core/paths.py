@@ -5,7 +5,14 @@ from typing import Any
 
 
 def ensure_runtime_dirs(config: dict[str, Any]) -> None:
-    for key in ("work_dir", "thumbnail_dir", "original_cache_dir"):
+    for key in (
+        "work_dir",
+        "thumbnail_dir",
+        "active_thumbnail_dir",
+        "saved_thumbnail_dir",
+        "rejected_thumbnail_dir",
+        "original_cache_dir",
+    ):
         Path(config[key]).mkdir(parents=True, exist_ok=True)
 
     database_path = Path(config["database_file"])

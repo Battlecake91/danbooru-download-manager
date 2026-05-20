@@ -22,13 +22,69 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "user_agent": "DanbooruManager/0.1",
     "work_dir": "./danbooru_manager_data",
     "database_file": "./danbooru_manager_data/danbooru_manager.db",
-    "thumbnail_dir": "./danbooru_manager_data/thumbnails",
-    "original_cache_dir": "./danbooru_manager_data/originals",
+    "thumbnail_dir": "./danbooru_manager_data/thumbnails/active",
+    "active_thumbnail_dir": "./danbooru_manager_data/thumbnails/active",
+    "saved_thumbnail_dir": "./danbooru_manager_data/thumbnails/saved",
+    "rejected_thumbnail_dir": "./danbooru_manager_data/thumbnails/rejected",
+    "original_cache_dir": "./danbooru_manager_data/originals/cache",
     "history_file": "./downloaded_ids.txt",
     "thumbnail_size": 256,
     "thumbnail_format": "jpg",
+    "thumbnail_download_source": "large",
+    "thumbnail_redownload_existing": False,
+    "viewer_download_source": "file",
     "username": None,
     "api_key": None,
+    "workflow": {
+        "worklist_statuses": ["new", "potential", "review", "selected_save"],
+        "rejected_thumbnail_retention_days": 7,
+    },
+    "viewer": {
+        "default_view": "worklist",
+        "allow_all_status_view": True,
+        "open_original_post_in_browser": True,
+        "fit_to_window": True,
+    },
+    "gui": {
+        "thumbnail_size": 340,
+        "thumbnail_size_min": 120,
+        "thumbnail_size_max": 700,
+        "thumbnail_size_step": 20,
+        "card_width_extra": 100,
+        "status_colors": {
+            "new": "#666666",
+            "potential": "#2e7d32",
+            "review": "#f9a825",
+            "selected_save": "#00acc1",
+            "auto_rejected": "#546e7a",
+            "rejected": "#b71c1c",
+            "accepted": "#1565c0",
+            "already_known": "#6d4c41",
+            "downloaded": "#8e24aa",
+            "saved": "#00838f",
+        },
+        "status_border_width": {
+            "default": 2,
+            "marked": 3,
+            "downloaded": 4,
+            "saved": 4,
+            "rejected": 3,
+        },
+        "hotkeys": {
+            "potential": "H",
+            "review": "P",
+            "selected_save": "S",
+            "auto_rejected": "A",
+            "rejected": "Delete",
+            "saved": "G",
+            "already_known": "K",
+            "new": "N",
+            "open_original": "O",
+            "open_viewer": "Return",
+            "clear_selection": "Escape",
+            "select_all": "Ctrl+A",
+        },
+    },
     "categories": [],
     "filename": {
         "max_length": 180,
@@ -73,6 +129,11 @@ def load_config(config_path: Path, env_path: Path | None = None) -> dict[str, An
     if env_api_key:
         config["api_key"] = env_api_key
 
+    if not config.get("active_thumbnail_dir"):
+        config["active_thumbnail_dir"] = config.get("thumbnail_dir")
+
+    config["thumbnail_dir"] = config.get("active_thumbnail_dir", config["thumbnail_dir"])
+
     validate_config(config)
     return config
 
@@ -83,6 +144,9 @@ def validate_config(config: dict[str, Any]) -> None:
         "work_dir",
         "database_file",
         "thumbnail_dir",
+        "active_thumbnail_dir",
+        "saved_thumbnail_dir",
+        "rejected_thumbnail_dir",
         "original_cache_dir",
     ]
 
@@ -101,3 +165,30 @@ def validate_config(config: dict[str, Any]) -> None:
 
     if int(config.get("max_total_posts", 1)) < 1:
         raise ValueError("max_total_posts muss >= 1 sein")
+
+    source = str(config.get("thumbnail_download_source", "large")).lower()
+    if source not in {"preview", "large", "file", "best"}:
+        raise ValueError("thumbnail_download_source muss preview, large, file oder best sein")
+    config["thumbnail_download_source"] = source
+
+    viewer_source = str(config.get("viewer_download_source", "file")).lower()
+    if viewer_source not in {"large", "file", "best"}:
+        raise ValueError("viewer_download_source muss large, file oder best sein")
+    config["viewer_download_source"] = viewer_source
+
+    workflow = config.get("workflow", {}) or {}
+    worklist_statuses = workflow.get("worklist_statuses", [])
+    if not isinstance(worklist_statuses, list) or not worklist_statuses:
+        raise ValueError("workflow.worklist_statuses muss eine nicht-leere Liste sein")
+
+    gui = config.get("gui", {}) or {}
+    thumb_min = int(gui.get("thumbnail_size_min", 120))
+    thumb_max = int(gui.get("thumbnail_size_max", 600))
+    thumb_size = int(gui.get("thumbnail_size", 280))
+
+    if thumb_min < 32:
+        raise ValueError("gui.thumbnail_size_min muss >= 32 sein")
+    if thumb_max < thumb_min:
+        raise ValueError("gui.thumbnail_size_max muss >= gui.thumbnail_size_min sein")
+    if thumb_size < thumb_min or thumb_size > thumb_max:
+        raise ValueError("gui.thumbnail_size muss zwischen thumbnail_size_min und thumbnail_size_max liegen")

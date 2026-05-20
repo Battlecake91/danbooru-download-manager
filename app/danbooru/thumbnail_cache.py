@@ -16,20 +16,25 @@ class ThumbnailCache:
         self.session = session
         self.thumbnail_dir.mkdir(parents=True, exist_ok=True)
 
+        self.source = str(config.get("thumbnail_download_source", "large")).lower()
+        self.redownload_existing = bool(config.get("thumbnail_redownload_existing", False))
+
     def cache_thumbnail(self, post: dict[str, Any]) -> str | None:
         post_id = post.get("id")
         if post_id is None:
             return None
 
-        url = choose_thumbnail_url(post)
-        if not url:
+        selected = choose_thumbnail_url(post, self.source)
+        if not selected:
             LOGGER.debug("Kein Thumbnail-URL für Post %s", post_id)
             return None
 
+        url, source_label = selected
         ext = thumbnail_extension_from_url(url)
-        target = self.thumbnail_dir / f"{post_id}{ext}"
 
-        if target.exists() and target.stat().st_size > 0:
+        target = self.thumbnail_dir / f"{post_id}_{source_label}{ext}"
+
+        if target.exists() and target.stat().st_size > 0 and not self.redownload_existing:
             return str(target)
 
         part = target.with_suffix(target.suffix + ".part")
@@ -38,7 +43,7 @@ class ThumbnailCache:
             with self.session.get(url, stream=True, timeout=self.timeout) as response:
                 response.raise_for_status()
                 with part.open("wb") as handle:
-                    for chunk in response.iter_content(chunk_size=1024 * 64):
+                    for chunk in response.iter_content(chunk_size=1024 * 128):
                         if chunk:
                             handle.write(chunk)
             part.replace(target)
@@ -50,18 +55,46 @@ class ThumbnailCache:
             return None
 
 
-def choose_thumbnail_url(post: dict[str, Any]) -> str | None:
-    for key in ("preview_file_url", "large_file_url", "file_url"):
-        value = post.get(key)
-        if value:
-            return str(value)
+def choose_thumbnail_url(post: dict[str, Any], source: str) -> tuple[str, str] | None:
+    source = (source or "large").lower()
+
+    candidates_by_source: dict[str, list[tuple[str, str]]] = {
+        "preview": [
+            ("preview", str(post.get("preview_file_url") or "")),
+            ("large", str(post.get("large_file_url") or "")),
+            ("file", str(post.get("file_url") or "")),
+        ],
+        "large": [
+            ("large", str(post.get("large_file_url") or "")),
+            ("file", str(post.get("file_url") or "")),
+            ("preview", str(post.get("preview_file_url") or "")),
+        ],
+        "file": [
+            ("file", str(post.get("file_url") or "")),
+            ("large", str(post.get("large_file_url") or "")),
+            ("preview", str(post.get("preview_file_url") or "")),
+        ],
+        "best": [
+            ("file", str(post.get("file_url") or "")),
+            ("large", str(post.get("large_file_url") or "")),
+            ("preview", str(post.get("preview_file_url") or "")),
+        ],
+    }
+
+    candidates = candidates_by_source.get(source, candidates_by_source["large"])
+
+    for label, url in candidates:
+        if url and url != "None":
+            return url, label
 
     media_asset = post.get("media_asset") or {}
     variants = media_asset.get("variants") or []
     for variant in variants:
         url = variant.get("url")
+        variant_type = str(variant.get("type") or "variant")
         if url:
-            return str(url)
+            safe_type = "".join(ch if ch.isalnum() else "_" for ch in variant_type.lower())
+            return str(url), safe_type
 
     return None
 

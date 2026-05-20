@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
+
+
+ACTIVE_STATUSES = {"new", "potential", "review", "selected_save"}
+
+ALL_ALLOWED_STATUSES = {
+    "new",
+    "potential",
+    "review",
+    "selected_save",
+    "auto_rejected",
+    "rejected",
+    "accepted",
+    "already_known",
+    "downloaded",
+    "saved",
+}
 
 
 class Database:
@@ -156,7 +173,34 @@ class Database:
             raise RuntimeError("Datenbank ist nicht verbunden")
 
         self.connection.executescript(schema)
+        self.migrate_schema()
         self.commit()
+
+    def migrate_schema(self) -> None:
+        self.add_column_if_missing("posts", "original_cache_path", "TEXT")
+        self.add_column_if_missing("posts", "final_file_path", "TEXT")
+        self.add_column_if_missing("posts", "final_directory", "TEXT")
+        self.add_column_if_missing("posts", "rejected_thumbnail_path", "TEXT")
+        self.add_column_if_missing("posts", "selected_at", "TEXT")
+        self.add_column_if_missing("posts", "rejected_at", "TEXT")
+        self.add_column_if_missing("posts", "already_known_at", "TEXT")
+
+        self.execute(
+            """
+            UPDATE posts
+            SET status = 'already_known',
+                already_known_at = COALESCE(already_known_at, downloaded_at, CURRENT_TIMESTAMP)
+            WHERE status = 'downloaded'
+              AND final_file_path IS NULL
+              AND id IN (SELECT post_id FROM downloaded_history_import)
+            """
+        )
+
+    def add_column_if_missing(self, table_name: str, column_name: str, declaration: str) -> None:
+        columns = self.execute(f"PRAGMA table_info({table_name})").fetchall()
+        existing = {str(row["name"]) for row in columns}
+        if column_name not in existing:
+            self.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {declaration}")
 
     def upsert_category(
         self,
@@ -264,38 +308,19 @@ class Database:
 
     def fetch_preview_posts(
         self,
+        view_mode: str = "worklist",
         status_filter: str | None = None,
         text_filter: str | None = None,
+        worklist_statuses: list[str] | None = None,
         limit: int = 500,
         offset: int = 0,
     ) -> list[sqlite3.Row]:
-        where_parts: list[str] = []
-        parameters: list[Any] = []
-
-        if status_filter and status_filter != "all":
-            where_parts.append("p.status = ?")
-            parameters.append(status_filter)
-
-        if text_filter:
-            pattern = f"%{text_filter.strip()}%"
-            where_parts.append(
-                """
-                (
-                    CAST(p.id AS TEXT) LIKE ?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id
-                        AND pt.tag LIKE ?
-                    )
-                )
-                """
-            )
-            parameters.extend([pattern, pattern])
-
-        where_sql = ""
-        if where_parts:
-            where_sql = "WHERE " + " AND ".join(where_parts)
+        where_sql, parameters = self._build_preview_where(
+            view_mode=view_mode,
+            status_filter=status_filter,
+            text_filter=text_filter,
+            worklist_statuses=worklist_statuses,
+        )
 
         parameters.extend([limit, offset])
 
@@ -307,12 +332,18 @@ class Database:
                 p.score,
                 p.fav_count,
                 p.thumbnail_path,
+                p.rejected_thumbnail_path,
                 p.parent_id,
                 p.has_children,
                 p.status,
                 p.local_score,
                 p.llm_score,
                 p.final_score,
+                p.final_file_path,
+                p.final_directory,
+                p.rejected_at,
+                p.saved_at,
+                p.already_known_at,
                 (
                     SELECT GROUP_CONCAT(pt.tag, ' ')
                     FROM post_tags pt
@@ -340,36 +371,17 @@ class Database:
 
     def count_preview_posts(
         self,
+        view_mode: str = "worklist",
         status_filter: str | None = None,
         text_filter: str | None = None,
+        worklist_statuses: list[str] | None = None,
     ) -> int:
-        where_parts: list[str] = []
-        parameters: list[Any] = []
-
-        if status_filter and status_filter != "all":
-            where_parts.append("p.status = ?")
-            parameters.append(status_filter)
-
-        if text_filter:
-            pattern = f"%{text_filter.strip()}%"
-            where_parts.append(
-                """
-                (
-                    CAST(p.id AS TEXT) LIKE ?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id
-                        AND pt.tag LIKE ?
-                    )
-                )
-                """
-            )
-            parameters.extend([pattern, pattern])
-
-        where_sql = ""
-        if where_parts:
-            where_sql = "WHERE " + " AND ".join(where_parts)
+        where_sql, parameters = self._build_preview_where(
+            view_mode=view_mode,
+            status_filter=status_filter,
+            text_filter=text_filter,
+            worklist_statuses=worklist_statuses,
+        )
 
         row = self.execute(
             f"""
@@ -382,29 +394,216 @@ class Database:
 
         return int(row["count"]) if row else 0
 
-    def set_post_status(self, post_id: int, status: str) -> None:
-        allowed = {
-            "new",
-            "potential",
-            "review",
-            "auto_rejected",
-            "rejected",
-            "accepted",
-            "downloaded",
-            "saved",
-        }
-        if status not in allowed:
-            raise ValueError(f"Ungültiger Status: {status}")
+    def _build_preview_where(
+        self,
+        view_mode: str,
+        status_filter: str | None,
+        text_filter: str | None,
+        worklist_statuses: list[str] | None,
+    ) -> tuple[str, list[Any]]:
+        where_parts: list[str] = []
+        parameters: list[Any] = []
 
+        if view_mode == "worklist":
+            statuses = worklist_statuses or sorted(ACTIVE_STATUSES)
+            placeholders = ", ".join("?" for _ in statuses)
+            where_parts.append(f"p.status IN ({placeholders})")
+            parameters.extend(statuses)
+
+        elif view_mode == "saved":
+            where_parts.append("p.status = ?")
+            parameters.append("saved")
+
+        elif view_mode == "rejected":
+            where_parts.append("p.status IN (?, ?)")
+            parameters.extend(["rejected", "auto_rejected"])
+
+        elif view_mode == "known":
+            where_parts.append("p.status IN (?, ?)")
+            parameters.extend(["already_known", "downloaded"])
+
+        elif view_mode == "all":
+            pass
+
+        else:
+            raise ValueError(f"Ungültiger view_mode: {view_mode}")
+
+        if status_filter and status_filter != "all":
+            where_parts.append("p.status = ?")
+            parameters.append(status_filter)
+
+        if text_filter:
+            pattern = f"%{text_filter.strip()}%"
+            where_parts.append(
+                """
+                (
+                    CAST(p.id AS TEXT) LIKE ?
+                    OR p.final_file_path LIKE ?
+                    OR p.final_directory LIKE ?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id
+                        AND pt.tag LIKE ?
+                    )
+                )
+                """
+            )
+            parameters.extend([pattern, pattern, pattern, pattern])
+
+        where_sql = ""
+        if where_parts:
+            where_sql = "WHERE " + " AND ".join(where_parts)
+
+        return where_sql, parameters
+
+    def get_post_detail(self, post_id: int) -> sqlite3.Row | None:
+        return self.execute(
+            """
+            SELECT
+                p.*,
+                (
+                    SELECT GROUP_CONCAT(pt.tag, ' ')
+                    FROM post_tags pt
+                    WHERE pt.post_id = p.id
+                    ORDER BY
+                        CASE pt.tag_type
+                            WHEN 'copyright' THEN 1
+                            WHEN 'character' THEN 2
+                            WHEN 'artist' THEN 3
+                            WHEN 'general' THEN 4
+                            WHEN 'meta' THEN 5
+                            ELSE 9
+                        END,
+                        pt.tag
+                ) AS tags,
+                (
+                    SELECT stars
+                    FROM post_reviews pr
+                    WHERE pr.post_id = p.id
+                ) AS stars
+            FROM posts p
+            WHERE p.id = ?
+            """,
+            (post_id,),
+        ).fetchone()
+
+    def set_original_cache_path(self, post_id: int, path: str) -> None:
         self.execute(
             """
             UPDATE posts
-            SET status = ?
+            SET original_cache_path = ?,
+                downloaded_at = COALESCE(downloaded_at, CURRENT_TIMESTAMP)
             WHERE id = ?
             """,
-            (status, post_id),
+            (path, post_id),
         )
         self.commit()
+
+    def set_post_review(self, post_id: int, stars: int | None = None, decision: str | None = None) -> None:
+        self.execute(
+            """
+            INSERT INTO post_reviews (post_id, stars, decision, reviewed_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(post_id) DO UPDATE SET
+                stars = COALESCE(excluded.stars, post_reviews.stars),
+                decision = COALESCE(excluded.decision, post_reviews.decision),
+                reviewed_at = CURRENT_TIMESTAMP
+            """,
+            (post_id, stars, decision),
+        )
+        self.execute(
+            """
+            UPDATE posts
+            SET reviewed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (post_id,),
+        )
+        self.commit()
+
+    def set_post_status(
+        self,
+        post_id: int,
+        status: str,
+        config: dict[str, Any] | None = None,
+    ) -> None:
+        if status not in ALL_ALLOWED_STATUSES:
+            raise ValueError(f"Ungültiger Status: {status}")
+
+        extra_sets: list[str] = []
+        parameters: list[Any] = [status]
+
+        if status == "selected_save":
+            extra_sets.append("selected_at = COALESCE(selected_at, CURRENT_TIMESTAMP)")
+        elif status in {"rejected", "auto_rejected"}:
+            extra_sets.append("rejected_at = COALESCE(rejected_at, CURRENT_TIMESTAMP)")
+        elif status == "saved":
+            extra_sets.append("saved_at = COALESCE(saved_at, CURRENT_TIMESTAMP)")
+        elif status == "already_known":
+            extra_sets.append("already_known_at = COALESCE(already_known_at, CURRENT_TIMESTAMP)")
+
+        moved_thumbnail_path = None
+        if config is not None:
+            if status in {"rejected", "auto_rejected"}:
+                moved_thumbnail_path = self.move_thumbnail_to_bucket(
+                    post_id=post_id,
+                    target_dir=Path(config["rejected_thumbnail_dir"]),
+                )
+                if moved_thumbnail_path:
+                    extra_sets.append("rejected_thumbnail_path = ?")
+                    parameters.append(moved_thumbnail_path)
+
+            elif status == "saved":
+                moved_thumbnail_path = self.move_thumbnail_to_bucket(
+                    post_id=post_id,
+                    target_dir=Path(config["saved_thumbnail_dir"]),
+                )
+                if moved_thumbnail_path:
+                    extra_sets.append("thumbnail_path = ?")
+                    parameters.append(moved_thumbnail_path)
+
+        set_sql = "status = ?"
+        if extra_sets:
+            set_sql += ", " + ", ".join(extra_sets)
+
+        parameters.append(post_id)
+
+        self.execute(
+            f"""
+            UPDATE posts
+            SET {set_sql}
+            WHERE id = ?
+            """,
+            parameters,
+        )
+        self.commit()
+
+    def move_thumbnail_to_bucket(self, post_id: int, target_dir: Path) -> str | None:
+        row = self.execute(
+            "SELECT thumbnail_path, rejected_thumbnail_path FROM posts WHERE id = ?",
+            (post_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        source_value = row["thumbnail_path"] or row["rejected_thumbnail_path"]
+        if not source_value:
+            return None
+
+        source = Path(str(source_value))
+        if not source.exists():
+            return None
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / source.name
+
+        if source.resolve() == target.resolve():
+            return str(target)
+
+        shutil.move(str(source), str(target))
+        return str(target)
 
 
 def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:

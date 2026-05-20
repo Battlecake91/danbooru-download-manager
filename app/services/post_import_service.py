@@ -69,10 +69,13 @@ class PostImportService:
                     else:
                         result.updated_posts += 1
 
-                    thumbnail_path = self.thumbnail_cache.cache_thumbnail(post)
-                    if thumbnail_path:
-                        self.set_thumbnail_path(int(post["id"]), thumbnail_path)
-                        result.cached_thumbnails += 1
+                    # Für entschiedene Posts keine aktiven Thumbnails neu laden.
+                    status = self.get_status(int(post["id"]))
+                    if status in {"new", "potential", "review", "selected_save"}:
+                        thumbnail_path = self.thumbnail_cache.cache_thumbnail(post)
+                        if thumbnail_path:
+                            self.set_thumbnail_path(int(post["id"]), thumbnail_path)
+                            result.cached_thumbnails += 1
 
                 if not page_data.next_page:
                     break
@@ -81,11 +84,21 @@ class PostImportService:
 
         return result
 
+    def get_status(self, post_id: int) -> str:
+        row = self.db.execute("SELECT status FROM posts WHERE id = ?", (post_id,)).fetchone()
+        if row is None:
+            return "new"
+        return str(row["status"] or "new")
+
     def store_post(self, post: dict[str, Any]) -> str:
         post_id = int(post["id"])
 
-        exists = self.db.execute("SELECT id FROM posts WHERE id = ?", (post_id,)).fetchone()
-        result = "updated" if exists else "inserted"
+        existing = self.db.execute(
+            "SELECT id, status FROM posts WHERE id = ?",
+            (post_id,),
+        ).fetchone()
+
+        result = "updated" if existing else "inserted"
 
         self.db.execute(
             """

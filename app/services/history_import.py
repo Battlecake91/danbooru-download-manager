@@ -41,15 +41,15 @@ def import_downloaded_ids_history(db: Database, history_file: Path) -> int:
 
             db.execute(
                 """
-                INSERT INTO posts (id, status, original_path, downloaded_at)
-                VALUES (?, 'downloaded', ?, CURRENT_TIMESTAMP)
+                INSERT INTO posts (id, status, original_path, already_known_at)
+                VALUES (?, 'already_known', ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                     status = CASE
-                        WHEN posts.status IN ('new', 'previewed', 'selected') THEN 'downloaded'
+                        WHEN posts.status IN ('new', 'potential', 'review', 'selected_save', 'downloaded') THEN 'already_known'
                         ELSE posts.status
                     END,
                     original_path = COALESCE(posts.original_path, excluded.original_path),
-                    downloaded_at = COALESCE(posts.downloaded_at, CURRENT_TIMESTAMP)
+                    already_known_at = COALESCE(posts.already_known_at, CURRENT_TIMESTAMP)
                 """,
                 (post_id, filename),
             )
