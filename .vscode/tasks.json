@@ -2,9 +2,30 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Install Requirements",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "pip",
+        "install",
+        "-r",
+        "requirements.txt"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "Init DB",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
         "main.py",
         "--config",
@@ -24,7 +45,7 @@
     {
       "label": "Import History",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
         "main.py",
         "--config",
@@ -44,7 +65,7 @@
     {
       "label": "Fetch",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
         "main.py",
         "--config",
@@ -64,7 +85,7 @@
     {
       "label": "Fetch Debug",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
         "main.py",
         "--config",
@@ -83,14 +104,13 @@
       }
     },
     {
-      "label": "Fetch",
+      "label": "GUI",
       "type": "shell",
-      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
         "main.py",
         "--config",
         "config.yaml",
-        "--fetch",
         "--gui"
       ],
       "problemMatcher": [],

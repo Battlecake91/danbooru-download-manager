@@ -2,42 +2,54 @@
 
 base_url: "https://danbooru.donmai.us"
 
-# Direkte Suche, wenn use_saved_searches false ist.
 search_tags: "order:id_desc"
 
-# Optional: Saved Searches verwenden.
 use_saved_searches: false
 saved_search_labels: []
 saved_search_queries: []
 saved_search_extra_tags: "( rating:q or rating:e )"
 
-# API
 limit: 100
 max_posts_per_query: 200
 max_total_posts: 500
 request_timeout_seconds: 30
 user_agent: "DanbooruManager/0.1"
 
-# Pfade
 work_dir: "./danbooru_manager_data"
 database_file: "./danbooru_manager_data/danbooru_manager.db"
 thumbnail_dir: "./danbooru_manager_data/thumbnails"
 original_cache_dir: "./danbooru_manager_data/originals"
 
-# Alte History kann optional übernommen werden.
 history_file: "./downloaded_ids.txt"
 
-# Thumbnail
 thumbnail_size: 256
 thumbnail_format: "jpg"
 
-# Auth kann aus .env kommen:
-# DANBOORU_USERNAME=
-# DANBOORU_API_KEY=
+gui:
+  thumbnail_size: 180
+  card_width_extra: 60
+
+  status_colors:
+    new: "#666666"
+    potential: "#2e7d32"
+    review: "#f9a825"
+    auto_rejected: "#546e7a"
+    rejected: "#b71c1c"
+    accepted: "#1565c0"
+
+    # Bereits geladene Posts, z. B. aus dem History-Import.
+    downloaded: "#8e24aa"
+
+    saved: "#00838f"
+
+  status_border_width:
+    default: 2
+    marked: 3
+    downloaded: 4
+
 username: null
 api_key: null
 
-# Kategorien sind bereits vorbereitet, werden in Version 0.1 aber nur in die DB übernommen.
 categories:
   - name: "_unmatched"
     folder_name: "_unmatched"

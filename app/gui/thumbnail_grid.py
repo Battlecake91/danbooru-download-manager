@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QAction, QPixmap
@@ -30,26 +31,31 @@ STATUS_TEXT: dict[str, str] = {
 }
 
 
-STATUS_STYLE: dict[str, str] = {
-    "new": "border: 2px solid #666;",
-    "potential": "border: 3px solid #2e7d32;",
-    "review": "border: 3px solid #f9a825;",
-    "auto_rejected": "border: 3px solid #546e7a;",
-    "rejected": "border: 3px solid #b71c1c;",
-    "accepted": "border: 3px solid #1565c0;",
-    "downloaded": "border: 3px solid #6a1b9a;",
-    "saved": "border: 3px solid #00838f;",
+DEFAULT_STATUS_COLORS: dict[str, str] = {
+    "new": "#666666",
+    "potential": "#2e7d32",
+    "review": "#f9a825",
+    "auto_rejected": "#546e7a",
+    "rejected": "#b71c1c",
+    "accepted": "#1565c0",
+    "downloaded": "#8e24aa",
+    "saved": "#00838f",
 }
 
 
 class ThumbnailGrid(QScrollArea):
     status_changed = Signal(int, str)
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, config: dict[str, Any]) -> None:
         super().__init__()
 
         self.db = db
-        self.thumbnail_size = 180
+        self.config = config
+
+        gui_config = config.get("gui", {}) or {}
+        self.thumbnail_size = int(gui_config.get("thumbnail_size", 180))
+        self.card_width_extra = int(gui_config.get("card_width_extra", 60))
+
         self.columns = 5
         self.items: list[ThumbnailCard] = []
 
@@ -66,7 +72,7 @@ class ThumbnailGrid(QScrollArea):
     def resizeEvent(self, event) -> None:  # noqa: ANN001
         super().resizeEvent(event)
         width = max(1, self.viewport().width())
-        card_width = self.thumbnail_size + 70
+        card_width = self.thumbnail_size + self.card_width_extra + 10
         new_columns = max(1, width // card_width)
         if new_columns != self.columns:
             self.columns = new_columns
@@ -86,7 +92,7 @@ class ThumbnailGrid(QScrollArea):
         self.clear()
 
         for row in posts:
-            card = ThumbnailCard(self.db, row, self.thumbnail_size)
+            card = ThumbnailCard(self.db, self.config, row, self.thumbnail_size)
             card.status_changed.connect(self.status_changed.emit)
             self.items.append(card)
 
@@ -108,13 +114,25 @@ class ThumbnailGrid(QScrollArea):
 class ThumbnailCard(QFrame):
     status_changed = Signal(int, str)
 
-    def __init__(self, db: Database, row: sqlite3.Row, thumbnail_size: int) -> None:
+    def __init__(
+        self,
+        db: Database,
+        config: dict[str, Any],
+        row: sqlite3.Row,
+        thumbnail_size: int,
+    ) -> None:
         super().__init__()
 
         self.db = db
+        self.config = config
         self.row = row
         self.post_id = int(row["id"])
         self.thumbnail_size = thumbnail_size
+
+        gui_config = config.get("gui", {}) or {}
+        self.card_width_extra = int(gui_config.get("card_width_extra", 60))
+        self.status_colors = read_status_colors(gui_config)
+        self.border_widths = read_border_widths(gui_config)
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setLineWidth(2)
@@ -122,7 +140,7 @@ class ThumbnailCard(QFrame):
         self.customContextMenuRequested.connect(self.open_context_menu)
 
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.setFixedWidth(thumbnail_size + 60)
+        self.setFixedWidth(thumbnail_size + self.card_width_extra)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(6, 6, 6, 6)
@@ -195,11 +213,18 @@ class ThumbnailCard(QFrame):
         return " ".join(parts[:24]) + " ..."
 
     def apply_status_style(self, status: str) -> None:
-        border = STATUS_STYLE.get(status, STATUS_STYLE["new"])
+        color = self.status_colors.get(status, self.status_colors["new"])
+        border_width = self.border_widths["default"]
+
+        if status == "downloaded":
+            border_width = self.border_widths["downloaded"]
+        elif status != "new":
+            border_width = self.border_widths["marked"]
+
         self.setStyleSheet(
             f"""
             ThumbnailCard {{
-                {border}
+                border: {border_width}px solid {color};
                 border-radius: 8px;
                 background: #202020;
             }}
@@ -230,9 +255,27 @@ class ThumbnailCard(QFrame):
 
     def set_status(self, status: str) -> None:
         self.db.set_post_status(self.post_id, status)
-
-        # Row lokal nicht mutieren können wir bei sqlite3.Row nicht sauber.
-        # Also minimal optisch aktualisieren.
         self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
         self.apply_status_style(status)
         self.status_changed.emit(self.post_id, status)
+
+
+def read_status_colors(gui_config: dict[str, Any]) -> dict[str, str]:
+    colors = dict(DEFAULT_STATUS_COLORS)
+    configured = gui_config.get("status_colors", {}) or {}
+
+    for status, color in configured.items():
+        if isinstance(status, str) and isinstance(color, str) and color.strip():
+            colors[status] = color.strip()
+
+    return colors
+
+
+def read_border_widths(gui_config: dict[str, Any]) -> dict[str, int]:
+    configured = gui_config.get("status_border_width", {}) or {}
+
+    return {
+        "default": int(configured.get("default", 2)),
+        "marked": int(configured.get("marked", 3)),
+        "downloaded": int(configured.get("downloaded", 4)),
+    }

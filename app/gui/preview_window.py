@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -96,7 +95,7 @@ class PreviewWindow(QMainWindow):
         self.info_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.main_layout.addWidget(self.info_label)
 
-        self.grid = ThumbnailGrid(self.db)
+        self.grid = ThumbnailGrid(self.db, self.config)
         self.grid.status_changed.connect(self.on_status_changed)
         self.main_layout.addWidget(self.grid)
 
@@ -139,5 +138,3 @@ class PreviewWindow(QMainWindow):
 
     def on_status_changed(self, post_id: int, status: str) -> None:
         self.status_bar.showMessage(f"Post {post_id} → {STATUS_LABELS.get(status, status)}")
-        # Nicht sofort komplett reloaden, damit das Grid nicht springt.
-        # Der sichtbare Eintrag aktualisiert sich selbst.
