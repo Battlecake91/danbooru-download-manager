@@ -3,3 +3,4 @@ danbooru_downloads/
 downloaded_ids.txt
 .env
 danbooru_manager_data/
+danbooru_saved

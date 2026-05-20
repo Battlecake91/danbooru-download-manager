@@ -27,6 +27,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "saved_thumbnail_dir": "./danbooru_manager_data/thumbnails/saved",
     "rejected_thumbnail_dir": "./danbooru_manager_data/thumbnails/rejected",
     "original_cache_dir": "./danbooru_manager_data/originals/cache",
+    "default_output_dir": "./danbooru_saved",
     "history_file": "./downloaded_ids.txt",
     "thumbnail_size": 256,
     "thumbnail_format": "jpg",
@@ -44,6 +45,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "allow_all_status_view": True,
         "open_original_post_in_browser": True,
         "fit_to_window": True,
+        "auto_advance_after_save": True,
+        "auto_advance_after_reject": True,
     },
     "gui": {
         "thumbnail_size": 340,
@@ -70,25 +73,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "saved": 4,
             "rejected": 3,
         },
-        "hotkeys": {
-            "potential": "H",
-            "review": "P",
-            "selected_save": "S",
-            "auto_rejected": "A",
-            "rejected": "Delete",
-            "saved": "G",
-            "already_known": "K",
-            "new": "N",
-            "open_original": "O",
-            "open_viewer": "Return",
-            "clear_selection": "Escape",
-            "select_all": "Ctrl+A",
-        },
     },
     "categories": [],
     "filename": {
+        "pattern": "{id}_{tags}_{hash}{ext}",
         "max_length": 180,
         "tags_count": 8,
+        "hash_length": 8,
         "excluded_tags": [],
     },
     "llm": {
@@ -148,6 +139,7 @@ def validate_config(config: dict[str, Any]) -> None:
         "saved_thumbnail_dir",
         "rejected_thumbnail_dir",
         "original_cache_dir",
+        "default_output_dir",
     ]
 
     missing = [key for key in required if not config.get(key)]
@@ -192,3 +184,9 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("gui.thumbnail_size_max muss >= gui.thumbnail_size_min sein")
     if thumb_size < thumb_min or thumb_size > thumb_max:
         raise ValueError("gui.thumbnail_size muss zwischen thumbnail_size_min und thumbnail_size_max liegen")
+
+    filename = config.get("filename", {}) or {}
+    if int(filename.get("max_length", 180)) < 32:
+        raise ValueError("filename.max_length muss >= 32 sein")
+    if int(filename.get("tags_count", 8)) < 0:
+        raise ValueError("filename.tags_count muss >= 0 sein")

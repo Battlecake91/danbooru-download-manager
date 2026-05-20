@@ -55,6 +55,19 @@ class Database:
 
     def initialize_schema(self) -> None:
         schema = """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS config_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_name TEXT NOT NULL,
+            imported_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            note TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS posts (
             id INTEGER PRIMARY KEY,
             source TEXT DEFAULT 'danbooru',
@@ -174,6 +187,7 @@ class Database:
 
         self.connection.executescript(schema)
         self.migrate_schema()
+        self.create_safe_indexes()
         self.commit()
 
     def migrate_schema(self) -> None:
@@ -196,11 +210,72 @@ class Database:
             """
         )
 
+    def create_safe_indexes(self) -> None:
+        # Alte Entwicklungsstände konnten duplicate rules erzeugen.
+        # Vor dem Unique-Index wird aufgeräumt, sonst crasht SQLite beim Start.
+        self.execute(
+            """
+            DELETE FROM category_rules
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM category_rules
+                GROUP BY category_id, rule_type, tag
+            )
+            """
+        )
+        self.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_category_rules_unique
+            ON category_rules(category_id, rule_type, tag)
+            """
+        )
+
     def add_column_if_missing(self, table_name: str, column_name: str, declaration: str) -> None:
         columns = self.execute(f"PRAGMA table_info({table_name})").fetchall()
         existing = {str(row["name"]) for row in columns}
         if column_name not in existing:
             self.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {declaration}")
+
+    def sync_static_config(self, config: dict[str, Any]) -> None:
+        categories = normalize_categories(config.get("categories", []) or [])
+
+        for index, category in enumerate(categories):
+            category_id = self.upsert_category(
+                name=category["name"],
+                folder_name=category.get("folder_name", category["name"]),
+                output_path=category.get("output_path"),
+                hotkey=category.get("hotkey"),
+                sort_order=index,
+            )
+
+            for tag in category.get("include", []) or []:
+                self.add_category_rule(category_id, "include", str(tag))
+
+            for tag in category.get("exclude", []) or []:
+                self.add_category_rule(category_id, "exclude", str(tag))
+
+            include_groups = category.get("include_groups", []) or []
+            for group_index, group in enumerate(include_groups):
+                for tag in group:
+                    self.add_category_rule(category_id, f"include_group_{group_index}", str(tag))
+
+        filename = config.get("filename", {}) or {}
+        for tag in filename.get("excluded_tags", []) or []:
+            self.add_filename_excluded_tag(str(tag), "config-import")
+
+        llm = config.get("llm", {}) or {}
+        aliases = llm.get("tag_aliases", {}) or {}
+        for original, alias in aliases.items():
+            self.set_tag_alias(str(original), str(alias))
+
+        self.execute(
+            """
+            INSERT INTO config_imports (source_name, note)
+            VALUES (?, ?)
+            """,
+            ("config.yaml", "non-destructive import"),
+        )
+        self.commit()
 
     def upsert_category(
         self,
@@ -215,95 +290,143 @@ class Database:
             INSERT INTO categories (name, folder_name, output_path, hotkey, sort_order)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(name) DO UPDATE SET
-                folder_name = excluded.folder_name,
-                output_path = excluded.output_path,
-                hotkey = excluded.hotkey,
+                folder_name = COALESCE(NULLIF(excluded.folder_name, ''), categories.folder_name),
+                output_path = COALESCE(excluded.output_path, categories.output_path),
+                hotkey = COALESCE(excluded.hotkey, categories.hotkey),
                 sort_order = excluded.sort_order
             """,
             (name, folder_name, output_path, hotkey, sort_order),
         )
         self.commit()
 
-        row = self.execute(
-            "SELECT id FROM categories WHERE name = ?",
+        row = self.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
+        if row is None:
+            raise RuntimeError(f"Kategorie konnte nicht gespeichert werden: {name}")
+        return int(row["id"])
+
+    def create_category(self, name: str, folder_name: str | None = None) -> int:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Kategorie-Name darf nicht leer sein")
+
+        return self.upsert_category(
+            name=clean_name,
+            folder_name=folder_name or clean_name,
+            output_path=None,
+            hotkey=None,
+            sort_order=self.next_category_sort_order(),
+        )
+
+    def next_category_sort_order(self) -> int:
+        row = self.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM categories").fetchone()
+        return int(row["next_order"]) if row else 1
+
+    def update_category(
+        self,
+        category_id: int,
+        name: str,
+        folder_name: str,
+        output_path: str | None,
+        hotkey: str | None,
+        sort_order: int,
+    ) -> None:
+        self.execute(
+            """
+            UPDATE categories
+            SET name = ?,
+                folder_name = ?,
+                output_path = ?,
+                hotkey = ?,
+                sort_order = ?
+            WHERE id = ?
+            """,
+            (
+                name.strip(),
+                folder_name.strip() or name.strip(),
+                output_path.strip() if output_path else None,
+                hotkey.strip() if hotkey else None,
+                sort_order,
+                category_id,
+            ),
+        )
+        self.commit()
+
+    def delete_category(self, category_id: int) -> None:
+        self.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+        self.commit()
+
+    def list_categories_full(self) -> list[sqlite3.Row]:
+        return list(
+            self.execute(
+                """
+                SELECT id, name, folder_name, output_path, hotkey, sort_order
+                FROM categories
+                ORDER BY sort_order ASC, name ASC
+                """
+            ).fetchall()
+        )
+
+    def list_category_names(self) -> list[str]:
+        return [str(row["name"]) for row in self.list_categories_full()]
+
+    def get_category_by_name(self, name: str) -> sqlite3.Row | None:
+        return self.execute(
+            """
+            SELECT id, name, folder_name, output_path, hotkey, sort_order
+            FROM categories
+            WHERE name = ?
+            """,
             (name,),
         ).fetchone()
 
-        if row is None:
-            raise RuntimeError(f"Kategorie konnte nicht gespeichert werden: {name}")
-
-        return int(row["id"])
-
-    def sync_static_config(self, config: dict[str, Any]) -> None:
-        categories = normalize_categories(config.get("categories", []) or [])
-
-        for index, category in enumerate(categories):
-            category_id = self.upsert_category(
-                name=category["name"],
-                folder_name=category.get("folder_name", category["name"]),
-                output_path=category.get("output_path"),
-                hotkey=category.get("hotkey"),
-                sort_order=index,
+    def list_category_rules(self, category_id: int | None = None) -> list[sqlite3.Row]:
+        if category_id is None:
+            return list(
+                self.execute(
+                    """
+                    SELECT cr.id, cr.category_id, c.name AS category_name, cr.rule_type, cr.tag
+                    FROM category_rules cr
+                    JOIN categories c ON c.id = cr.category_id
+                    ORDER BY c.sort_order ASC, c.name ASC, cr.rule_type ASC, cr.tag ASC
+                    """
+                ).fetchall()
             )
 
+        return list(
             self.execute(
-                "DELETE FROM category_rules WHERE category_id = ?",
+                """
+                SELECT cr.id, cr.category_id, c.name AS category_name, cr.rule_type, cr.tag
+                FROM category_rules cr
+                JOIN categories c ON c.id = cr.category_id
+                WHERE cr.category_id = ?
+                ORDER BY cr.rule_type ASC, cr.tag ASC
+                """,
                 (category_id,),
-            )
+            ).fetchall()
+        )
 
-            for tag in category.get("include", []) or []:
-                self.execute(
-                    """
-                    INSERT INTO category_rules (category_id, rule_type, tag)
-                    VALUES (?, ?, ?)
-                    """,
-                    (category_id, "include", tag),
-                )
+    def add_category_rule(self, category_id: int, rule_type: str, tag: str) -> None:
+        clean_tag = tag.strip()
+        if not clean_tag:
+            return
 
-            for tag in category.get("exclude", []) or []:
-                self.execute(
-                    """
-                    INSERT INTO category_rules (category_id, rule_type, tag)
-                    VALUES (?, ?, ?)
-                    """,
-                    (category_id, "exclude", tag),
-                )
+        self.execute(
+            """
+            INSERT OR IGNORE INTO category_rules (category_id, rule_type, tag)
+            VALUES (?, ?, ?)
+            """,
+            (category_id, rule_type, clean_tag),
+        )
+        self.commit()
 
-            include_groups = category.get("include_groups", []) or []
-            for group_index, group in enumerate(include_groups):
-                for tag in group:
-                    self.execute(
-                        """
-                        INSERT INTO category_rules (category_id, rule_type, tag)
-                        VALUES (?, ?, ?)
-                        """,
-                        (category_id, f"include_group_{group_index}", tag),
-                    )
+    def add_tag_to_category_rule(self, category_name: str, tag: str, rule_type: str = "include") -> None:
+        category = self.get_category_by_name(category_name)
+        if category is None:
+            raise RuntimeError(f"Kategorie nicht gefunden: {category_name}")
+        self.add_category_rule(int(category["id"]), rule_type, tag)
 
-        filename = config.get("filename", {}) or {}
-        for tag in filename.get("excluded_tags", []) or []:
-            self.execute(
-                """
-                INSERT INTO filename_excluded_tags (tag, reason)
-                VALUES (?, ?)
-                ON CONFLICT(tag) DO NOTHING
-                """,
-                (tag, "config"),
-            )
-
-        llm = config.get("llm", {}) or {}
-        aliases = llm.get("tag_aliases", {}) or {}
-        for original, alias in aliases.items():
-            self.execute(
-                """
-                INSERT INTO tag_aliases (original_tag, alias_tag)
-                VALUES (?, ?)
-                ON CONFLICT(original_tag) DO UPDATE SET
-                    alias_tag = excluded.alias_tag
-                """,
-                (original, alias),
-            )
-
+    def delete_category_rule(self, rule_id: int) -> None:
+        self.execute("DELETE FROM category_rules WHERE id = ?", (rule_id,))
         self.commit()
 
     def fetch_preview_posts(
@@ -324,50 +447,65 @@ class Database:
 
         parameters.extend([limit, offset])
 
-        cursor = self.execute(
-            f"""
-            SELECT
-                p.id,
-                p.rating,
-                p.score,
-                p.fav_count,
-                p.thumbnail_path,
-                p.rejected_thumbnail_path,
-                p.parent_id,
-                p.has_children,
-                p.status,
-                p.local_score,
-                p.llm_score,
-                p.final_score,
-                p.final_file_path,
-                p.final_directory,
-                p.rejected_at,
-                p.saved_at,
-                p.already_known_at,
-                (
-                    SELECT GROUP_CONCAT(pt.tag, ' ')
-                    FROM post_tags pt
-                    WHERE pt.post_id = p.id
-                    ORDER BY
-                        CASE pt.tag_type
-                            WHEN 'copyright' THEN 1
-                            WHEN 'character' THEN 2
-                            WHEN 'artist' THEN 3
-                            WHEN 'general' THEN 4
-                            WHEN 'meta' THEN 5
-                            ELSE 9
-                        END,
-                        pt.tag
-                ) AS tags
-            FROM posts p
-            {where_sql}
-            ORDER BY p.id DESC
-            LIMIT ?
-            OFFSET ?
-            """,
-            parameters,
+        return list(
+            self.execute(
+                f"""
+                SELECT
+                    p.id,
+                    p.rating,
+                    p.score,
+                    p.fav_count,
+                    p.thumbnail_path,
+                    p.rejected_thumbnail_path,
+                    p.parent_id,
+                    p.has_children,
+                    p.status,
+                    p.local_score,
+                    p.llm_score,
+                    p.final_score,
+                    p.final_file_path,
+                    p.final_directory,
+                    p.rejected_at,
+                    p.saved_at,
+                    p.already_known_at,
+
+                    CASE
+                        WHEN p.parent_id IS NOT NULL
+                         AND EXISTS (SELECT 1 FROM posts parent WHERE parent.id = p.parent_id)
+                        THEN 1
+                        ELSE 0
+                    END AS known_parent_loaded,
+
+                    (
+                        SELECT COUNT(*)
+                        FROM posts child
+                        WHERE child.parent_id = p.id
+                    ) AS known_child_count,
+
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id
+                        ORDER BY
+                            CASE pt.tag_type
+                                WHEN 'copyright' THEN 1
+                                WHEN 'character' THEN 2
+                                WHEN 'artist' THEN 3
+                                WHEN 'general' THEN 4
+                                WHEN 'meta' THEN 5
+                                ELSE 9
+                            END,
+                            pt.tag
+                    ) AS tags
+                FROM posts p
+                {where_sql}
+                ORDER BY p.id DESC
+                LIMIT ?
+                OFFSET ?
+                """,
+                parameters,
+            ).fetchall()
         )
-        return list(cursor.fetchall())
 
     def count_preview_posts(
         self,
@@ -404,31 +542,28 @@ class Database:
         where_parts: list[str] = []
         parameters: list[Any] = []
 
-        if view_mode == "worklist":
+        has_specific_status_filter = bool(status_filter and status_filter != "all")
+
+        if view_mode == "worklist" and not has_specific_status_filter:
             statuses = worklist_statuses or sorted(ACTIVE_STATUSES)
             placeholders = ", ".join("?" for _ in statuses)
             where_parts.append(f"p.status IN ({placeholders})")
             parameters.extend(statuses)
-
-        elif view_mode == "saved":
+        elif view_mode == "saved" and not has_specific_status_filter:
             where_parts.append("p.status = ?")
             parameters.append("saved")
-
-        elif view_mode == "rejected":
+        elif view_mode == "rejected" and not has_specific_status_filter:
             where_parts.append("p.status IN (?, ?)")
             parameters.extend(["rejected", "auto_rejected"])
-
-        elif view_mode == "known":
+        elif view_mode == "known" and not has_specific_status_filter:
             where_parts.append("p.status IN (?, ?)")
             parameters.extend(["already_known", "downloaded"])
-
-        elif view_mode == "all":
+        elif view_mode == "all" or has_specific_status_filter:
             pass
-
         else:
             raise ValueError(f"Ungültiger view_mode: {view_mode}")
 
-        if status_filter and status_filter != "all":
+        if has_specific_status_filter:
             where_parts.append("p.status = ?")
             parameters.append(status_filter)
 
@@ -462,6 +597,17 @@ class Database:
             """
             SELECT
                 p.*,
+                CASE
+                    WHEN p.parent_id IS NOT NULL
+                     AND EXISTS (SELECT 1 FROM posts parent WHERE parent.id = p.parent_id)
+                    THEN 1
+                    ELSE 0
+                END AS known_parent_loaded,
+                (
+                    SELECT COUNT(*)
+                    FROM posts child
+                    WHERE child.parent_id = p.id
+                ) AS known_child_count,
                 (
                     SELECT GROUP_CONCAT(pt.tag, ' ')
                     FROM post_tags pt
@@ -488,6 +634,58 @@ class Database:
             (post_id,),
         ).fetchone()
 
+    def get_related_posts(self, post_id: int) -> list[sqlite3.Row]:
+        current = self.execute("SELECT id, parent_id FROM posts WHERE id = ?", (post_id,)).fetchone()
+        if current is None:
+            return []
+
+        rows: list[sqlite3.Row] = []
+
+        parent_id = current["parent_id"]
+        if parent_id is not None:
+            parent = self.execute(
+                """
+                SELECT
+                    'parent' AS relation,
+                    id,
+                    parent_id,
+                    status,
+                    rating,
+                    score,
+                    final_file_path,
+                    thumbnail_path,
+                    rejected_thumbnail_path
+                FROM posts
+                WHERE id = ?
+                """,
+                (parent_id,),
+            ).fetchone()
+            if parent is not None:
+                rows.append(parent)
+
+        rows.extend(
+            self.execute(
+                """
+                SELECT
+                    'child' AS relation,
+                    id,
+                    parent_id,
+                    status,
+                    rating,
+                    score,
+                    final_file_path,
+                    thumbnail_path,
+                    rejected_thumbnail_path
+                FROM posts
+                WHERE parent_id = ?
+                ORDER BY id DESC
+                """,
+                (post_id,),
+            ).fetchall()
+        )
+
+        return rows
+
     def set_original_cache_path(self, post_id: int, path: str) -> None:
         self.execute(
             """
@@ -512,22 +710,10 @@ class Database:
             """,
             (post_id, stars, decision),
         )
-        self.execute(
-            """
-            UPDATE posts
-            SET reviewed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (post_id,),
-        )
+        self.execute("UPDATE posts SET reviewed_at = CURRENT_TIMESTAMP WHERE id = ?", (post_id,))
         self.commit()
 
-    def set_post_status(
-        self,
-        post_id: int,
-        status: str,
-        config: dict[str, Any] | None = None,
-    ) -> None:
+    def set_post_status(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
         if status not in ALL_ALLOWED_STATUSES:
             raise ValueError(f"Ungültiger Status: {status}")
 
@@ -543,22 +729,15 @@ class Database:
         elif status == "already_known":
             extra_sets.append("already_known_at = COALESCE(already_known_at, CURRENT_TIMESTAMP)")
 
-        moved_thumbnail_path = None
         if config is not None:
+            moved_thumbnail_path = None
             if status in {"rejected", "auto_rejected"}:
-                moved_thumbnail_path = self.move_thumbnail_to_bucket(
-                    post_id=post_id,
-                    target_dir=Path(config["rejected_thumbnail_dir"]),
-                )
+                moved_thumbnail_path = self.move_thumbnail_to_bucket(post_id, Path(config["rejected_thumbnail_dir"]))
                 if moved_thumbnail_path:
                     extra_sets.append("rejected_thumbnail_path = ?")
                     parameters.append(moved_thumbnail_path)
-
             elif status == "saved":
-                moved_thumbnail_path = self.move_thumbnail_to_bucket(
-                    post_id=post_id,
-                    target_dir=Path(config["saved_thumbnail_dir"]),
-                )
+                moved_thumbnail_path = self.move_thumbnail_to_bucket(post_id, Path(config["saved_thumbnail_dir"]))
                 if moved_thumbnail_path:
                     extra_sets.append("thumbnail_path = ?")
                     parameters.append(moved_thumbnail_path)
@@ -604,6 +783,145 @@ class Database:
 
         shutil.move(str(source), str(target))
         return str(target)
+
+    def fetch_tag_overview(
+        self,
+        search_text: str | None = None,
+        tag_type: str | None = None,
+        limit: int = 1000,
+    ) -> list[sqlite3.Row]:
+        where_parts: list[str] = []
+        parameters: list[Any] = []
+
+        if search_text:
+            where_parts.append("pt.tag LIKE ?")
+            parameters.append(f"%{search_text.strip()}%")
+
+        if tag_type and tag_type != "all":
+            where_parts.append("pt.tag_type = ?")
+            parameters.append(tag_type)
+
+        where_sql = ""
+        if where_parts:
+            where_sql = "WHERE " + " AND ".join(where_parts)
+
+        parameters.append(limit)
+
+        return list(
+            self.execute(
+                f"""
+                SELECT
+                    pt.tag AS tag,
+                    MIN(pt.tag_type) AS tag_type,
+                    COUNT(DISTINCT pt.post_id) AS post_count,
+
+                    SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
+                    SUM(CASE WHEN p.status IN ('rejected', 'auto_rejected') THEN 1 ELSE 0 END) AS rejected_count,
+                    SUM(CASE WHEN p.status IN ('new', 'potential', 'review', 'selected_save') THEN 1 ELSE 0 END) AS open_count,
+
+                    COALESCE(ts.manual_score, '') AS manual_score,
+                    COALESCE(ts.computed_score, 0) AS computed_score,
+                    COALESCE(ts.average_rating, '') AS average_rating,
+
+                    ta.alias_tag AS alias_tag,
+
+                    CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded
+
+                FROM post_tags pt
+                JOIN posts p ON p.id = pt.post_id
+                LEFT JOIN tag_scores ts ON ts.tag = pt.tag
+                LEFT JOIN tag_aliases ta ON ta.original_tag = pt.tag
+                LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+                {where_sql}
+                GROUP BY pt.tag
+                ORDER BY post_count DESC, pt.tag ASC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        )
+
+    def add_filename_excluded_tag(self, tag: str, reason: str = "manual") -> None:
+        clean_tag = tag.strip()
+        if not clean_tag:
+            return
+
+        self.execute(
+            """
+            INSERT INTO filename_excluded_tags (tag, reason)
+            VALUES (?, ?)
+            ON CONFLICT(tag) DO UPDATE SET reason = excluded.reason
+            """,
+            (clean_tag, reason),
+        )
+        self.commit()
+
+    def remove_filename_excluded_tag(self, tag: str) -> None:
+        self.execute("DELETE FROM filename_excluded_tags WHERE tag = ?", (tag,))
+        self.commit()
+
+    def list_filename_excluded_tags(self, search_text: str | None = None) -> list[sqlite3.Row]:
+        if search_text:
+            return list(
+                self.execute(
+                    """
+                    SELECT tag, reason
+                    FROM filename_excluded_tags
+                    WHERE tag LIKE ?
+                    ORDER BY tag ASC
+                    """,
+                    (f"%{search_text.strip()}%",),
+                ).fetchall()
+            )
+
+        return list(
+            self.execute(
+                """
+                SELECT tag, reason
+                FROM filename_excluded_tags
+                ORDER BY tag ASC
+                """
+            ).fetchall()
+        )
+
+    def filename_excluded_tag_set(self) -> set[str]:
+        rows = self.execute("SELECT tag FROM filename_excluded_tags").fetchall()
+        return {str(row["tag"]) for row in rows}
+
+    def set_tag_alias(self, tag: str, alias: str) -> None:
+        clean_tag = tag.strip()
+        clean_alias = alias.strip()
+
+        if not clean_tag:
+            return
+
+        if not clean_alias:
+            self.execute("DELETE FROM tag_aliases WHERE original_tag = ?", (clean_tag,))
+        else:
+            self.execute(
+                """
+                INSERT INTO tag_aliases (original_tag, alias_tag)
+                VALUES (?, ?)
+                ON CONFLICT(original_tag) DO UPDATE SET alias_tag = excluded.alias_tag
+                """,
+                (clean_tag, clean_alias),
+            )
+        self.commit()
+
+    def set_tag_manual_score(self, tag: str, score: float | None) -> None:
+        clean_tag = tag.strip()
+        if not clean_tag:
+            return
+
+        self.execute(
+            """
+            INSERT INTO tag_scores (tag, manual_score)
+            VALUES (?, ?)
+            ON CONFLICT(tag) DO UPDATE SET manual_score = excluded.manual_score
+            """,
+            (clean_tag, score),
+        )
+        self.commit()
 
 
 def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:

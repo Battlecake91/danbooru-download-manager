@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
 from app.core.database import Database
 
 
+TERMINAL_STATUSES = {"auto_rejected", "rejected", "already_known", "saved"}
+
 STATUS_TEXT: dict[str, str] = {
     "new": "Neu",
     "potential": "Hohes Potential",
@@ -164,6 +166,12 @@ class ThumbnailGrid(QScrollArea):
 
     def visible_post_ids(self) -> list[int]:
         return [card.post_id for card in self.items]
+
+    def update_card_status(self, post_id: int, status: str) -> None:
+        for card in self.items:
+            if card.post_id == post_id:
+                card.apply_external_status(status)
+                break
 
     def current_card(self) -> ThumbnailCard | None:
         if 0 <= self.current_index < len(self.items):
@@ -330,7 +338,7 @@ class ThumbnailGrid(QScrollArea):
         self.selected_ids.clear()
         self.refresh_selection_styles()
 
-    def selected_or_current_cards(self) -> list[ThumbnailCard]:
+    def selected_or_current_cards(self) -> list["ThumbnailCard"]:
         if self.selected_ids:
             return [card for card in self.items if card.post_id in self.selected_ids]
 
@@ -342,13 +350,8 @@ class ThumbnailGrid(QScrollArea):
         if not cards:
             return
 
-        terminal_status = status in {"auto_rejected", "rejected", "already_known", "saved"}
-
         for card in cards:
             card.set_status(status, emit_reload=False)
-
-        if terminal_status:
-            self.request_reload.emit()
 
     def status_for_key(self, key: int) -> str | None:
         mapping = {
@@ -414,6 +417,11 @@ class ThumbnailCard(QFrame):
 
         self.status_label = QLabel()
         self.layout.addWidget(self.status_label)
+
+        self.relation_label = QLabel()
+        self.relation_label.setWordWrap(True)
+        self.relation_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.layout.addWidget(self.relation_label)
 
         self.path_label = QLabel()
         self.path_label.setWordWrap(True)
@@ -481,6 +489,20 @@ class ThumbnailCard(QFrame):
         self.current_status = str(status)
         self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
 
+        relation_parts = []
+        if int(row["known_parent_loaded"] or 0):
+            relation_parts.append("Parent lokal")
+        child_count = int(row["known_child_count"] or 0)
+        if child_count:
+            relation_parts.append(f"{child_count} Child(s) lokal")
+
+        if relation_parts:
+            self.relation_label.setText("Verwandt: " + ", ".join(relation_parts))
+            self.relation_label.show()
+        else:
+            self.relation_label.clear()
+            self.relation_label.hide()
+
         final_path = row["final_file_path"] or row["final_directory"] or ""
         if final_path:
             self.path_label.setText(f"Pfad: {final_path}")
@@ -493,6 +515,11 @@ class ThumbnailCard(QFrame):
         compact_tags = self.compact_tags(tags)
         self.tags_label.setText(compact_tags)
 
+        self.apply_status_style(status)
+
+    def apply_external_status(self, status: str) -> None:
+        self.current_status = status
+        self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
         self.apply_status_style(status)
 
     def load_pixmap(self, row: sqlite3.Row) -> QPixmap:
@@ -527,6 +554,7 @@ class ThumbnailCard(QFrame):
         color = self.status_colors.get(status, self.status_colors["new"])
         border_width = self.border_widths["default"]
         background = "#202020"
+        label_color = "#dddddd"
 
         if status in {"downloaded", "already_known"}:
             border_width = self.border_widths["downloaded"]
@@ -537,8 +565,12 @@ class ThumbnailCard(QFrame):
         elif status != "new":
             border_width = self.border_widths["marked"]
 
+        if status in TERMINAL_STATUSES:
+            background = "#181818"
+            label_color = "#777777"
+
         if self.is_selected:
-            background = "#2f3744"
+            background = "#2f3744" if status not in TERMINAL_STATUSES else "#252a33"
 
         if self.is_current:
             border_width = max(border_width, 4)
@@ -551,7 +583,7 @@ class ThumbnailCard(QFrame):
                 background: {background};
             }}
             QLabel {{
-                color: #dddddd;
+                color: {label_color};
             }}
             """
         )
@@ -594,7 +626,7 @@ class ThumbnailCard(QFrame):
 
         for label, status in actions:
             action = QAction(label, self)
-            action.triggered.connect(lambda checked=False, s=status: self.set_status(s))
+            action.triggered.connect(lambda checked=False, s=status: self.set_status(s, emit_reload=False))
             menu.addAction(action)
 
         menu.exec(self.mapToGlobal(position))
@@ -616,15 +648,12 @@ class ThumbnailCard(QFrame):
         tags = self.row["tags"] or ""
         QGuiApplication.clipboard().setText(tags)
 
-    def set_status(self, status: str, emit_reload: bool = True) -> None:
+    def set_status(self, status: str, emit_reload: bool = False) -> None:
         self.db.set_post_status(self.post_id, status, self.config)
         self.current_status = status
         self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
         self.apply_status_style(status)
         self.status_changed.emit(self.post_id, status)
-
-        if emit_reload and status in {"auto_rejected", "rejected", "already_known", "saved"}:
-            self.request_reload.emit()
 
 
 def read_status_colors(gui_config: dict[str, Any]) -> dict[str, str]:
