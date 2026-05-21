@@ -8,6 +8,7 @@ from app.core.database import Database
 from app.gui.category_tab import CategoryTab
 from app.gui.config_tab import ConfigTab
 from app.gui.fetch_tab import FetchTab
+from app.gui.maintenance_tab import MaintenanceTab
 from app.gui.preview_window import PreviewWindow
 from app.gui.tag_tab import TagTab
 
@@ -29,12 +30,14 @@ class AppWindow(QMainWindow):
         self.tag_tab = TagTab(config, db)
         self.category_tab = CategoryTab(config, db)
         self.config_tab = ConfigTab(config, db)
+        self.maintenance_tab = MaintenanceTab(config, db)
 
         self.tabs.addTab(self.fetch_tab, "Fetch / Suche")
         self.tabs.addTab(self.preview_window, "Preview / Review")
         self.tabs.addTab(self.tag_tab, "Tags")
         self.tabs.addTab(self.category_tab, "Kategorien")
         self.tabs.addTab(self.config_tab, "Konfiguration")
+        self.tabs.addTab(self.maintenance_tab, "Wartung temporär")
 
         self.fetch_tab.fetch_finished.connect(self.on_fetch_finished)
         self.fetch_tab.open_preview_requested.connect(self.open_preview_tab)

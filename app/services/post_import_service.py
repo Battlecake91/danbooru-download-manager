@@ -112,13 +112,16 @@ class PostImportService:
                 file_url,
                 large_file_url,
                 preview_url,
+                image_width,
+                image_height,
+                file_size,
                 parent_id,
                 has_children,
                 status,
                 created_at,
                 last_seen_at
             )
-            VALUES (?, 'danbooru', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, CURRENT_TIMESTAMP)
+            VALUES (?, 'danbooru', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 rating = excluded.rating,
                 score = excluded.score,
@@ -127,6 +130,9 @@ class PostImportService:
                 file_url = excluded.file_url,
                 large_file_url = excluded.large_file_url,
                 preview_url = excluded.preview_url,
+                image_width = COALESCE(excluded.image_width, posts.image_width),
+                image_height = COALESCE(excluded.image_height, posts.image_height),
+                file_size = COALESCE(excluded.file_size, posts.file_size),
                 parent_id = excluded.parent_id,
                 has_children = excluded.has_children,
                 created_at = COALESCE(posts.created_at, excluded.created_at),
@@ -141,6 +147,9 @@ class PostImportService:
                 post.get("file_url"),
                 post.get("large_file_url"),
                 post.get("preview_file_url"),
+                post.get("image_width"),
+                post.get("image_height"),
+                post.get("file_size"),
                 post.get("parent_id"),
                 1 if post.get("has_children") else 0,
                 post.get("created_at"),

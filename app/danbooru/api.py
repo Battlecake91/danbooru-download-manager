@@ -56,6 +56,17 @@ class DanbooruApi:
 
         return DanbooruSearchPage(posts=posts, next_page=next_page)
 
+    def get_post(self, post_id: int) -> dict[str, Any]:
+        url = urljoin(self.base_url, f"posts/{int(post_id)}.json")
+        LOGGER.debug("Danbooru GET %s", url)
+        response = self.session.get(url, timeout=self.timeout)
+        response.raise_for_status()
+
+        post = response.json()
+        if not isinstance(post, dict):
+            raise RuntimeError(f"Unerwartete Danbooru-Post-Antwort: {post!r}")
+        return post
+
     def get_saved_searches(self) -> list[dict[str, Any]]:
         url = urljoin(self.base_url, "saved_searches.json")
         LOGGER.debug("Danbooru GET %s", url)

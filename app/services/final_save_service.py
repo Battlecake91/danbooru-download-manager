@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
-from app.core.filename_builder import FilenameBuilder
+from app.core.filename_builder import FilenameBuilder, FilenamePreviewDetails
 from app.services.download_service import DownloadService
 
 
@@ -48,18 +48,34 @@ class FinalSaveService:
         return self.category_engine.category_by_name(name)
 
     def final_path_preview(self, post_id: int, category: CategoryMatch | None = None) -> Path | None:
+        preview = self.final_path_preview_details(post_id, category)
+        return preview[0] if preview is not None else None
+
+    def final_path_preview_details(
+        self,
+        post_id: int,
+        category: CategoryMatch | None = None,
+    ) -> tuple[Path, FilenamePreviewDetails] | None:
         row = self.db.get_post_detail(post_id)
         if row is not None and row["final_file_path"]:
-            return Path(str(row["final_file_path"]))
+            final_path = Path(str(row["final_file_path"]))
+            source_path = final_path if final_path.exists() else Path(str(row["final_file_path"]))
+            details = self.filename_builder.build_preview_details(post_id, source_path)
+            return final_path, details
 
         source_path = self.source_path_for_post(post_id, download_if_missing=False)
         if source_path is None:
-            return None
+            # Noch keine Anzeige-/Originaldatei vorhanden. Für die reine Vorschau reicht
+            # eine synthetische Quelle mit korrekter Extension aus, damit der Dateiname
+            # trotzdem sichtbar ist und nicht erst nach dem Download aus dem Nebel kriecht.
+            row = self.db.get_post_detail(post_id)
+            ext = str(row["file_ext"] or "bin").strip(".") if row is not None else "bin"
+            source_path = Path(f"{post_id}_preview_source.{ext or 'bin'}")
 
         effective_category = category or self.suggest_category(post_id)
         output_dir = self.category_engine.output_directory_for_category(effective_category)
-        filename = self.filename_builder.build_filename(post_id, source_path)
-        return unique_path(output_dir / filename)
+        details = self.filename_builder.build_preview_details(post_id, source_path)
+        return unique_path(output_dir / details.filename), details
 
     def save_post(self, post_id: int, category: CategoryMatch | None = None) -> SaveResult:
         self.assert_not_already_saved(post_id)
@@ -129,17 +145,19 @@ class FinalSaveService:
         if row is None:
             return None
 
-        for key in ("original_cache_path", "original_path", "final_file_path"):
-            value = row[key]
-            if value:
-                path = Path(str(value))
-                if path.exists():
-                    return path
+        final_value = row["final_file_path"]
+        if final_value:
+            final_path = Path(str(final_value))
+            if final_path.exists():
+                return final_path
 
         if not download_if_missing:
             return None
 
-        downloaded = self.download_service.ensure_original_cached(post_id)
+        # Für finales Speichern darf niemals ein Thumbnail, Preview oder
+        # Danbooru-large/sample als Quelle dienen. Die Viewer-Datei kann kleiner
+        # sein, final wird aber immer aus file_url neu bzw. separat geladen.
+        downloaded = self.download_service.ensure_full_original_cached(post_id)
         if downloaded:
             path = Path(downloaded)
             if path.exists():

@@ -80,6 +80,9 @@ class Database:
             file_url TEXT,
             large_file_url TEXT,
             preview_url TEXT,
+            image_width INTEGER,
+            image_height INTEGER,
+            file_size INTEGER,
 
             thumbnail_path TEXT,
             original_path TEXT,
@@ -191,6 +194,9 @@ class Database:
         self.commit()
 
     def migrate_schema(self) -> None:
+        self.add_column_if_missing("posts", "image_width", "INTEGER")
+        self.add_column_if_missing("posts", "image_height", "INTEGER")
+        self.add_column_if_missing("posts", "file_size", "INTEGER")
         self.add_column_if_missing("posts", "original_cache_path", "TEXT")
         self.add_column_if_missing("posts", "final_file_path", "TEXT")
         self.add_column_if_missing("posts", "final_directory", "TEXT")
@@ -471,7 +477,13 @@ class Database:
 
                     CASE
                         WHEN p.parent_id IS NOT NULL
-                         AND EXISTS (SELECT 1 FROM posts parent WHERE parent.id = p.parent_id)
+                         AND EXISTS (
+                             SELECT 1
+                             FROM posts parent
+                             WHERE parent.id = p.parent_id
+                               AND parent.final_file_path IS NOT NULL
+                               AND parent.final_file_path != ''
+                         )
                         THEN 1
                         ELSE 0
                     END AS known_parent_loaded,
@@ -480,6 +492,8 @@ class Database:
                         SELECT COUNT(*)
                         FROM posts child
                         WHERE child.parent_id = p.id
+                          AND child.final_file_path IS NOT NULL
+                          AND child.final_file_path != ''
                     ) AS known_child_count,
 
                     (
@@ -599,7 +613,13 @@ class Database:
                 p.*,
                 CASE
                     WHEN p.parent_id IS NOT NULL
-                     AND EXISTS (SELECT 1 FROM posts parent WHERE parent.id = p.parent_id)
+                     AND EXISTS (
+                         SELECT 1
+                         FROM posts parent
+                         WHERE parent.id = p.parent_id
+                           AND parent.final_file_path IS NOT NULL
+                           AND parent.final_file_path != ''
+                     )
                     THEN 1
                     ELSE 0
                 END AS known_parent_loaded,
@@ -607,6 +627,8 @@ class Database:
                     SELECT COUNT(*)
                     FROM posts child
                     WHERE child.parent_id = p.id
+                      AND child.final_file_path IS NOT NULL
+                      AND child.final_file_path != ''
                 ) AS known_child_count,
                 (
                     SELECT GROUP_CONCAT(pt.tag, ' ')
@@ -685,6 +707,56 @@ class Database:
         )
 
         return rows
+
+
+    def update_post_remote_metadata(self, post_id: int, post: dict[str, Any]) -> None:
+        self.execute(
+            """
+            UPDATE posts
+            SET image_width = COALESCE(?, image_width),
+                image_height = COALESCE(?, image_height),
+                file_size = COALESCE(?, file_size),
+                file_url = COALESCE(NULLIF(?, ''), file_url),
+                large_file_url = COALESCE(NULLIF(?, ''), large_file_url),
+                preview_url = COALESCE(NULLIF(?, ''), preview_url),
+                file_ext = COALESCE(NULLIF(?, ''), file_ext),
+                last_seen_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                post.get("image_width"),
+                post.get("image_height"),
+                post.get("file_size"),
+                str(post.get("file_url") or ""),
+                str(post.get("large_file_url") or ""),
+                str(post.get("preview_file_url") or post.get("preview_url") or ""),
+                str(post.get("file_ext") or ""),
+                post_id,
+            ),
+        )
+        self.commit()
+
+    def fetch_saved_posts_for_quality_audit(self) -> list[sqlite3.Row]:
+        return list(
+            self.execute(
+                """
+                SELECT
+                    id,
+                    file_url,
+                    file_ext,
+                    image_width,
+                    image_height,
+                    file_size,
+                    final_file_path,
+                    final_directory,
+                    original_cache_path
+                FROM posts
+                WHERE final_file_path IS NOT NULL
+                  AND final_file_path != ''
+                ORDER BY saved_at DESC, id DESC
+                """
+            ).fetchall()
+        )
 
     def set_original_cache_path(self, post_id: int, path: str) -> None:
         self.execute(

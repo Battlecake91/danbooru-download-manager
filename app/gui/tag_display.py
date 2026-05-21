@@ -23,6 +23,31 @@ TAG_TYPE_COLORS = {
 }
 
 
+
+
+class ToggleSelectListWidget(QListWidget):
+    """QListWidget variant where a plain second click deselects a selected tag.
+
+    Qt's ExtendedSelection normally keeps an already selected item selected on a
+    plain click. For tag actions this feels broken, because a user expects a tag
+    chip/list entry to toggle. Humanity survived worse UI crimes, but barely.
+    """
+
+    def mousePressEvent(self, event):  # noqa: ANN001
+        item = self.itemAt(event.position().toPoint())
+        plain_left_click = (
+            event.button() == Qt.LeftButton
+            and event.modifiers() == Qt.NoModifier
+        )
+
+        if plain_left_click and item is not None and item.isSelected():
+            item.setSelected(False)
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+
 def typed_tags_for_post(db, post_id: int) -> dict[str, list[str]]:  # noqa: ANN001
     rows = db.execute(
         """
@@ -100,7 +125,7 @@ class TypedTagListWidget(QWidget):
             label = QLabel(TAG_TYPE_LABELS[tag_type])
             label.setStyleSheet(f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; }}")
             self.layout.addWidget(label)
-            list_widget = QListWidget()
+            list_widget = ToggleSelectListWidget()
             list_widget.setSelectionMode(QListWidget.ExtendedSelection)
             list_widget.setMaximumHeight(95 if tag_type != "general" else 170)
             list_widget.setStyleSheet(

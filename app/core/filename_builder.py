@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,36 +12,53 @@ from app.core.database import Database
 TAG_TYPE_ORDER = ["artist", "character", "copyright", "general", "meta"]
 
 
+@dataclass(frozen=True)
+class FilenamePreviewDetails:
+    post_id: int
+    pattern: str
+    filename: str
+    extension: str
+    included_tags: dict[str, list[str]]
+    excluded_tags: dict[str, list[str]]
+    placeholder_values: dict[str, str]
+
+
 class FilenameBuilder:
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         self.config = config
         self.db = db
 
     def build_filename(self, post_id: int, source_path: Path) -> str:
+        return self.build_preview_details(post_id, source_path).filename
+
+    def build_preview_details(self, post_id: int, source_path: Path) -> FilenamePreviewDetails:
         pattern = str(self.filename_config().get("pattern", "%artists%_%characters%_%general%_%postid%"))
         max_length = int(self.filename_config().get("max_length", 180))
         extension = self.resolve_extension(post_id, source_path)
 
-        typed_tags = self.typed_tags_for_post(post_id)
+        raw_typed_tags = self.typed_tags_for_post(post_id)
         excluded = self.excluded_tags()
 
-        for tag_type in typed_tags:
-            typed_tags[tag_type] = [tag for tag in typed_tags[tag_type] if tag not in excluded]
+        included_tags: dict[str, list[str]] = {}
+        excluded_tags: dict[str, list[str]] = {}
+        for tag_type, tags in raw_typed_tags.items():
+            included_tags[tag_type] = [tag for tag in tags if tag not in excluded]
+            excluded_tags[tag_type] = [tag for tag in tags if tag in excluded]
 
         values = {
             "postid": str(post_id),
             "id": str(post_id),
-            "artist": self.join_tags(typed_tags["artist"]),
-            "artists": self.join_tags(typed_tags["artist"]),
-            "character": self.join_tags(typed_tags["character"]),
-            "characters": self.join_tags(typed_tags["character"]),
-            "copyright": self.join_tags(typed_tags["copyright"]),
-            "copyrights": self.join_tags(typed_tags["copyright"]),
-            "series": self.join_tags(typed_tags["copyright"]),
-            "serie": self.join_tags(typed_tags["copyright"]),
-            "general": self.join_tags(self.limited_general_tags(typed_tags["general"])),
-            "meta": self.join_tags(typed_tags["meta"]),
-            "tags": self.join_tags(self.default_tag_mix(typed_tags)),
+            "artist": self.join_tags(included_tags["artist"]),
+            "artists": self.join_tags(included_tags["artist"]),
+            "character": self.join_tags(included_tags["character"]),
+            "characters": self.join_tags(included_tags["character"]),
+            "copyright": self.join_tags(included_tags["copyright"]),
+            "copyrights": self.join_tags(included_tags["copyright"]),
+            "series": self.join_tags(included_tags["copyright"]),
+            "serie": self.join_tags(included_tags["copyright"]),
+            "general": self.join_tags(self.limited_general_tags(included_tags["general"])),
+            "meta": self.join_tags(included_tags["meta"]),
+            "tags": self.join_tags(self.default_tag_mix(included_tags)),
             "hash": self.short_hash(post_id, source_path),
             "ext": extension,
         }
@@ -55,7 +73,16 @@ class FilenameBuilder:
         filename = collapse_separators(safe_filename(filename))
         if len(filename) > max_length:
             filename = truncate_filename(filename, max_length)
-        return filename
+
+        return FilenamePreviewDetails(
+            post_id=post_id,
+            pattern=pattern,
+            filename=filename,
+            extension=extension,
+            included_tags=included_tags,
+            excluded_tags=excluded_tags,
+            placeholder_values=values,
+        )
 
     def filename_config(self) -> dict[str, Any]:
         value = self.config.get("filename", {})

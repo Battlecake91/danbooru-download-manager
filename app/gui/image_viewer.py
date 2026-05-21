@@ -193,6 +193,14 @@ class ImageViewerWindow(QMainWindow):
         self.final_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.side_layout.addWidget(self.final_path_label)
 
+        self.filename_preview_label = QLabel()
+        self.filename_preview_label.setWordWrap(True)
+        self.filename_preview_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.filename_preview_label.setStyleSheet(
+            "QLabel { background: #202020; border: 1px solid #555; border-radius: 6px; padding: 6px; }"
+        )
+        self.side_layout.addWidget(self.filename_preview_label)
+
         self.tags_label = QLabel("Tags nach Danbooru-Typ:")
         self.side_layout.addWidget(self.tags_label)
 
@@ -387,7 +395,7 @@ class ImageViewerWindow(QMainWindow):
             self.related_list.addItem(item)
 
         if not related:
-            item = QListWidgetItem("Keine bekannten lokalen Parent/Child-Posts")
+            item = QListWidgetItem("Keine bekannten Parent/Child-Posts")
             item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
             self.related_list.addItem(item)
 
@@ -396,19 +404,13 @@ class ImageViewerWindow(QMainWindow):
         if row is None:
             return None
 
-        candidates = [
-            row["final_file_path"],
-            row["original_cache_path"],
-            row["original_path"],
-            row["thumbnail_path"],
-            row["rejected_thumbnail_path"],
-        ]
+        final_path = row["final_file_path"]
+        if not final_path:
+            return None
 
-        for candidate in candidates:
-            if candidate:
-                path = Path(str(candidate))
-                if path.exists():
-                    return path
+        path = Path(str(final_path))
+        if path.exists():
+            return path
 
         return None
 
@@ -533,15 +535,38 @@ class ImageViewerWindow(QMainWindow):
             return
 
         category = self.selected_category()
-        final_preview = self.final_save_service.final_path_preview(self.current_post_id, category)
+        preview = self.final_save_service.final_path_preview_details(self.current_post_id, category)
 
-        if final_preview:
+        if preview:
+            final_preview, details = preview
             source = "auto"
             if category is not None and category.name != self.suggested_category_name:
                 source = "manual"
             self.final_path_label.setText(f"Zielpfad ({source}): {final_preview}")
+            self.filename_preview_label.setText(self.format_filename_preview(details))
         else:
             self.final_path_label.setText("Zielpfad: noch nicht bestimmbar, Datei wird bei F geladen.")
+            self.filename_preview_label.setText("Dateiname: noch nicht bestimmbar")
+
+    def format_filename_preview(self, details) -> str:  # noqa: ANN001
+        def count_tags(key: str) -> int:
+            return len(details.included_tags.get(key, []))
+
+        excluded_total = sum(len(tags) for tags in details.excluded_tags.values())
+        general_used = details.included_tags.get("general", [])[: int(self.config.get("filename", {}).get("tags_count", 8))]
+        general_text = ", ".join(general_used[:10]) if general_used else "-"
+        if len(general_used) > 10:
+            general_text += f" … +{len(general_used) - 10}"
+
+        return (
+            "Dateiname-Vorschau:\n"
+            f"{details.filename}\n"
+            f"Pattern: {details.pattern}\n"
+            f"Tags im Namen: Artist {count_tags('artist')}, Character {count_tags('character')}, "
+            f"Serie {count_tags('copyright')}, General {len(general_used)}, Meta {count_tags('meta')}\n"
+            f"General im Namen: {general_text}\n"
+            f"Durch Filename-Exclude entfernt: {excluded_total}"
+        )
 
     def ensure_image_path(self, post_id: int, row) -> str | None:  # noqa: ANN001
         for candidate in (

@@ -11,6 +11,9 @@ from app.core.database import Database
 
 LOGGER = logging.getLogger(__name__)
 
+FULL_ORIGINAL_SOURCE_LABEL = "file"
+NON_FINAL_SOURCE_LABELS = {"preview", "large", "sample", "sample_large", "sample_alternates"}
+
 
 class DownloadService:
     def __init__(self, config: dict[str, Any], db: Database) -> None:
@@ -31,6 +34,12 @@ class DownloadService:
             self.session.auth = (username, api_key)
 
     def ensure_original_cached(self, post_id: int) -> str | None:
+        """Cache a display-quality file for the viewer.
+
+        This follows ``viewer_download_source`` and may therefore cache Danbooru's
+        large/sample image. It is intentionally *not* used for final saving.
+        Humans naming this "original" was a tiny act of sabotage, naturally.
+        """
         row = self.db.get_post_detail(post_id)
         if row is None:
             return None
@@ -45,15 +54,78 @@ class DownloadService:
             return None
 
         url, source_label = selected
-        ext = file_extension_from_url(url, row["file_ext"])
-        target = self.target_dir / f"{post_id}_{source_label}{ext}"
+        return self._download_to_cache(post_id, url, source_label, row["file_ext"], "Viewer-Datei")
+
+    def ensure_full_original_cached(self, post_id: int) -> str | None:
+        """Cache the real Danbooru original file for final saving.
+
+        Final files must never be based on preview/large/sample thumbnails. If an
+        older run already cached ``*_large.*`` or ``*_preview.*`` in
+        ``original_cache_path``, this method ignores it and downloads ``file_url``.
+        """
+        row = self.db.get_post_detail(post_id)
+        if row is None:
+            return None
+
+        file_url = clean_url(row["file_url"])
+        file_ext = row["file_ext"]
+
+        if file_url:
+            ext = file_extension_from_url(file_url, file_ext)
+            full_target = self.target_dir / f"{post_id}_{FULL_ORIGINAL_SOURCE_LABEL}{ext}"
+
+            if full_target.exists() and full_target.stat().st_size > 0:
+                self.db.set_original_cache_path(post_id, str(full_target))
+                return str(full_target)
+
+            cached_value = row["original_cache_path"]
+            if cached_value:
+                cached_path = Path(str(cached_value))
+                if cached_path.exists() and is_full_original_cache_path(cached_path, post_id):
+                    return str(cached_path)
+
+            return self._download_to_cache(
+                post_id,
+                file_url,
+                FULL_ORIGINAL_SOURCE_LABEL,
+                file_ext,
+                "Originaldatei",
+            )
+
+        # Fallback nur für Posts, bei denen Danbooru keine file_url liefert.
+        # Dann nehmen wir die beste verfügbare Variante und loggen klar, dass es
+        # eventuell nicht das echte Original sein kann.
+        selected = choose_best_available_download_url(dict(row))
+        if selected is None:
+            LOGGER.warning("Keine Original-URL für Post %s", post_id)
+            return None
+
+        url, source_label = selected
+        LOGGER.warning(
+            "Post %s hat keine file_url. Fallback auf %s, final kann kleiner als Original sein.",
+            post_id,
+            source_label,
+        )
+        return self._download_to_cache(post_id, url, source_label, file_ext, "Fallback-Datei")
+
+    def _download_to_cache(
+        self,
+        post_id: int,
+        url: str,
+        source_label: str,
+        fallback_ext: str | None,
+        log_label: str,
+    ) -> str | None:
+        ext = file_extension_from_url(url, fallback_ext)
+        safe_source_label = safe_source_name(source_label)
+        target = self.target_dir / f"{post_id}_{safe_source_label}{ext}"
         part = target.with_suffix(target.suffix + ".part")
 
         if target.exists() and target.stat().st_size > 0:
             self.db.set_original_cache_path(post_id, str(target))
             return str(target)
 
-        LOGGER.info("Lade Viewer-Datei für Post %s: %s", post_id, url)
+        LOGGER.info("Lade %s für Post %s: %s", log_label, post_id, url)
 
         try:
             with self.session.get(url, stream=True, timeout=self.timeout) as response:
@@ -70,7 +142,7 @@ class DownloadService:
         except Exception:
             if part.exists():
                 part.unlink(missing_ok=True)
-            LOGGER.exception("Viewer-Datei konnte nicht geladen werden für Post %s", post_id)
+            LOGGER.exception("%s konnte nicht geladen werden für Post %s", log_label, post_id)
             return None
 
 
@@ -93,12 +165,51 @@ def choose_viewer_download_url(row: dict[str, Any], config: dict[str, Any]) -> t
     }
 
     candidates = candidates_by_source.get(source, candidates_by_source["file"])
+    return first_valid_url(candidates)
 
+
+def choose_best_available_download_url(row: dict[str, Any]) -> tuple[str, str] | None:
+    return first_valid_url(
+        [
+            ("file", str(row.get("file_url") or "")),
+            ("large", str(row.get("large_file_url") or "")),
+            ("preview", str(row.get("preview_url") or "")),
+        ]
+    )
+
+
+def first_valid_url(candidates: list[tuple[str, str]]) -> tuple[str, str] | None:
     for label, url in candidates:
-        if url and url != "None":
-            return url, label
-
+        cleaned = clean_url(url)
+        if cleaned:
+            return cleaned, label
     return None
+
+
+def clean_url(url: Any) -> str | None:
+    value = str(url or "").strip()
+    if not value or value.lower() == "none":
+        return None
+    return value
+
+
+def safe_source_name(source_label: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() else "_" for ch in source_label.lower()).strip("_")
+    return cleaned or "file"
+
+
+def is_full_original_cache_path(path: Path, post_id: int) -> bool:
+    """Return True only for cache files that were stored from Danbooru file_url."""
+    stem = path.stem.lower()
+    expected_prefix = f"{post_id}_"
+    if not stem.startswith(expected_prefix):
+        return False
+
+    source_part = stem[len(expected_prefix) :]
+    if source_part in NON_FINAL_SOURCE_LABELS:
+        return False
+
+    return source_part == FULL_ORIGINAL_SOURCE_LABEL or source_part.startswith("file_")
 
 
 def file_extension_from_url(url: str, fallback_ext: str | None) -> str:
