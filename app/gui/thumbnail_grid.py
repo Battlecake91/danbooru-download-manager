@@ -54,6 +54,8 @@ class ThumbnailGrid(QScrollArea):
     status_changed = Signal(int, str)
     request_reload = Signal()
     open_viewer_requested = Signal(int)
+    final_save_requested = Signal(list)
+    category_assign_requested = Signal(list, str)
 
     def __init__(self, db: Database, config: dict[str, Any]) -> None:
         super().__init__()
@@ -67,7 +69,7 @@ class ThumbnailGrid(QScrollArea):
 
         self.columns = 5
         self.items: list[ThumbnailCard] = []
-        self.current_posts: list[sqlite3.Row] = []
+        self.current_posts: list[Any] = []
 
         self.selected_ids: set[int] = set()
         self.current_index: int = -1
@@ -121,7 +123,7 @@ class ThumbnailGrid(QScrollArea):
         self.current_index = -1
         self.anchor_index = -1
 
-    def set_posts(self, posts: list[sqlite3.Row]) -> None:
+    def set_posts(self, posts: list[Any]) -> None:
         old_selected = set(self.selected_ids)
         old_current_id = self.current_card().post_id if self.current_card() else None
 
@@ -134,6 +136,8 @@ class ThumbnailGrid(QScrollArea):
             card.request_reload.connect(self.request_reload.emit)
             card.clicked.connect(self.on_card_clicked)
             card.double_clicked.connect(self.open_viewer_requested.emit)
+            card.final_save_requested.connect(lambda post_id: self.final_save_requested.emit([int(post_id)]))
+            card.category_assign_requested.connect(self.on_card_category_assign_requested)
             self.items.append(card)
 
         self.selected_ids = {card.post_id for card in self.items if card.post_id in old_selected}
@@ -152,6 +156,14 @@ class ThumbnailGrid(QScrollArea):
         self.relayout()
         self.refresh_selection_styles()
 
+    def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:
+        if post_id in self.selected_ids and len(self.selected_ids) > 1:
+            post_ids = self.selected_or_current_post_ids()
+        else:
+            post_ids = [int(post_id)]
+
+        self.category_assign_requested.emit(post_ids, category_name)
+
     def relayout(self) -> None:
         while self.layout.count():
             item = self.layout.takeAt(0)
@@ -167,13 +179,23 @@ class ThumbnailGrid(QScrollArea):
     def visible_post_ids(self) -> list[int]:
         return [card.post_id for card in self.items]
 
+    def selected_or_current_post_ids(self) -> list[int]:
+        cards = self.selected_or_current_cards()
+        return [card.post_id for card in cards]
+
     def update_card_status(self, post_id: int, status: str) -> None:
         for card in self.items:
             if card.post_id == post_id:
                 card.apply_external_status(status)
                 break
 
-    def current_card(self) -> ThumbnailCard | None:
+    def update_card_category(self, post_id: int, category_name: str, source: str = "manual") -> None:
+        for card in self.items:
+            if card.post_id == post_id:
+                card.apply_external_category(category_name, source)
+                break
+
+    def current_card(self) -> "ThumbnailCard | None":
         if 0 <= self.current_index < len(self.items):
             return self.items[self.current_index]
         return None
@@ -262,6 +284,11 @@ class ThumbnailGrid(QScrollArea):
             card = self.current_card()
             if card:
                 self.open_viewer_requested.emit(card.post_id)
+            event.accept()
+            return
+
+        if key == Qt.Key_F:
+            self.final_save_requested.emit(self.selected_or_current_post_ids())
             event.accept()
             return
 
@@ -372,12 +399,14 @@ class ThumbnailCard(QFrame):
     request_reload = Signal()
     clicked = Signal(int, bool, bool)
     double_clicked = Signal(int)
+    final_save_requested = Signal(int)
+    category_assign_requested = Signal(int, str)
 
     def __init__(
         self,
         db: Database,
         config: dict[str, Any],
-        row: sqlite3.Row,
+        row: Any,
         thumbnail_size: int,
     ) -> None:
         super().__init__()
@@ -385,11 +414,13 @@ class ThumbnailCard(QFrame):
         self.db = db
         self.config = config
         self.row = row
-        self.post_id = int(row["id"])
+        self.post_id = int(self.value("id"))
         self.thumbnail_size = thumbnail_size
         self.is_selected = False
         self.is_current = False
-        self.current_status = str(row["status"] or "new")
+        self.current_status = str(self.value("status") or "new")
+        self.current_category = str(self.value("preview_category_name") or "_unmatched")
+        self.current_category_source = str(self.value("preview_category_source") or "auto")
 
         gui_config = config.get("gui", {}) or {}
         self.card_width_extra = int(gui_config.get("card_width_extra", 100))
@@ -418,6 +449,11 @@ class ThumbnailCard(QFrame):
         self.status_label = QLabel()
         self.layout.addWidget(self.status_label)
 
+        self.category_label = QLabel()
+        self.category_label.setWordWrap(True)
+        self.category_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.layout.addWidget(self.category_label)
+
         self.relation_label = QLabel()
         self.relation_label.setWordWrap(True)
         self.relation_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -436,6 +472,14 @@ class ThumbnailCard(QFrame):
 
         self.set_thumbnail_size(thumbnail_size)
         self.apply_row(row)
+
+    def value(self, key: str, default: Any = None) -> Any:
+        try:
+            return self.row[key]
+        except Exception:
+            if isinstance(self.row, dict):
+                return self.row.get(key, default)
+            return default
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
@@ -467,32 +511,36 @@ class ThumbnailCard(QFrame):
         self.thumbnail_size = int(size)
         self.setFixedWidth(self.thumbnail_size + self.card_width_extra)
         self.image_label.setFixedSize(QSize(self.thumbnail_size, self.thumbnail_size))
-        self.image_label.setPixmap(self.load_pixmap(self.row))
+        self.image_label.setPixmap(self.load_pixmap())
 
-    def apply_row(self, row: sqlite3.Row) -> None:
+    def apply_row(self, row: Any) -> None:
         self.row = row
-        self.post_id = int(row["id"])
+        self.post_id = int(self.value("id"))
 
-        pixmap = self.load_pixmap(row)
+        pixmap = self.load_pixmap()
         self.image_label.setPixmap(pixmap)
 
-        rating = row["rating"] or "?"
-        score = row["score"] if row["score"] is not None else "-"
-        parent = row["parent_id"] if row["parent_id"] is not None else "-"
-        child_marker = " | Childs" if row["has_children"] else ""
+        rating = self.value("rating") or "?"
+        score = self.value("score") if self.value("score") is not None else "-"
+        parent = self.value("parent_id") if self.value("parent_id") is not None else "-"
+        child_marker = " | Childs" if self.value("has_children") else ""
 
         self.title_label.setText(
             f"ID {self.post_id}\nRating: {rating} | Score: {score}\nParent: {parent}{child_marker}"
         )
 
-        status = row["status"] or "new"
+        status = self.value("status") or "new"
         self.current_status = str(status)
         self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
 
+        category = str(self.value("preview_category_name") or "_unmatched")
+        category_source = str(self.value("preview_category_source") or "auto")
+        self.apply_external_category(category, category_source)
+
         relation_parts = []
-        if int(row["known_parent_loaded"] or 0):
+        if int(self.value("known_parent_loaded") or 0):
             relation_parts.append("Parent lokal")
-        child_count = int(row["known_child_count"] or 0)
+        child_count = int(self.value("known_child_count") or 0)
         if child_count:
             relation_parts.append(f"{child_count} Child(s) lokal")
 
@@ -503,7 +551,7 @@ class ThumbnailCard(QFrame):
             self.relation_label.clear()
             self.relation_label.hide()
 
-        final_path = row["final_file_path"] or row["final_directory"] or ""
+        final_path = self.value("final_file_path") or self.value("final_directory") or ""
         if final_path:
             self.path_label.setText(f"Pfad: {final_path}")
             self.path_label.show()
@@ -511,8 +559,8 @@ class ThumbnailCard(QFrame):
             self.path_label.clear()
             self.path_label.hide()
 
-        tags = row["tags"] or ""
-        compact_tags = self.compact_tags(tags)
+        tags = self.value("tags") or ""
+        compact_tags = self.compact_tags(str(tags))
         self.tags_label.setText(compact_tags)
 
         self.apply_status_style(status)
@@ -522,10 +570,30 @@ class ThumbnailCard(QFrame):
         self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
         self.apply_status_style(status)
 
-    def load_pixmap(self, row: sqlite3.Row) -> QPixmap:
+    def apply_external_category(self, category_name: str, source: str = "manual") -> None:
+        self.current_category = category_name or "_unmatched"
+        self.current_category_source = source or "auto"
+
+        source_label = "manuell" if self.current_category_source == "manual" else "auto"
+        self.category_label.setText(f"Kategorie: {self.current_category} ({source_label})")
+
+        if self.current_category_source == "manual":
+            self.category_label.setStyleSheet(
+                "QLabel { color: #9be7ff; font-weight: bold; }"
+            )
+        elif self.current_category == "_unmatched":
+            self.category_label.setStyleSheet(
+                "QLabel { color: #ffb000; font-weight: bold; }"
+            )
+        else:
+            self.category_label.setStyleSheet(
+                "QLabel { color: #cccccc; }"
+            )
+
+    def load_pixmap(self) -> QPixmap:
         candidates = [
-            row["thumbnail_path"],
-            row["rejected_thumbnail_path"],
+            self.value("thumbnail_path"),
+            self.value("rejected_thumbnail_path"),
         ]
 
         for candidate in candidates:
@@ -595,6 +663,26 @@ class ThumbnailCard(QFrame):
         open_viewer_action.triggered.connect(lambda: self.double_clicked.emit(self.post_id))
         menu.addAction(open_viewer_action)
 
+        final_save_action = QAction("Final speichern (F)", self)
+        final_save_action.triggered.connect(lambda: self.final_save_requested.emit(self.post_id))
+        menu.addAction(final_save_action)
+
+        category_menu = QMenu("Kategorie setzen", self)
+        category_names = self.db.list_category_names()
+        if not category_names:
+            disabled = QAction("Keine Kategorien vorhanden", self)
+            disabled.setEnabled(False)
+            category_menu.addAction(disabled)
+        for category_name in category_names:
+            action = QAction(category_name, self)
+            action.triggered.connect(
+                lambda checked=False, c=category_name: self.category_assign_requested.emit(self.post_id, c)
+            )
+            category_menu.addAction(action)
+        menu.addMenu(category_menu)
+
+        menu.addSeparator()
+
         open_original_action = QAction("Originalpost öffnen (O)", self)
         open_original_action.triggered.connect(self.open_original_post)
         menu.addAction(open_original_action)
@@ -645,8 +733,8 @@ class ThumbnailCard(QFrame):
         QGuiApplication.clipboard().setText(str(self.post_id))
 
     def copy_tags(self) -> None:
-        tags = self.row["tags"] or ""
-        QGuiApplication.clipboard().setText(tags)
+        tags = self.value("tags") or ""
+        QGuiApplication.clipboard().setText(str(tags))
 
     def set_status(self, status: str, emit_reload: bool = False) -> None:
         self.db.set_post_status(self.post_id, status, self.config)

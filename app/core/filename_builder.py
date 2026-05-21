@@ -8,41 +8,60 @@ from typing import Any
 from app.core.database import Database
 
 
+TAG_TYPE_ORDER = ["artist", "character", "copyright", "general", "meta"]
+
+
 class FilenameBuilder:
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         self.config = config
         self.db = db
 
     def build_filename(self, post_id: int, source_path: Path) -> str:
-        filename_config = self.config.get("filename", {}) or {}
-        pattern = str(filename_config.get("pattern", "{id}_{tags}_{hash}{ext}"))
-        max_length = int(filename_config.get("max_length", 180))
-        tags_count = int(filename_config.get("tags_count", 8))
-        hash_length = int(filename_config.get("hash_length", 8))
+        pattern = str(self.filename_config().get("pattern", "%artists%_%characters%_%general%_%postid%"))
+        max_length = int(self.filename_config().get("max_length", 180))
+        extension = self.resolve_extension(post_id, source_path)
 
-        excluded_tags = self.db.filename_excluded_tag_set()
-        # Config bleibt Default/Import-Basis. Falls die DB noch leer ist, respektieren wir zur Sicherheit
-        # zusätzlich die YAML-Werte in diesem Lauf.
-        excluded_tags.update(str(tag) for tag in filename_config.get("excluded_tags", []) or [])
+        typed_tags = self.typed_tags_for_post(post_id)
+        excluded = self.excluded_tags()
 
-        tags = self.tags_for_filename(post_id, excluded_tags, tags_count)
-        tag_part = "_".join(tags) if tags else "untagged"
+        for tag_type in typed_tags:
+            typed_tags[tag_type] = [tag for tag in typed_tags[tag_type] if tag not in excluded]
 
-        ext = source_path.suffix or self.extension_from_db(post_id) or ".bin"
-        digest = self.short_hash(post_id, source_path, hash_length)
+        values = {
+            "postid": str(post_id),
+            "id": str(post_id),
+            "artist": self.join_tags(typed_tags["artist"]),
+            "artists": self.join_tags(typed_tags["artist"]),
+            "character": self.join_tags(typed_tags["character"]),
+            "characters": self.join_tags(typed_tags["character"]),
+            "copyright": self.join_tags(typed_tags["copyright"]),
+            "copyrights": self.join_tags(typed_tags["copyright"]),
+            "series": self.join_tags(typed_tags["copyright"]),
+            "serie": self.join_tags(typed_tags["copyright"]),
+            "general": self.join_tags(self.limited_general_tags(typed_tags["general"])),
+            "meta": self.join_tags(typed_tags["meta"]),
+            "tags": self.join_tags(self.default_tag_mix(typed_tags)),
+            "hash": self.short_hash(post_id, source_path),
+            "ext": extension,
+        }
 
-        filename = pattern.format(
-            id=post_id,
-            tags=tag_part,
-            hash=digest,
-            ext=ext,
-        )
+        filename = pattern
+        for key, value in values.items():
+            filename = replace_placeholder(filename, key, value)
 
-        filename = safe_filename(filename)
-        filename = trim_filename(filename, max_length, ext)
+        if not contains_placeholder(pattern, "ext") and extension:
+            filename = f"{filename}{extension}"
+
+        filename = collapse_separators(safe_filename(filename))
+        if len(filename) > max_length:
+            filename = truncate_filename(filename, max_length)
         return filename
 
-    def tags_for_filename(self, post_id: int, excluded_tags: set[str], limit: int) -> list[str]:
+    def filename_config(self) -> dict[str, Any]:
+        value = self.config.get("filename", {})
+        return value if isinstance(value, dict) else {}
+
+    def typed_tags_for_post(self, post_id: int) -> dict[str, list[str]]:
         rows = self.db.execute(
             """
             SELECT tag, tag_type
@@ -50,54 +69,112 @@ class FilenameBuilder:
             WHERE post_id = ?
             ORDER BY
                 CASE tag_type
-                    WHEN 'copyright' THEN 1
+                    WHEN 'artist' THEN 1
                     WHEN 'character' THEN 2
-                    WHEN 'artist' THEN 3
+                    WHEN 'copyright' THEN 3
                     WHEN 'general' THEN 4
                     WHEN 'meta' THEN 5
                     ELSE 9
                 END,
-                tag
+                tag ASC
             """,
             (post_id,),
         ).fetchall()
 
-        selected: list[str] = []
+        result: dict[str, list[str]] = {tag_type: [] for tag_type in TAG_TYPE_ORDER}
         for row in rows:
-            tag = str(row["tag"])
-            if tag in excluded_tags:
+            tag_type = str(row["tag_type"] or "general")
+            tag = str(row["tag"] or "").strip()
+            if not tag:
                 continue
-            selected.append(tag)
-            if len(selected) >= limit:
-                break
+            if tag_type not in result:
+                tag_type = "general"
+            result[tag_type].append(tag)
+        return result
 
-        return selected
+    def excluded_tags(self) -> set[str]:
+        if hasattr(self.db, "filename_excluded_tag_set"):
+            return set(self.db.filename_excluded_tag_set())
+        return {str(tag) for tag in self.filename_config().get("excluded_tags", []) or []}
 
-    def extension_from_db(self, post_id: int) -> str | None:
-        row = self.db.execute("SELECT file_ext FROM posts WHERE id = ?", (post_id,)).fetchone()
-        if row and row["file_ext"]:
-            return "." + str(row["file_ext"]).strip(".")
-        return None
+    def resolve_extension(self, post_id: int, source_path: Path) -> str:
+        row = self.db.get_post_detail(post_id)
+        if row is not None and row["file_ext"]:
+            ext = str(row["file_ext"]).strip()
+            if ext:
+                return "." + ext.lstrip(".")
+        if source_path.suffix:
+            return source_path.suffix
+        return ".bin"
 
-    def short_hash(self, post_id: int, source_path: Path, hash_length: int) -> str:
-        seed = f"{post_id}:{source_path.name}:{source_path.stat().st_size if source_path.exists() else 0}"
-        return hashlib.sha1(seed.encode("utf-8")).hexdigest()[:hash_length]
+    def limited_general_tags(self, general_tags: list[str]) -> list[str]:
+        count = int(self.filename_config().get("tags_count", 8))
+        return general_tags[: max(0, count)]
+
+    def default_tag_mix(self, typed_tags: dict[str, list[str]]) -> list[str]:
+        count = int(self.filename_config().get("tags_count", 8))
+        mixed: list[str] = []
+        for tag_type in TAG_TYPE_ORDER:
+            mixed.extend(typed_tags[tag_type])
+        return mixed[: max(0, count)]
+
+    def join_tags(self, tags: list[str]) -> str:
+        clean = [safe_filename_part(tag) for tag in tags if tag]
+        return "_".join(clean) if clean else "unknown"
+
+    def short_hash(self, post_id: int, source_path: Path) -> str:
+        hash_length = int(self.filename_config().get("hash_length", 8))
+        seed = f"{post_id}:{source_path.name}".encode("utf-8", errors="ignore")
+        return hashlib.sha1(seed).hexdigest()[: max(1, hash_length)]
+
+
+def safe_filename_part(value: str) -> str:
+    value = value.strip().replace(" ", "_")
+    value = re.sub(r"[^\w.\-]+", "_", value, flags=re.UNICODE)
+    value = re.sub(r"_+", "_", value)
+    return value.strip("._-") or "unknown"
 
 
 def safe_filename(value: str) -> str:
-    value = value.strip()
-    value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
-    value = re.sub(r"\s+", "_", value)
+    value = value.replace("\\", "_").replace("/", "_")
+    value = re.sub(r'[<>:"|?*\x00-\x1F]', "_", value)
     value = re.sub(r"_+", "_", value)
-    value = value.strip("._ ")
-    return value or "file"
+    value = value.strip(" ._")
+    return value or "unknown"
 
 
-def trim_filename(filename: str, max_length: int, ext: str) -> str:
+def collapse_separators(value: str) -> str:
+    value = re.sub(r"_+", "_", value)
+    return value.strip("_")
+
+
+def truncate_filename(filename: str, max_length: int) -> str:
     if len(filename) <= max_length:
         return filename
+    path = Path(filename)
+    suffix = path.suffix
+    stem = path.stem
+    available = max(8, max_length - len(suffix))
+    return stem[:available].rstrip("._-") + suffix
 
-    suffix = ext if filename.lower().endswith(ext.lower()) else ""
-    stem = filename[: -len(suffix)] if suffix else filename
-    allowed_stem_len = max(8, max_length - len(suffix))
-    return stem[:allowed_stem_len].rstrip("._ ") + suffix
+
+def replace_placeholder(pattern: str, key: str, value: str) -> str:
+    result = pattern
+    variants = {
+        f"%{key}%",
+        f"%{key.upper()}%",
+        f"%{key.capitalize()}%",
+        f"{{{key}}}",
+        f"{{{key.upper()}}}",
+        f"{{{key.capitalize()}}}",
+    }
+    if key == "postid":
+        variants.update({"%postID%", "%postId%", "{postID}", "{postId}"})
+    for placeholder in variants:
+        result = result.replace(placeholder, value)
+    return result
+
+
+def contains_placeholder(pattern: str, key: str) -> bool:
+    probe = pattern.lower()
+    return f"%{key.lower()}%" in probe or f"{{{key.lower()}}}" in probe

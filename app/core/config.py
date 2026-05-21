@@ -76,7 +76,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "categories": [],
     "filename": {
-        "pattern": "{id}_{tags}_{hash}{ext}",
+        "pattern": "%artists%_%characters%_%general%_%postid%",
         "max_length": 180,
         "tags_count": 8,
         "hash_length": 8,
@@ -190,3 +190,5 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("filename.max_length muss >= 32 sein")
     if int(filename.get("tags_count", 8)) < 0:
         raise ValueError("filename.tags_count muss >= 0 sein")
+    if int(filename.get("hash_length", 8)) < 1:
+        raise ValueError("filename.hash_length muss >= 1 sein")

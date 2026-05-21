@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from app.core.category_engine import CategoryMatch
 from app.core.database import Database
 from app.services.download_service import DownloadService
+from app.gui.tag_display import TypedTagListWidget, typed_tags_for_post
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 
 
@@ -73,6 +74,7 @@ class ImageViewerWindow(QMainWindow):
         self.suggested_category_name: str | None = None
         self.last_saved_path: Path | None = None
         self._tag_context_menu: QMenu | None = None
+        self._related_context_menu: QMenu | None = None
 
         viewer_config = config.get("viewer", {}) or {}
         self.auto_advance_after_save = bool(viewer_config.get("auto_advance_after_save", True))
@@ -142,6 +144,24 @@ class ImageViewerWindow(QMainWindow):
         self.info_label.setWordWrap(True)
         self.side_layout.addWidget(self.info_label)
 
+        self.related_warning_label = QLabel()
+        self.related_warning_label.setWordWrap(True)
+        self.related_warning_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.related_warning_label.setStyleSheet(
+            """
+            QLabel {
+                background: #5a3d00;
+                color: #ffd166;
+                border: 2px solid #ffb000;
+                border-radius: 6px;
+                padding: 6px;
+                font-weight: bold;
+            }
+            """
+        )
+        self.related_warning_label.hide()
+        self.side_layout.addWidget(self.related_warning_label)
+
         self.status_label = QLabel()
         self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.side_layout.addWidget(self.status_label)
@@ -154,7 +174,9 @@ class ImageViewerWindow(QMainWindow):
 
         self.related_list = QListWidget()
         self.related_list.itemDoubleClicked.connect(self.open_related_item)
-        self.related_list.setMaximumHeight(110)
+        self.related_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.related_list.customContextMenuRequested.connect(self.open_related_context_menu)
+        self.related_list.setMaximumHeight(130)
         self.side_layout.addWidget(self.related_list)
 
         self.category_label = QLabel()
@@ -171,15 +193,15 @@ class ImageViewerWindow(QMainWindow):
         self.final_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.side_layout.addWidget(self.final_path_label)
 
-        self.tags_label = QLabel("Tags:")
+        self.tags_label = QLabel("Tags nach Danbooru-Typ:")
         self.side_layout.addWidget(self.tags_label)
 
-        self.tags_list = QListWidget()
-        self.tags_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.tags_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tags_list.customContextMenuRequested.connect(self.open_tag_context_menu)
-        self.tags_list.itemDoubleClicked.connect(self.copy_single_tag_from_item)
-        self.side_layout.addWidget(self.tags_list, stretch=1)
+        self.tags_widget = TypedTagListWidget()
+        for list_widget in self.tags_widget.lists.values():
+            list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+            list_widget.customContextMenuRequested.connect(self.open_tag_context_menu)
+            list_widget.itemDoubleClicked.connect(self.copy_single_tag_from_item)
+        self.side_layout.addWidget(self.tags_widget, stretch=1)
 
         self.button_row_1 = QHBoxLayout()
         self.potential_button = QPushButton("H Potential")
@@ -214,7 +236,8 @@ class ImageViewerWindow(QMainWindow):
         self.hint_label = QLabel(
             "Hotkeys: ←/→ blättern | 1-5 Sterne | H/P/S Status | F final speichern | "
             "Entf ablehnen | A auto raus | N neu | O Originalpost | "
-            "Tags markieren + Rechtsklick für Tag-Aktionen"
+            "Tags markieren + Rechtsklick für Tag-Aktionen | "
+            "Parent/Child: Doppelklick lokal öffnen, Rechtsklick für Lokal/Remote"
         )
         self.hint_label.setWordWrap(True)
         self.side_layout.addWidget(self.hint_label)
@@ -274,6 +297,9 @@ class ImageViewerWindow(QMainWindow):
         if row is None:
             return
 
+        related = self.db.get_related_posts(post_id)
+        related_count = len(related)
+
         self.setWindowTitle(f"Danbooru Manager - Bildbetrachter - {post_id}")
 
         self.info_label.setText(
@@ -281,8 +307,18 @@ class ImageViewerWindow(QMainWindow):
             f"Rating: {row['rating'] or '?'}\n"
             f"Score: {row['score'] if row['score'] is not None else '-'}\n"
             f"Parent: {row['parent_id'] if row['parent_id'] is not None else '-'}\n"
+            f"Lokale Parent/Child-Versionen: {related_count}\n"
             f"Position: {self.current_index + 1} / {len(self.post_ids)}"
         )
+
+        if related_count:
+            self.related_warning_label.setText(
+                f"⚠ Es existiert bereits mindestens eine lokale Parent/Child-Version ({related_count}). "
+                f"Vor dem Speichern prüfen, sonst züchtest du Varianten-Duplikate."
+            )
+            self.related_warning_label.show()
+        else:
+            self.related_warning_label.hide()
 
         status = row["status"] or "new"
         self.status_label.setText(f"Status: {STATUS_LABELS.get(status, status)}")
@@ -291,11 +327,10 @@ class ImageViewerWindow(QMainWindow):
         stars = row["stars"]
         self.stars_label.setText(f"Sterne: {stars if stars is not None else '-'}")
 
-        self.update_related_posts(post_id)
+        self.update_related_posts(post_id, related)
         self.update_category_controls(post_id)
 
-        tags = row["tags"] or ""
-        self.populate_tag_list(tags)
+        self.populate_tag_lists(post_id)
 
         image_path = self.ensure_image_path(post_id, row)
         if image_path:
@@ -311,29 +346,44 @@ class ImageViewerWindow(QMainWindow):
 
         self.refresh_image()
 
-    def populate_tag_list(self, tags: str) -> None:
-        self.tags_list.clear()
+    def populate_tag_lists(self, post_id: int) -> None:
+        self.tags_widget.set_typed_tags(typed_tags_for_post(self.db, post_id))
 
-        for tag in tags.split():
-            item = QListWidgetItem(tag)
-            item.setData(Qt.UserRole, tag)
-            self.tags_list.addItem(item)
-
-    def update_related_posts(self, post_id: int) -> None:
+    def update_related_posts(self, post_id: int, related: list[Any] | None = None) -> None:
         self.related_list.clear()
 
-        related = self.db.get_related_posts(post_id)
+        if related is None:
+            related = self.db.get_related_posts(post_id)
+
         for row in related:
             relation = str(row["relation"])
             relation_label = "Parent" if relation == "parent" else "Child"
+            related_id = int(row["id"])
+            local_path = self.local_path_for_post(related_id)
+
+            local_marker = "lokal vorhanden" if local_path else "nur DB/Remote"
             text = (
-                f"{relation_label}: {row['id']} | "
+                f"⚠ {relation_label}: {related_id} | "
                 f"Status: {row['status'] or '-'} | "
-                f"Rating: {row['rating'] or '?'} | "
-                f"Score: {row['score'] if row['score'] is not None else '-'}"
+                f"{local_marker}"
             )
+
             item = QListWidgetItem(text)
-            item.setData(Qt.UserRole, int(row["id"]))
+            item.setData(Qt.UserRole, related_id)
+            item.setData(Qt.UserRole + 1, relation)
+            item.setData(Qt.UserRole + 2, str(local_path) if local_path else "")
+
+            font = QFont()
+            font.setBold(True)
+            item.setFont(font)
+
+            if local_path:
+                item.setForeground(QBrush(QColor("#ffd166")))
+                item.setBackground(QBrush(QColor("#3a2a00")))
+            else:
+                item.setForeground(QBrush(QColor("#ffb000")))
+                item.setBackground(QBrush(QColor("#242424")))
+
             self.related_list.addItem(item)
 
         if not related:
@@ -341,11 +391,107 @@ class ImageViewerWindow(QMainWindow):
             item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
             self.related_list.addItem(item)
 
+    def local_path_for_post(self, post_id: int) -> Path | None:
+        row = self.db.get_post_detail(post_id)
+        if row is None:
+            return None
+
+        candidates = [
+            row["final_file_path"],
+            row["original_cache_path"],
+            row["original_path"],
+            row["thumbnail_path"],
+            row["rejected_thumbnail_path"],
+        ]
+
+        for candidate in candidates:
+            if candidate:
+                path = Path(str(candidate))
+                if path.exists():
+                    return path
+
+        return None
+
+    def build_post_url(self, post_id: int) -> str:
+        base_url = str(self.config.get("base_url", "https://danbooru.donmai.us")).rstrip("/")
+        return f"{base_url}/posts/{post_id}"
+
     def open_related_item(self, item: QListWidgetItem) -> None:
         post_id = item.data(Qt.UserRole)
-        if post_id:
-            base_url = str(self.config.get("base_url", "https://danbooru.donmai.us")).rstrip("/")
-            webbrowser.open(f"{base_url}/posts/{post_id}")
+        if not post_id:
+            return
+
+        local_path = self.local_path_for_post(int(post_id))
+        if local_path is not None:
+            self.open_local_path(local_path)
+            return
+
+        webbrowser.open(self.build_post_url(int(post_id)))
+
+    def open_related_context_menu(self, position) -> None:  # noqa: ANN001
+        item = self.related_list.itemAt(position)
+        if item is None or not (item.flags() & Qt.ItemIsEnabled):
+            return
+
+        post_id = item.data(Qt.UserRole)
+        if not post_id:
+            return
+
+        post_id = int(post_id)
+        local_path = self.local_path_for_post(post_id)
+
+        menu = QMenu(self)
+        self._related_context_menu = menu
+
+        local_action = QAction("Lokal öffnen", menu)
+        local_action.setEnabled(local_path is not None)
+        local_action.triggered.connect(
+            lambda checked=False, p=local_path: self.open_local_path(p) if p is not None else None
+        )
+        menu.addAction(local_action)
+
+        folder_action = QAction("Lokalen Ordner öffnen", menu)
+        folder_action.setEnabled(local_path is not None)
+        folder_action.triggered.connect(
+            lambda checked=False, p=local_path: self.open_local_folder(p) if p is not None else None
+        )
+        menu.addAction(folder_action)
+
+        menu.addSeparator()
+
+        remote_action = QAction("Remote Originalpost öffnen", menu)
+        remote_action.triggered.connect(lambda checked=False, pid=post_id: webbrowser.open(self.build_post_url(pid)))
+        menu.addAction(remote_action)
+
+        copy_remote_action = QAction("Remote-Link kopieren", menu)
+        copy_remote_action.triggered.connect(
+            lambda checked=False, pid=post_id: QGuiApplication.clipboard().setText(self.build_post_url(pid))
+        )
+        menu.addAction(copy_remote_action)
+
+        if local_path is not None:
+            copy_local_action = QAction("Lokalen Pfad kopieren", menu)
+            copy_local_action.triggered.connect(
+                lambda checked=False, p=local_path: QGuiApplication.clipboard().setText(str(p))
+            )
+            menu.addAction(copy_local_action)
+
+        menu.popup(self.related_list.viewport().mapToGlobal(position))
+
+    def open_local_path(self, path: Path) -> None:
+        if not path.exists():
+            QMessageBox.warning(self, "Lokale Datei fehlt", f"Datei existiert nicht:\n{path}")
+            return
+
+        os.startfile(path)
+
+    def open_local_folder(self, path: Path) -> None:
+        folder = path.parent if path.is_file() else path
+        if not folder.exists():
+            QMessageBox.warning(self, "Ordner fehlt", f"Ordner existiert nicht:\n{folder}")
+            return
+
+        os.startfile(folder)
 
     def update_category_controls(self, post_id: int) -> None:
         suggested = self.final_save_service.suggest_category(post_id)
@@ -491,19 +637,29 @@ class ImageViewerWindow(QMainWindow):
         tags: list[str] = []
         seen: set[str] = set()
 
-        for item in self.tags_list.selectedItems():
-            tag = str(item.data(Qt.UserRole) or item.text()).strip()
+        for tag in self.tags_widget.selected_tags():
+            tag = tag.strip()
             if tag and tag not in seen:
                 tags.append(tag)
                 seen.add(tag)
 
         return tags
 
-    def tags_for_context_position(self, position) -> list[str]:  # noqa: ANN001
-        item = self.tags_list.itemAt(position)
+    def tag_list_for_context_sender(self) -> QListWidget | None:
+        sender = self.sender()
+        return sender if isinstance(sender, QListWidget) else None
+
+    def tags_for_context_position(self, position, list_widget: QListWidget | None = None) -> list[str]:  # noqa: ANN001
+        if list_widget is None:
+            list_widget = self.tag_list_for_context_sender()
+        if list_widget is None:
+            return []
+
+        item = list_widget.itemAt(position)
 
         if item is not None and not item.isSelected():
-            self.tags_list.clearSelection()
+            for other_list in self.tags_widget.lists.values():
+                other_list.clearSelection()
             item.setSelected(True)
             return [str(item.data(Qt.UserRole) or item.text())]
 
@@ -517,8 +673,9 @@ class ImageViewerWindow(QMainWindow):
         return []
 
     def open_tag_context_menu(self, position) -> None:  # noqa: ANN001
-        tags = self.tags_for_context_position(position)
-        if not tags:
+        list_widget = self.tag_list_for_context_sender()
+        tags = self.tags_for_context_position(position, list_widget)
+        if not tags or list_widget is None:
             return
 
         frozen_tags = list(tags)
@@ -628,7 +785,7 @@ class ImageViewerWindow(QMainWindow):
         )
         menu.addAction(query_preview_action)
 
-        menu.popup(self.tags_list.viewport().mapToGlobal(position))
+        menu.popup(list_widget.viewport().mapToGlobal(position))
 
     def safe_tag_action(self, action: Callable[[], None]) -> None:
         try:

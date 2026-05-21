@@ -4,10 +4,12 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QStatusBar,
@@ -19,11 +21,11 @@ from PySide6.QtWidgets import (
 from app.core.database import Database
 from app.gui.image_viewer import ImageViewerWindow
 from app.gui.thumbnail_grid import ThumbnailGrid
+from app.services.final_save_service import AlreadySavedError, FinalSaveService
 
 
 STATUS_LABELS: dict[str, str] = {
-    "all": "Alle",
-    "new": "Neu",
+    "new": "Ungeprüft",
     "potential": "Hohes Potential",
     "review": "Prüfen",
     "selected_save": "Zum Speichern",
@@ -36,7 +38,30 @@ STATUS_LABELS: dict[str, str] = {
 }
 
 
+STATUS_ORDER: list[str] = [
+    "new",
+    "potential",
+    "review",
+    "selected_save",
+    "auto_rejected",
+    "rejected",
+    "accepted",
+    "already_known",
+    "downloaded",
+    "saved",
+]
+
+
+DEFAULT_VISIBLE_STATUSES: set[str] = {
+    "new",
+    "potential",
+    "review",
+    "selected_save",
+}
+
+
 VIEW_LABELS: dict[str, str] = {
+    "filtered": "Status-Filter",
     "worklist": "Arbeitsliste",
     "saved": "Gespeichert",
     "rejected": "Aussortiert",
@@ -51,17 +76,20 @@ class PreviewWindow(QMainWindow):
 
         self.config = config
         self.db = db
+        self.final_save_service = FinalSaveService(config, db)
         self.current_limit = 500
         self.current_offset = 0
 
-        # Nur noch ein Viewer pro Post-ID.
-        # Falls Qt Signale mehrfach feuert, wird kein Fensterzoo mehr gezüchtet.
         self.viewer_windows_by_post_id: dict[int, ImageViewerWindow] = {}
 
         self._applying_viewer_query = False
         self._pending_viewer_query: str | None = None
         self._is_reloading = False
         self._reload_pending = False
+        self._syncing_status_checkboxes = False
+
+        self.status_checkboxes: dict[str, QCheckBox] = {}
+        self.category_rule_cache: list[dict[str, Any]] = []
 
         self.reload_timer = QTimer(self)
         self.reload_timer.setSingleShot(True)
@@ -80,6 +108,10 @@ class PreviewWindow(QMainWindow):
         self.reload_button.clicked.connect(self.reload_posts)
         self.toolbar.addWidget(self.reload_button)
 
+        self.final_save_button = QPushButton("Final speichern (F)")
+        self.final_save_button.clicked.connect(self.final_save_selected_posts)
+        self.toolbar.addWidget(self.final_save_button)
+
         self.toolbar.addSeparator()
 
         self.toolbar.addWidget(QLabel("Ansicht: "))
@@ -87,22 +119,32 @@ class PreviewWindow(QMainWindow):
         for view_mode, label in VIEW_LABELS.items():
             self.view_mode.addItem(label, view_mode)
 
-        default_view = str((config.get("viewer", {}) or {}).get("default_view", "worklist"))
-        index = self.view_mode.findData(default_view)
-        if index >= 0:
-            self.view_mode.setCurrentIndex(index)
-
-        self.view_mode.currentIndexChanged.connect(self.schedule_reload)
+        self.view_mode.setCurrentIndex(self.view_mode.findData("filtered"))
+        self.view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
         self.toolbar.addWidget(self.view_mode)
 
         self.toolbar.addSeparator()
 
         self.toolbar.addWidget(QLabel("Status: "))
-        self.status_filter = QComboBox()
-        for status, label in STATUS_LABELS.items():
-            self.status_filter.addItem(label, status)
-        self.status_filter.currentIndexChanged.connect(self.schedule_reload)
-        self.toolbar.addWidget(self.status_filter)
+
+        self.all_status_checkbox = QCheckBox("Alle")
+        self.all_status_checkbox.setChecked(False)
+        self.all_status_checkbox.stateChanged.connect(self.on_all_status_changed)
+        self.toolbar.addWidget(self.all_status_checkbox)
+
+        for status in STATUS_ORDER:
+            checkbox = QCheckBox(STATUS_LABELS[status])
+            checkbox.setChecked(status in DEFAULT_VISIBLE_STATUSES)
+            checkbox.stateChanged.connect(self.on_status_checkbox_changed)
+            self.status_checkboxes[status] = checkbox
+            self.toolbar.addWidget(checkbox)
+
+        self.toolbar.addSeparator()
+
+        self.toolbar.addWidget(QLabel("Kategorie: "))
+        self.category_filter = QComboBox()
+        self.category_filter.currentIndexChanged.connect(self.schedule_reload)
+        self.toolbar.addWidget(self.category_filter)
 
         self.toolbar.addSeparator()
 
@@ -128,14 +170,9 @@ class PreviewWindow(QMainWindow):
         self.limit_spin.setRange(50, 5000)
         self.limit_spin.setSingleStep(50)
         self.limit_spin.setValue(self.current_limit)
-
-        # Wichtig:
-        # Beim Tippen von "500" soll nicht erst 5, dann 50, dann 500 reloaden.
-        # QSpinBox ist sonst ein kleiner Reload-Vulkan.
         self.limit_spin.setKeyboardTracking(False)
         self.limit_spin.valueChanged.connect(self.schedule_reload)
         self.limit_spin.editingFinished.connect(self.schedule_reload)
-
         self.toolbar.addWidget(self.limit_spin)
 
         self.toolbar.addSeparator()
@@ -164,6 +201,8 @@ class PreviewWindow(QMainWindow):
         self.grid.status_changed.connect(self.on_status_changed)
         self.grid.request_reload.connect(self.schedule_reload)
         self.grid.open_viewer_requested.connect(self.open_viewer)
+        self.grid.final_save_requested.connect(self.final_save_posts)
+        self.grid.category_assign_requested.connect(self.assign_category_to_posts)
         self.main_layout.addWidget(self.grid)
 
         self.setCentralWidget(self.main_widget)
@@ -171,13 +210,262 @@ class PreviewWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
+        self.sync_all_checkbox_from_statuses()
+        self.reload_category_filter()
         self.reload_posts()
+
+    # -------------------------------------------------------------------------
+    # Kategorie-Filter / Kategorie-Vorschlag
+    # -------------------------------------------------------------------------
+
+    def reload_category_filter(self) -> None:
+        current_value = self.category_filter.currentData()
+
+        self.category_filter.blockSignals(True)
+        try:
+            self.category_filter.clear()
+            self.category_filter.addItem("Alle Kategorien", "__all__")
+            self.category_filter.addItem("_unmatched / keine Kategorie", "__unmatched__")
+
+            for row in self.db.list_categories_full():
+                name = str(row["name"])
+                self.category_filter.addItem(name, name)
+
+            if current_value is not None:
+                index = self.category_filter.findData(current_value)
+                if index >= 0:
+                    self.category_filter.setCurrentIndex(index)
+        finally:
+            self.category_filter.blockSignals(False)
+
+    def selected_category_filter(self) -> str:
+        value = self.category_filter.currentData()
+        return str(value) if value is not None else "__all__"
+
+    def load_category_rule_cache(self) -> None:
+        categories = self.db.list_categories_full()
+        rules = self.db.list_category_rules()
+
+        by_category: dict[int, dict[str, Any]] = {}
+
+        for category in categories:
+            category_id = int(category["id"])
+            by_category[category_id] = {
+                "id": category_id,
+                "name": str(category["name"]),
+                "folder_name": str(category["folder_name"]),
+                "sort_order": int(category["sort_order"] or 0),
+                "include": set(),
+                "exclude": set(),
+                "groups": {},
+            }
+
+        for rule in rules:
+            category_id = int(rule["category_id"])
+            if category_id not in by_category:
+                continue
+
+            rule_type = str(rule["rule_type"])
+            tag = str(rule["tag"])
+
+            if rule_type == "include":
+                by_category[category_id]["include"].add(tag)
+            elif rule_type == "exclude":
+                by_category[category_id]["exclude"].add(tag)
+            elif rule_type.startswith("include_group_"):
+                by_category[category_id]["groups"].setdefault(rule_type, set()).add(tag)
+
+        self.category_rule_cache = sorted(
+            by_category.values(),
+            key=lambda entry: (entry["sort_order"], entry["name"]),
+        )
+
+    def suggest_category_from_tags(self, tags_text: str) -> str:
+        tags = set(tags_text.split())
+
+        for category in self.category_rule_cache:
+            name = category["name"]
+
+            if category["exclude"].intersection(tags):
+                continue
+
+            include = category["include"]
+            groups = category["groups"]
+
+            if include and not include.intersection(tags):
+                continue
+
+            if groups:
+                group_match = False
+                for group_tags in groups.values():
+                    if group_tags and group_tags.issubset(tags):
+                        group_match = True
+                        break
+                if not group_match:
+                    continue
+
+            if include or groups:
+                return name
+
+        return "_unmatched"
+
+    def enrich_preview_rows_with_categories(self, rows: list[Any]) -> list[dict[str, Any]]:
+        self.load_category_rule_cache()
+
+        enriched: list[dict[str, Any]] = []
+
+        for row in rows:
+            data = dict(row)
+            tags_text = str(data.get("tags") or "")
+
+            assigned_category = data.get("assigned_category_name")
+            assigned_source = data.get("assigned_category_source")
+
+            if assigned_category:
+                data["preview_category_name"] = str(assigned_category)
+                data["preview_category_source"] = str(assigned_source or "manual")
+            else:
+                data["preview_category_name"] = self.suggest_category_from_tags(tags_text)
+                data["preview_category_source"] = "auto"
+
+            enriched.append(data)
+
+        return enriched
+
+    def category_matches_filter(self, row: dict[str, Any], category_filter: str) -> bool:
+        if category_filter == "__all__":
+            return True
+
+        category_name = str(row.get("preview_category_name") or "_unmatched")
+
+        if category_filter == "__unmatched__":
+            return category_name in {"", "_unmatched", "None"}
+
+        return category_name == category_filter
+
+    def assign_category_to_posts(self, post_ids: list[int], category_name: str) -> None:
+        if not post_ids:
+            return
+
+        category = self.db.get_category_by_name(category_name)
+        if category is None:
+            self.status_bar.showMessage(f"Kategorie nicht gefunden: {category_name}")
+            return
+
+        category_id = int(category["id"])
+
+        for post_id in post_ids:
+            self.db.execute(
+                """
+                DELETE FROM post_categories
+                WHERE post_id = ?
+                """,
+                (int(post_id),),
+            )
+            self.db.execute(
+                """
+                INSERT INTO post_categories (post_id, category_id, source)
+                VALUES (?, ?, ?)
+                """,
+                (int(post_id), category_id, "manual"),
+            )
+
+            self.grid.update_card_category(int(post_id), category_name, "manual")
+
+        self.db.commit()
+
+        # Absichtlich kein Popup. Review-Workflow soll nicht von Dialogen zerhackt werden.
+        self.status_bar.showMessage(f"{len(post_ids)} Post(s) → Kategorie {category_name}")
+
+    # -------------------------------------------------------------------------
+    # Status-Checkbox-Filter
+    # -------------------------------------------------------------------------
+
+    def on_view_mode_changed(self, *_args) -> None:
+        mode = self.selected_view_mode()
+
+        if mode == "filtered":
+            self.schedule_reload()
+            return
+
+        presets: dict[str, set[str]] = {
+            "worklist": {"new", "potential", "review", "selected_save"},
+            "saved": {"saved"},
+            "rejected": {"rejected", "auto_rejected"},
+            "known": {"already_known", "downloaded"},
+            "all": set(STATUS_ORDER),
+        }
+
+        statuses = presets.get(mode, DEFAULT_VISIBLE_STATUSES)
+        self.set_checked_statuses(statuses)
+        self.schedule_reload()
+
+    def on_all_status_changed(self, state: int) -> None:
+        if self._syncing_status_checkboxes:
+            return
+
+        checked = state == Qt.Checked
+
+        self._syncing_status_checkboxes = True
+        try:
+            for checkbox in self.status_checkboxes.values():
+                checkbox.setChecked(checked)
+        finally:
+            self._syncing_status_checkboxes = False
+
+        self.schedule_reload()
+
+    def on_status_checkbox_changed(self, *_args) -> None:
+        if self._syncing_status_checkboxes:
+            return
+
+        self.sync_all_checkbox_from_statuses()
+
+        if self.selected_view_mode() != "filtered":
+            filtered_index = self.view_mode.findData("filtered")
+            if filtered_index >= 0:
+                self.view_mode.blockSignals(True)
+                try:
+                    self.view_mode.setCurrentIndex(filtered_index)
+                finally:
+                    self.view_mode.blockSignals(False)
+
+        self.schedule_reload()
+
+    def sync_all_checkbox_from_statuses(self) -> None:
+        all_checked = all(checkbox.isChecked() for checkbox in self.status_checkboxes.values())
+
+        self._syncing_status_checkboxes = True
+        try:
+            self.all_status_checkbox.setChecked(all_checked)
+        finally:
+            self._syncing_status_checkboxes = False
+
+    def set_checked_statuses(self, statuses: set[str]) -> None:
+        self._syncing_status_checkboxes = True
+        try:
+            for status, checkbox in self.status_checkboxes.items():
+                checkbox.setChecked(status in statuses)
+        finally:
+            self._syncing_status_checkboxes = False
+
+        self.sync_all_checkbox_from_statuses()
+
+    def selected_statuses(self) -> list[str]:
+        return [
+            status
+            for status in STATUS_ORDER
+            if self.status_checkboxes[status].isChecked()
+        ]
+
+    # -------------------------------------------------------------------------
+    # Reload / Filter
+    # -------------------------------------------------------------------------
 
     def schedule_reload(self, *_args) -> None:
         if self._applying_viewer_query:
             return
 
-        # Wenn gerade ein Reload läuft, danach nochmal genau einmal nachziehen.
         if self._is_reloading:
             self._reload_pending = True
             return
@@ -187,17 +475,9 @@ class PreviewWindow(QMainWindow):
     def selected_view_mode(self) -> str:
         return str(self.view_mode.currentData())
 
-    def selected_status(self) -> str:
-        return str(self.status_filter.currentData())
-
     def current_search_text(self) -> str | None:
         text = self.search_edit.text().strip()
         return text or None
-
-    def worklist_statuses(self) -> list[str]:
-        workflow = self.config.get("workflow", {}) or {}
-        statuses = workflow.get("worklist_statuses", ["new", "potential", "review", "selected_save"])
-        return [str(status) for status in statuses]
 
     def clear_search(self) -> None:
         self.search_edit.clear()
@@ -219,36 +499,38 @@ class PreviewWindow(QMainWindow):
         self._is_reloading = True
 
         try:
-            view_mode = self.selected_view_mode()
-            status = self.selected_status()
+            statuses = self.selected_statuses()
             text_filter = self.current_search_text()
+            category_filter = self.selected_category_filter()
             self.current_limit = int(self.limit_spin.value())
 
-            total = self.db.count_preview_posts(
-                view_mode=view_mode,
-                status_filter=status,
+            internal_limit = self.current_limit if category_filter == "__all__" else max(self.current_limit * 5, 2000)
+
+            candidates = self.fetch_preview_posts_by_statuses(
+                statuses=statuses,
                 text_filter=text_filter,
-                worklist_statuses=self.worklist_statuses(),
-            )
-            posts = self.db.fetch_preview_posts(
-                view_mode=view_mode,
-                status_filter=status,
-                text_filter=text_filter,
-                worklist_statuses=self.worklist_statuses(),
-                limit=self.current_limit,
+                limit=internal_limit,
                 offset=self.current_offset,
             )
+            enriched = self.enrich_preview_rows_with_categories(candidates)
+            filtered = [
+                row
+                for row in enriched
+                if self.category_matches_filter(row, category_filter)
+            ]
+
+            posts = filtered[: self.current_limit]
+            total = len(filtered)
 
             self.grid.set_posts(posts)
 
-            status_note = ""
-            if status != "all" and view_mode == "worklist":
-                status_note = " | Statusfilter global"
+            status_text = self.status_filter_description(statuses)
+            category_text = self.category_filter.currentText()
 
             self.info_label.setText(
-                f"Ansicht: {VIEW_LABELS.get(view_mode, view_mode)} | "
-                f"Angezeigt: {len(posts)} / Treffer: {total} | "
-                f"Statusfilter: {STATUS_LABELS.get(status, status)}{status_note} | "
+                f"Ansicht: {VIEW_LABELS.get(self.selected_view_mode(), self.selected_view_mode())} | "
+                f"Angezeigt: {len(posts)} / Treffer im geladenen Bereich: {total} | "
+                f"Status: {status_text} | Kategorie: {category_text} | "
                 f"Thumbnail: {self.grid.thumbnail_size}px"
             )
             self.status_bar.showMessage("Preview geladen")
@@ -259,6 +541,187 @@ class PreviewWindow(QMainWindow):
         if self._reload_pending:
             self._reload_pending = False
             self.schedule_reload()
+
+    def status_filter_description(self, statuses: list[str]) -> str:
+        if not statuses:
+            return "Keine"
+
+        if set(statuses) == set(STATUS_ORDER):
+            return "Alle"
+
+        return ", ".join(STATUS_LABELS.get(status, status) for status in statuses)
+
+    def build_preview_where(
+        self,
+        statuses: list[str],
+        text_filter: str | None,
+    ) -> tuple[str, list[Any]]:
+        where_parts: list[str] = []
+        parameters: list[Any] = []
+
+        if not statuses:
+            where_parts.append("1 = 0")
+        elif set(statuses) != set(STATUS_ORDER):
+            placeholders = ", ".join("?" for _ in statuses)
+            where_parts.append(f"p.status IN ({placeholders})")
+            parameters.extend(statuses)
+
+        if text_filter:
+            pattern = f"%{text_filter.strip()}%"
+            where_parts.append(
+                """
+                (
+                    CAST(p.id AS TEXT) LIKE ?
+                    OR p.final_file_path LIKE ?
+                    OR p.final_directory LIKE ?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id
+                        AND pt.tag LIKE ?
+                    )
+                )
+                """
+            )
+            parameters.extend([pattern, pattern, pattern, pattern])
+
+        where_sql = ""
+        if where_parts:
+            where_sql = "WHERE " + " AND ".join(where_parts)
+
+        return where_sql, parameters
+
+    def fetch_preview_posts_by_statuses(
+        self,
+        statuses: list[str],
+        text_filter: str | None,
+        limit: int,
+        offset: int,
+    ) -> list[Any]:
+        where_sql, parameters = self.build_preview_where(statuses, text_filter)
+        parameters.extend([limit, offset])
+
+        return list(
+            self.db.execute(
+                f"""
+                SELECT
+                    p.id,
+                    p.rating,
+                    p.score,
+                    p.fav_count,
+                    p.thumbnail_path,
+                    p.rejected_thumbnail_path,
+                    p.parent_id,
+                    p.has_children,
+                    p.status,
+                    p.local_score,
+                    p.llm_score,
+                    p.final_score,
+                    p.final_file_path,
+                    p.final_directory,
+                    p.rejected_at,
+                    p.saved_at,
+                    p.already_known_at,
+
+                    assigned_category.name AS assigned_category_name,
+                    pc.source AS assigned_category_source,
+
+                    CASE
+                        WHEN p.parent_id IS NOT NULL
+                         AND EXISTS (SELECT 1 FROM posts parent WHERE parent.id = p.parent_id)
+                        THEN 1
+                        ELSE 0
+                    END AS known_parent_loaded,
+
+                    (
+                        SELECT COUNT(*)
+                        FROM posts child
+                        WHERE child.parent_id = p.id
+                    ) AS known_child_count,
+
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id
+                        ORDER BY
+                            CASE pt.tag_type
+                                WHEN 'copyright' THEN 1
+                                WHEN 'character' THEN 2
+                                WHEN 'artist' THEN 3
+                                WHEN 'general' THEN 4
+                                WHEN 'meta' THEN 5
+                                ELSE 9
+                            END,
+                            pt.tag
+                    ) AS tags
+                FROM posts p
+                LEFT JOIN post_categories pc ON pc.post_id = p.id
+                LEFT JOIN categories assigned_category ON assigned_category.id = pc.category_id
+                {where_sql}
+                GROUP BY p.id
+                ORDER BY p.id DESC
+                LIMIT ?
+                OFFSET ?
+                """,
+                parameters,
+            ).fetchall()
+        )
+
+    # -------------------------------------------------------------------------
+    # Final speichern aus Preview
+    # -------------------------------------------------------------------------
+
+    def final_save_selected_posts(self) -> None:
+        post_ids = self.grid.selected_or_current_post_ids()
+        self.final_save_posts(post_ids)
+
+    def final_save_posts(self, post_ids: list[int]) -> None:
+        if not post_ids:
+            self.status_bar.showMessage("Final speichern: keine Posts ausgewählt.")
+            return
+
+        saved: list[str] = []
+        skipped: list[str] = []
+        failed: list[str] = []
+
+        self.final_save_button.setEnabled(False)
+        try:
+            for post_id in post_ids:
+                try:
+                    result = self.final_save_service.save_post(int(post_id), category=None)
+                    saved.append(f"{post_id}: {result.final_path}")
+                    self.grid.update_card_status(int(post_id), "saved")
+                    self.grid.update_card_category(int(post_id), result.category.name, result.category_source)
+                except AlreadySavedError as exc:
+                    skipped.append(str(exc))
+                    self.grid.update_card_status(int(post_id), "saved")
+                except Exception as exc:
+                    failed.append(f"{post_id}: {exc}")
+        finally:
+            self.final_save_button.setEnabled(True)
+
+        parts: list[str] = []
+
+        if saved:
+            parts.append(f"Gespeichert: {len(saved)}")
+        if skipped:
+            parts.append(f"Bereits gespeichert/übersprungen: {len(skipped)}")
+        if failed:
+            parts.append(f"Fehler: {len(failed)}")
+
+        summary = " | ".join(parts) if parts else "Nichts erledigt."
+        self.status_bar.showMessage(summary)
+
+        if failed:
+            QMessageBox.warning(
+                self,
+                "Final speichern",
+                summary + "\n\nFehler:\n" + "\n".join(failed[:10]),
+            )
+
+    # -------------------------------------------------------------------------
+    # Viewer / Status
+    # -------------------------------------------------------------------------
 
     def on_status_changed(self, post_id: int, status: str) -> None:
         self.grid.update_card_status(post_id, status)
@@ -306,19 +769,15 @@ class PreviewWindow(QMainWindow):
         try:
             self.search_edit.setText(query)
 
-            view_index = self.view_mode.findData("all")
-            status_index = self.status_filter.findData("all")
+            filtered_index = self.view_mode.findData("filtered")
+            if filtered_index >= 0:
+                self.view_mode.blockSignals(True)
+                try:
+                    self.view_mode.setCurrentIndex(filtered_index)
+                finally:
+                    self.view_mode.blockSignals(False)
 
-            self.view_mode.blockSignals(True)
-            self.status_filter.blockSignals(True)
-            try:
-                if view_index >= 0:
-                    self.view_mode.setCurrentIndex(view_index)
-                if status_index >= 0:
-                    self.status_filter.setCurrentIndex(status_index)
-            finally:
-                self.view_mode.blockSignals(False)
-                self.status_filter.blockSignals(False)
+            self.set_checked_statuses(set(STATUS_ORDER))
 
         finally:
             self._applying_viewer_query = False
@@ -327,7 +786,6 @@ class PreviewWindow(QMainWindow):
         self.status_bar.showMessage(f"Query aus Viewer übernommen: {query}")
 
     def cleanup_viewers(self) -> None:
-        # Kompatibilität für alte Aufrufer.
         self.viewer_windows_by_post_id = {
             post_id: viewer
             for post_id, viewer in self.viewer_windows_by_post_id.items()
