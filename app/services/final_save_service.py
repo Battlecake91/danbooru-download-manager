@@ -129,6 +129,53 @@ class FinalSaveService:
             category_source=category_source,
         )
 
+
+    def overwrite_saved_file_with_original(self, post_id: int, force_download: bool = True) -> Path:
+        """Replace the existing final file with Danbooru's file_url/original.
+
+        This keeps the current final filename and directory. If the DB points to
+        a final path but the file is missing, the directory is recreated and the
+        original is written there. Exactly the thing humans call "repair" after
+        trusting thumbnails.
+        """
+        row = self.db.get_post_detail(post_id)
+        if row is None:
+            raise RuntimeError(f"Post {post_id} ist nicht in der Datenbank")
+
+        final_value = row["final_file_path"]
+        if not final_value:
+            raise RuntimeError("final_file_path fehlt, daher ist kein Ziel zum Überschreiben bekannt")
+
+        final_path = Path(str(final_value))
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+
+        source_value = self.download_service.ensure_full_original_cached(post_id, force=force_download)
+        if not source_value:
+            raise RuntimeError("Originaldatei konnte nicht geladen werden")
+
+        source_path = Path(source_value)
+        if not source_path.exists():
+            raise RuntimeError(f"Original-Cache fehlt: {source_path}")
+
+        tmp_path = final_path.with_name(final_path.name + ".replace_tmp")
+        shutil.copy2(source_path, tmp_path)
+        tmp_path.replace(final_path)
+
+        self.db.execute(
+            """
+            UPDATE posts
+            SET final_file_path = ?,
+                final_directory = ?,
+                saved_at = COALESCE(saved_at, CURRENT_TIMESTAMP),
+                status = 'saved'
+            WHERE id = ?
+            """,
+            (str(final_path), str(final_path.parent), post_id),
+        )
+        self.db.commit()
+        self.db.set_post_status(post_id, "saved", self.config)
+        return final_path
+
     def assert_not_already_saved(self, post_id: int) -> None:
         row = self.db.get_post_detail(post_id)
         if row is None:

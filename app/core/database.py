@@ -856,6 +856,15 @@ class Database:
         shutil.move(str(source), str(target))
         return str(target)
 
+
+    def delete_post_record(self, post_id: int) -> None:
+        """Remove one post and dependent DB rows, but do not delete image files."""
+        self.execute("DELETE FROM post_reviews WHERE post_id = ?", (post_id,))
+        self.execute("DELETE FROM post_categories WHERE post_id = ?", (post_id,))
+        self.execute("DELETE FROM post_tags WHERE post_id = ?", (post_id,))
+        self.execute("DELETE FROM posts WHERE id = ?", (post_id,))
+        self.commit()
+
     def fetch_tag_overview(
         self,
         search_text: str | None = None,

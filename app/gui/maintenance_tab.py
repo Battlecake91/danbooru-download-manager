@@ -90,7 +90,7 @@ class MaintenanceTab(QWidget):
         self.repair_selected_button.clicked.connect(self.repair_selected_rows)
         controls.addWidget(self.repair_selected_button)
 
-        self.repair_all_button = QPushButton("Alle Verdächtigen neu laden/ersetzen")
+        self.repair_all_button = QPushButton("Alle Verdächtigen/Fehlenden neu laden/ersetzen")
         self.repair_all_button.clicked.connect(self.repair_all_suspects)
         controls.addWidget(self.repair_all_button)
 
@@ -122,12 +122,12 @@ class MaintenanceTab(QWidget):
             self.populate_table(audit_rows)
 
             suspects = sum(1 for row in audit_rows if row.status == "Verdächtig")
-            missing = sum(1 for row in audit_rows if row.status == "Unklar")
+            unclear = sum(1 for row in audit_rows if row.status == "Unklar")
             errors = sum(1 for row in audit_rows if row.status == "Fehler")
             ok = sum(1 for row in audit_rows if row.status == "OK")
             self.result_label.setText(
                 f"Geprüft: {len(audit_rows)} | OK: {ok} | Verdächtig: {suspects} | "
-                f"Unklar: {missing} | Fehler: {errors}"
+                f"Unklar: {unclear} | Fehlend/Fehler: {errors}"
             )
         except Exception as exc:
             QMessageBox.critical(self, "Prüfung fehlgeschlagen", str(exc))
@@ -166,6 +166,9 @@ class MaintenanceTab(QWidget):
                 )
 
         if final_path is None or not final_path.exists():
+            # Fehlende finale Dateien sind reparierbar, wenn final_file_path in der DB steht.
+            # Früher wurde hier nur gemeckert und beim Reparieren trotzdem abgebrochen.
+            # Sehr hilfreich, wenn man gerne Türen ohne Griff einbaut.
             return QualityAuditRow(
                 post_id=post_id,
                 final_path=final_path,
@@ -275,7 +278,7 @@ class MaintenanceTab(QWidget):
         return post_ids
 
     def suspect_post_ids(self) -> list[int]:
-        return [row.post_id for row in self.current_rows if row.status == "Verdächtig"]
+        return [row.post_id for row in self.current_rows if row.status in {"Verdächtig", "Fehler"}]
 
     def repair_selected_rows(self) -> None:
         self.repair_posts(self.selected_post_ids())
@@ -324,10 +327,9 @@ class MaintenanceTab(QWidget):
             raise RuntimeError("final_file_path fehlt")
 
         final_path = Path(str(final_value))
-        if not final_path.exists():
-            raise RuntimeError(f"Finale Datei fehlt: {final_path}")
+        final_path.parent.mkdir(parents=True, exist_ok=True)
 
-        original_path_value = self.download_service.ensure_full_original_cached(post_id)
+        original_path_value = self.download_service.ensure_full_original_cached(post_id, force=True)
         if not original_path_value:
             raise RuntimeError("Originaldatei konnte nicht geladen werden")
 

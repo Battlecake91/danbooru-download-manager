@@ -33,7 +33,7 @@ class DownloadService:
         if username and api_key:
             self.session.auth = (username, api_key)
 
-    def ensure_original_cached(self, post_id: int) -> str | None:
+    def ensure_original_cached(self, post_id: int, force: bool = False) -> str | None:
         """Cache a display-quality file for the viewer.
 
         This follows ``viewer_download_source`` and may therefore cache Danbooru's
@@ -45,7 +45,7 @@ class DownloadService:
             return None
 
         existing = row["original_cache_path"] or row["original_path"]
-        if existing and Path(str(existing)).exists():
+        if not force and existing and Path(str(existing)).exists():
             return str(existing)
 
         selected = choose_viewer_download_url(dict(row), self.config)
@@ -54,9 +54,9 @@ class DownloadService:
             return None
 
         url, source_label = selected
-        return self._download_to_cache(post_id, url, source_label, row["file_ext"], "Viewer-Datei")
+        return self._download_to_cache(post_id, url, source_label, row["file_ext"], "Viewer-Datei", force=force)
 
-    def ensure_full_original_cached(self, post_id: int) -> str | None:
+    def ensure_full_original_cached(self, post_id: int, force: bool = False) -> str | None:
         """Cache the real Danbooru original file for final saving.
 
         Final files must never be based on preview/large/sample thumbnails. If an
@@ -74,12 +74,12 @@ class DownloadService:
             ext = file_extension_from_url(file_url, file_ext)
             full_target = self.target_dir / f"{post_id}_{FULL_ORIGINAL_SOURCE_LABEL}{ext}"
 
-            if full_target.exists() and full_target.stat().st_size > 0:
+            if not force and full_target.exists() and full_target.stat().st_size > 0:
                 self.db.set_original_cache_path(post_id, str(full_target))
                 return str(full_target)
 
             cached_value = row["original_cache_path"]
-            if cached_value:
+            if not force and cached_value:
                 cached_path = Path(str(cached_value))
                 if cached_path.exists() and is_full_original_cache_path(cached_path, post_id):
                     return str(cached_path)
@@ -90,6 +90,7 @@ class DownloadService:
                 FULL_ORIGINAL_SOURCE_LABEL,
                 file_ext,
                 "Originaldatei",
+                force=force,
             )
 
         # Fallback nur für Posts, bei denen Danbooru keine file_url liefert.
@@ -106,7 +107,7 @@ class DownloadService:
             post_id,
             source_label,
         )
-        return self._download_to_cache(post_id, url, source_label, file_ext, "Fallback-Datei")
+        return self._download_to_cache(post_id, url, source_label, file_ext, "Fallback-Datei", force=force)
 
     def _download_to_cache(
         self,
@@ -115,15 +116,19 @@ class DownloadService:
         source_label: str,
         fallback_ext: str | None,
         log_label: str,
+        force: bool = False,
     ) -> str | None:
         ext = file_extension_from_url(url, fallback_ext)
         safe_source_label = safe_source_name(source_label)
         target = self.target_dir / f"{post_id}_{safe_source_label}{ext}"
         part = target.with_suffix(target.suffix + ".part")
 
-        if target.exists() and target.stat().st_size > 0:
+        if target.exists() and target.stat().st_size > 0 and not force:
             self.db.set_original_cache_path(post_id, str(target))
             return str(target)
+
+        if force:
+            part.unlink(missing_ok=True)
 
         LOGGER.info("Lade %s für Post %s: %s", log_label, post_id, url)
 

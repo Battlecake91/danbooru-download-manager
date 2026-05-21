@@ -724,6 +724,11 @@ class PreviewWindow(QMainWindow):
     # -------------------------------------------------------------------------
 
     def on_status_changed(self, post_id: int, status: str) -> None:
+        if status == "deleted":
+            self.status_bar.showMessage(f"Post {post_id} wurde aus der DB entfernt")
+            self.schedule_reload()
+            return
+
         self.grid.update_card_status(post_id, status)
         self.status_bar.showMessage(f"Post {post_id} → {STATUS_LABELS.get(status, status)}")
 

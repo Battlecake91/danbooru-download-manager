@@ -30,8 +30,10 @@ from PySide6.QtWidgets import (
 from app.core.category_engine import CategoryMatch
 from app.core.database import Database
 from app.services.download_service import DownloadService
+from app.danbooru.api import DanbooruApi
 from app.gui.tag_display import TypedTagListWidget, typed_tags_for_post
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
+from app.services.post_import_service import PostImportService
 
 
 STATUS_LABELS: dict[str, str] = {
@@ -67,6 +69,8 @@ class ImageViewerWindow(QMainWindow):
         self.current_index = max(0, post_ids.index(initial_post_id)) if initial_post_id in post_ids else 0
         self.download_service = DownloadService(config, db)
         self.final_save_service = FinalSaveService(config, db)
+        self.api = DanbooruApi(config)
+        self.post_import_service = PostImportService(config, db)
 
         self.current_pixmap: QPixmap | None = None
         self.current_post_id: int | None = None
@@ -107,6 +111,21 @@ class ImageViewerWindow(QMainWindow):
         self.final_save_button = QPushButton("Final speichern (F)")
         self.final_save_button.clicked.connect(self.final_save_current_post)
         self.toolbar.addWidget(self.final_save_button)
+
+        self.overwrite_final_button = QPushButton("Final überschreiben")
+        self.overwrite_final_button.setToolTip("Lädt Danbooru file_url neu und überschreibt die bestehende finale Datei.")
+        self.overwrite_final_button.clicked.connect(self.overwrite_current_final_file)
+        self.toolbar.addWidget(self.overwrite_final_button)
+
+        self.refetch_button = QPushButton("Post neu holen")
+        self.refetch_button.setToolTip("Lädt Post-Metadaten und Viewer-Bild neu von Danbooru.")
+        self.refetch_button.clicked.connect(self.refetch_current_post)
+        self.toolbar.addWidget(self.refetch_button)
+
+        self.delete_db_button = QPushButton("Aus DB entfernen")
+        self.delete_db_button.setToolTip("Entfernt den Post aus der lokalen Datenbank, löscht aber keine Bilddateien.")
+        self.delete_db_button.clicked.connect(self.delete_current_post_from_database)
+        self.toolbar.addWidget(self.delete_db_button)
 
         self.open_saved_folder_button = QPushButton("Zielordner öffnen")
         self.open_saved_folder_button.clicked.connect(self.open_saved_folder)
@@ -288,6 +307,10 @@ class ImageViewerWindow(QMainWindow):
         super().resizeEvent(event)
         self.refresh_image()
 
+    def focusInEvent(self, event) -> None:  # noqa: ANN001
+        super().focusInEvent(event)
+        self.update_final_path_preview()
+
     def current_post_id_value(self) -> int | None:
         if 0 <= self.current_index < len(self.post_ids):
             return self.post_ids[self.current_index]
@@ -329,8 +352,10 @@ class ImageViewerWindow(QMainWindow):
             self.related_warning_label.hide()
 
         status = row["status"] or "new"
+        has_final_path = bool(row["final_file_path"])
         self.status_label.setText(f"Status: {STATUS_LABELS.get(status, status)}")
-        self.final_save_button.setEnabled(status != "saved" and not bool(row["final_file_path"]))
+        self.final_save_button.setEnabled(status != "saved" and not has_final_path)
+        self.overwrite_final_button.setEnabled(has_final_path)
 
         stars = row["stars"]
         self.stars_label.setText(f"Sterne: {stars if stars is not None else '-'}")
@@ -527,7 +552,7 @@ class ImageViewerWindow(QMainWindow):
             return None
         return self.final_save_service.category_by_name(str(name))
 
-    def on_category_changed(self) -> None:
+    def on_category_changed(self, *args) -> None:  # noqa: ANN002
         self.update_final_path_preview()
 
     def update_final_path_preview(self) -> None:
@@ -657,6 +682,92 @@ class ImageViewerWindow(QMainWindow):
 
         if self.auto_advance_after_save:
             self.next_post()
+
+    def overwrite_current_final_file(self) -> None:
+        if self.current_post_id is None:
+            return
+
+        row = self.db.get_post_detail(self.current_post_id)
+        if row is None or not row["final_file_path"]:
+            QMessageBox.information(self, "Nicht gespeichert", "Für diesen Post gibt es noch keinen final_file_path.")
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Finaldatei überschreiben",
+            "Danbooru-Original erneut laden und die bestehende finale Datei überschreiben?\n"
+            "Der Dateiname bleibt gleich. Hoffentlich diesmal ohne Thumbnail-Murks.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self.overwrite_final_button.setEnabled(False)
+        try:
+            path = self.final_save_service.overwrite_saved_file_with_original(self.current_post_id, force_download=True)
+            self.last_saved_path = path
+            self.final_path_label.setText(f"Überschrieben: {path}")
+            QMessageBox.information(self, "Finaldatei überschrieben", f"Ersetzt durch Danbooru-Original:\n{path}")
+            self.load_current_post()
+        except Exception as exc:
+            QMessageBox.critical(self, "Überschreiben fehlgeschlagen", str(exc))
+        finally:
+            self.overwrite_final_button.setEnabled(True)
+
+    def refetch_current_post(self) -> None:
+        if self.current_post_id is None:
+            return
+
+        self.refetch_button.setEnabled(False)
+        try:
+            post = self.api.get_post(self.current_post_id)
+            self.post_import_service.store_post(post)
+            self.download_service.ensure_original_cached(self.current_post_id, force=True)
+            self.load_current_post()
+            QMessageBox.information(self, "Post neu geholt", f"Post {self.current_post_id} wurde von Danbooru aktualisiert.")
+        except Exception as exc:
+            QMessageBox.critical(self, "Neu holen fehlgeschlagen", str(exc))
+        finally:
+            self.refetch_button.setEnabled(True)
+
+    def delete_current_post_from_database(self) -> None:
+        if self.current_post_id is None:
+            return
+
+        post_id = self.current_post_id
+        row = self.db.get_post_detail(post_id)
+        final_path = str(row["final_file_path"] or "") if row is not None else ""
+
+        answer = QMessageBox.question(
+            self,
+            "Post aus DB entfernen",
+            f"Post {post_id} wirklich aus der lokalen Datenbank entfernen?\n\n"
+            "Bilddateien werden NICHT gelöscht. Nur DB-Eintrag, Tags, Review und Kategoriezuordnung verschwinden.",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self.db.delete_post_record(post_id)
+        self.status_changed.emit(post_id, "deleted")
+
+        if post_id in self.post_ids:
+            removed_index = self.post_ids.index(post_id)
+            self.post_ids.pop(removed_index)
+            if self.post_ids:
+                self.current_index = min(removed_index, len(self.post_ids) - 1)
+                self.load_current_post()
+            else:
+                self.current_post_id = None
+                self.current_pixmap = None
+                self.image_label.clear()
+                self.info_label.setText("Keine Posts mehr im Viewer.")
+                self.final_path_label.setText("")
+                self.filename_preview_label.setText("")
+
+        QMessageBox.information(
+            self,
+            "Aus DB entfernt",
+            f"Post {post_id} wurde aus der DB entfernt. Dateien blieben liegen.\n{final_path}",
+        )
 
     def selected_viewer_tags(self) -> list[str]:
         tags: list[str] = []
