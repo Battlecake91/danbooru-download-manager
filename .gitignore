@@ -4,3 +4,12 @@ downloaded_ids.txt
 .env
 danbooru_manager_data/
 danbooru_saved
+danbooru_manager_data/danbooru_manager.db
+app/danbooru/__pycache__/api.cpython-313.pyc
+app/gui/__pycache__/app_window.cpython-313.pyc
+app/gui/__pycache__/fetch_tab.cpython-313.pyc
+app/gui/__pycache__/icon_utils.cpython-313.pyc
+app/gui/__pycache__/image_viewer.cpython-313.pyc
+app/gui/__pycache__/main_window.cpython-313.pyc
+app/gui/__pycache__/preview_window.cpython-313.pyc
+danbooru_manager_data/danbooru_manager.db
