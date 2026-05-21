@@ -112,11 +112,6 @@ class ImageViewerWindow(QMainWindow):
         self.final_save_button.clicked.connect(self.final_save_current_post)
         self.toolbar.addWidget(self.final_save_button)
 
-        self.overwrite_final_button = QPushButton("Final überschreiben")
-        self.overwrite_final_button.setToolTip("Lädt Danbooru file_url neu und überschreibt die bestehende finale Datei.")
-        self.overwrite_final_button.clicked.connect(self.overwrite_current_final_file)
-        self.toolbar.addWidget(self.overwrite_final_button)
-
         self.refetch_button = QPushButton("Post neu holen")
         self.refetch_button.setToolTip("Lädt Post-Metadaten und Viewer-Bild neu von Danbooru.")
         self.refetch_button.clicked.connect(self.refetch_current_post)
@@ -130,6 +125,10 @@ class ImageViewerWindow(QMainWindow):
         self.open_saved_folder_button = QPushButton("Zielordner öffnen")
         self.open_saved_folder_button.clicked.connect(self.open_saved_folder)
         self.toolbar.addWidget(self.open_saved_folder_button)
+
+        self.open_local_image_button = QPushButton("Lokales Bild öffnen")
+        self.open_local_image_button.clicked.connect(self.open_current_local_image)
+        self.toolbar.addWidget(self.open_local_image_button)
 
         self.toolbar.addSeparator()
 
@@ -329,7 +328,8 @@ class ImageViewerWindow(QMainWindow):
             return
 
         related = self.db.get_related_posts(post_id)
-        related_count = len(related)
+        related_total_count = len(related)
+        related_local_count = sum(1 for related_row in related if self.local_path_for_post(int(related_row["id"])))
 
         self.setWindowTitle(f"Danbooru Manager - Bildbetrachter - {post_id}")
 
@@ -338,14 +338,20 @@ class ImageViewerWindow(QMainWindow):
             f"Rating: {row['rating'] or '?'}\n"
             f"Score: {row['score'] if row['score'] is not None else '-'}\n"
             f"Parent: {row['parent_id'] if row['parent_id'] is not None else '-'}\n"
-            f"Lokale Parent/Child-Versionen: {related_count}\n"
+            f"Bekannte Parent/Child-Posts: {related_total_count} | lokal final gespeichert: {related_local_count}\n"
             f"Position: {self.current_index + 1} / {len(self.post_ids)}"
         )
 
-        if related_count:
+        if related_local_count:
             self.related_warning_label.setText(
-                f"⚠ Es existiert bereits mindestens eine lokale Parent/Child-Version ({related_count}). "
-                f"Vor dem Speichern prüfen, sonst züchtest du Varianten-Duplikate."
+                f"⚠ Es existiert bereits mindestens eine lokal final gespeicherte Parent/Child-Version "
+                f"({related_local_count}). Vor dem Speichern prüfen, sonst züchtest du Varianten-Duplikate."
+            )
+            self.related_warning_label.show()
+        elif related_total_count:
+            self.related_warning_label.setText(
+                f"ℹ Es gibt {related_total_count} bekannte Parent/Child-DB-Einträge, "
+                f"aber keine davon ist lokal final gespeichert."
             )
             self.related_warning_label.show()
         else:
@@ -354,8 +360,8 @@ class ImageViewerWindow(QMainWindow):
         status = row["status"] or "new"
         has_final_path = bool(row["final_file_path"])
         self.status_label.setText(f"Status: {STATUS_LABELS.get(status, status)}")
-        self.final_save_button.setEnabled(status != "saved" and not has_final_path)
-        self.overwrite_final_button.setEnabled(has_final_path)
+        self.final_save_button.setEnabled(True)
+        self.open_local_image_button.setEnabled(self.local_path_for_post(post_id) is not None)
 
         stars = row["stars"]
         self.stars_label.setText(f"Sterne: {stars if stars is not None else '-'}")
@@ -523,6 +529,9 @@ class ImageViewerWindow(QMainWindow):
     def update_category_controls(self, post_id: int) -> None:
         suggested = self.final_save_service.suggest_category(post_id)
         self.suggested_category_name = suggested.name
+        assigned = self.db.get_assigned_category_for_post(post_id)
+        assigned_name = str(assigned["name"]) if assigned is not None else None
+        assigned_source = str(assigned["assignment_source"] or "manual") if assigned is not None else None
 
         self.category_combo.blockSignals(True)
         self.category_combo.clear()
@@ -530,19 +539,27 @@ class ImageViewerWindow(QMainWindow):
         categories = self.final_save_service.list_categories()
         for category in categories:
             label = category.name
+            suffixes: list[str] = []
             if category.name == suggested.name:
-                label = f"{category.name}  ← Vorschlag"
+                suffixes.append("Vorschlag")
+            if assigned_name and category.name == assigned_name:
+                suffixes.append("gesetzt")
+            if suffixes:
+                label = f"{category.name}  ← {', '.join(suffixes)}"
             self.category_combo.addItem(label, category.name)
 
-        suggested_index = self.category_combo.findData(suggested.name)
-        if suggested_index >= 0:
-            self.category_combo.setCurrentIndex(suggested_index)
+        target_name = assigned_name or suggested.name
+        target_index = self.category_combo.findData(target_name)
+        if target_index >= 0:
+            self.category_combo.setCurrentIndex(target_index)
 
         self.category_combo.blockSignals(False)
 
+        assigned_text = f"\nGesetzt: {assigned_name} ({assigned_source})" if assigned_name else ""
         self.category_label.setText(
             f"Vorschlag: {suggested.name}\n"
             f"Grund: {suggested.reason}"
+            f"{assigned_text}"
         )
         self.update_final_path_preview()
 
@@ -553,6 +570,15 @@ class ImageViewerWindow(QMainWindow):
         return self.final_save_service.category_by_name(str(name))
 
     def on_category_changed(self, *args) -> None:  # noqa: ANN002
+        if self.current_post_id is not None:
+            category = self.selected_category()
+            if category is not None and category.id is not None:
+                self.db.assign_post_category(self.current_post_id, category.id, "manual")
+                self.category_label.setText(
+                    f"Vorschlag: {self.suggested_category_name or '-'}\n"
+                    f"Gesetzt: {category.name} (manual)"
+                )
+                self.status_changed.emit(self.current_post_id, str(self.db.get_post_detail(self.current_post_id)["status"] or "new"))
         self.update_final_path_preview()
 
     def update_final_path_preview(self) -> None:
@@ -655,22 +681,45 @@ class ImageViewerWindow(QMainWindow):
         if self.current_post_id is None:
             return
 
+        post_id = self.current_post_id
         category = self.selected_category()
+        row = self.db.get_post_detail(post_id)
+        existing_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
+        existing_is_local = existing_path is not None and existing_path.exists()
+        overwrite_existing = False
+
+        if existing_path is not None:
+            message = (
+                "Dieser Post hat bereits einen finalen lokalen Zielpfad.\n\n"
+                f"{existing_path}\n\n"
+                "Mit Danbooru-file_url neu laden und final überschreiben/neu speichern?"
+            )
+            if not existing_is_local:
+                message = (
+                    "Für diesen Post ist ein finaler Zielpfad in der DB eingetragen, "
+                    "die Datei fehlt aber lokal.\n\n"
+                    f"{existing_path}\n\n"
+                    "Original erneut laden und Zielpfad reparieren?"
+                )
+
+            answer = QMessageBox.question(self, "Finaldatei ersetzen", message)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            overwrite_existing = True
 
         try:
-            result = self.final_save_service.save_post(self.current_post_id, category)
+            result = self.final_save_service.save_post(post_id, category, overwrite_existing=overwrite_existing)
         except AlreadySavedError as exc:
-            self.final_save_button.setEnabled(False)
             self.status_label.setText("Status: Gespeichert")
             self.final_path_label.setText(str(exc))
             QMessageBox.information(self, "Bereits gespeichert", str(exc))
             return
         except Exception as exc:
             self.final_path_label.setText(f"Speichern fehlgeschlagen: {exc}")
+            QMessageBox.critical(self, "Speichern fehlgeschlagen", str(exc))
             return
 
         self.last_saved_path = result.final_path
-        self.final_save_button.setEnabled(False)
 
         self.status_label.setText("Status: Gespeichert")
         self.category_label.setText(
@@ -678,40 +727,12 @@ class ImageViewerWindow(QMainWindow):
             f"Quelle: {result.category_source}"
         )
         self.final_path_label.setText(f"Gespeichert: {result.final_path}")
-        self.status_changed.emit(self.current_post_id, "saved")
+        self.status_changed.emit(post_id, "saved")
 
         if self.auto_advance_after_save:
             self.next_post()
-
-    def overwrite_current_final_file(self) -> None:
-        if self.current_post_id is None:
-            return
-
-        row = self.db.get_post_detail(self.current_post_id)
-        if row is None or not row["final_file_path"]:
-            QMessageBox.information(self, "Nicht gespeichert", "Für diesen Post gibt es noch keinen final_file_path.")
-            return
-
-        answer = QMessageBox.question(
-            self,
-            "Finaldatei überschreiben",
-            "Danbooru-Original erneut laden und die bestehende finale Datei überschreiben?\n"
-            "Der Dateiname bleibt gleich. Hoffentlich diesmal ohne Thumbnail-Murks.",
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-
-        self.overwrite_final_button.setEnabled(False)
-        try:
-            path = self.final_save_service.overwrite_saved_file_with_original(self.current_post_id, force_download=True)
-            self.last_saved_path = path
-            self.final_path_label.setText(f"Überschrieben: {path}")
-            QMessageBox.information(self, "Finaldatei überschrieben", f"Ersetzt durch Danbooru-Original:\n{path}")
+        else:
             self.load_current_post()
-        except Exception as exc:
-            QMessageBox.critical(self, "Überschreiben fehlgeschlagen", str(exc))
-        finally:
-            self.overwrite_final_button.setEnabled(True)
 
     def refetch_current_post(self) -> None:
         if self.current_post_id is None:
@@ -1050,5 +1071,23 @@ class ImageViewerWindow(QMainWindow):
             elif row and row["final_file_path"]:
                 path = Path(str(row["final_file_path"])).parent
 
-        if path is not None and path.exists():
-            os.startfile(path)
+        if path is None:
+            QMessageBox.information(self, "Kein Zielordner", "Noch kein Zielordner bekannt.")
+            return
+
+        if not path.exists():
+            QMessageBox.warning(self, "Ordner fehlt", f"Ordner existiert nicht:\n{path}")
+            return
+
+        os.startfile(path)
+
+    def open_current_local_image(self) -> None:
+        if self.current_post_id is None:
+            return
+
+        path = self.local_path_for_post(self.current_post_id)
+        if path is None:
+            QMessageBox.information(self, "Kein lokales Bild", "Für diesen Post existiert keine lokal final gespeicherte Datei.")
+            return
+
+        self.open_local_path(path)

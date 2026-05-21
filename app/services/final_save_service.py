@@ -57,7 +57,7 @@ class FinalSaveService:
         category: CategoryMatch | None = None,
     ) -> tuple[Path, FilenamePreviewDetails] | None:
         row = self.db.get_post_detail(post_id)
-        if row is not None and row["final_file_path"]:
+        if row is not None and row["final_file_path"] and category is None:
             final_path = Path(str(row["final_file_path"]))
             source_path = final_path if final_path.exists() else Path(str(row["final_file_path"]))
             details = self.filename_builder.build_preview_details(post_id, source_path)
@@ -77,24 +77,56 @@ class FinalSaveService:
         details = self.filename_builder.build_preview_details(post_id, source_path)
         return unique_path(output_dir / details.filename), details
 
-    def save_post(self, post_id: int, category: CategoryMatch | None = None) -> SaveResult:
-        self.assert_not_already_saved(post_id)
+    def save_post(
+        self,
+        post_id: int,
+        category: CategoryMatch | None = None,
+        overwrite_existing: bool = False,
+    ) -> SaveResult:
+        row = self.db.get_post_detail(post_id)
+        old_final_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
 
-        source_path = self.source_path_for_post(post_id, download_if_missing=True)
+        if old_final_path is not None and not overwrite_existing:
+            raise AlreadySavedError(post_id, str(old_final_path))
+
+        source_path = self.source_path_for_post(post_id, download_if_missing=True, prefer_final=False)
         if source_path is None:
             raise RuntimeError(f"Keine Quelldatei für Post {post_id}")
 
-        category = category or self.suggest_category(post_id)
         suggested_category = self.suggest_category(post_id)
-        category_source = "manual" if category.name != suggested_category.name else "auto"
+        assigned_category_row = self.db.get_assigned_category_for_post(post_id)
+        assigned_source = str(assigned_category_row["assignment_source"] or "manual") if assigned_category_row is not None else None
+
+        if category is None and assigned_category_row is not None:
+            category = self.category_by_name(str(assigned_category_row["name"]))
+
+        category = category or suggested_category
+        category_source = assigned_source or ("manual" if category.name != suggested_category.name else "auto")
 
         output_dir = self.category_engine.output_directory_for_category(category)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         filename = self.filename_builder.build_filename(post_id, source_path)
-        final_path = unique_path(output_dir / filename)
+        desired_path = output_dir / filename
 
-        shutil.copy2(source_path, final_path)
+        if old_final_path is not None and old_final_path.resolve() == desired_path.resolve():
+            final_path = old_final_path
+        elif overwrite_existing:
+            final_path = unique_path(desired_path)
+        else:
+            final_path = unique_path(desired_path)
+
+        tmp_path = final_path.with_name(final_path.name + ".replace_tmp")
+        shutil.copy2(source_path, tmp_path)
+        tmp_path.replace(final_path)
+
+        if old_final_path is not None and old_final_path != final_path and old_final_path.exists():
+            try:
+                old_final_path.unlink()
+            except OSError:
+                # Nicht hart abbrechen. Ein übrig gebliebenes altes Bild ist lästig,
+                # aber ein abgebrochener Speichervorgang wäre noch dümmer.
+                pass
 
         self.db.execute(
             """
@@ -109,11 +141,11 @@ class FinalSaveService:
         )
 
         if category.id is not None:
+            self.db.execute("DELETE FROM post_categories WHERE post_id = ?", (post_id,))
             self.db.execute(
                 """
                 INSERT INTO post_categories (post_id, category_id, source)
                 VALUES (?, ?, ?)
-                ON CONFLICT(post_id, category_id) DO UPDATE SET source = excluded.source
                 """,
                 (post_id, category.id, category_source),
             )
@@ -187,13 +219,18 @@ class FinalSaveService:
         if status == "saved" or final_path:
             raise AlreadySavedError(post_id, final_path)
 
-    def source_path_for_post(self, post_id: int, download_if_missing: bool) -> Path | None:
+    def source_path_for_post(
+        self,
+        post_id: int,
+        download_if_missing: bool,
+        prefer_final: bool = True,
+    ) -> Path | None:
         row = self.db.get_post_detail(post_id)
         if row is None:
             return None
 
         final_value = row["final_file_path"]
-        if final_value:
+        if prefer_final and final_value:
             final_path = Path(str(final_value))
             if final_path.exists():
                 return final_path

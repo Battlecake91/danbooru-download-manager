@@ -559,12 +559,15 @@ class PreviewWindow(QMainWindow):
         where_parts: list[str] = []
         parameters: list[Any] = []
 
-        if not statuses:
-            where_parts.append("1 = 0")
-        elif set(statuses) != set(STATUS_ORDER):
-            placeholders = ", ".join("?" for _ in statuses)
-            where_parts.append(f"p.status IN ({placeholders})")
-            parameters.extend(statuses)
+        # Bei Tag-/Textsuche über alle Status suchen. Sonst findet man lokal
+        # gespeicherte Bilder nicht, nur weil die Arbeitsliste sie ausblendet.
+        if not text_filter:
+            if not statuses:
+                where_parts.append("1 = 0")
+            elif set(statuses) != set(STATUS_ORDER):
+                placeholders = ", ".join("?" for _ in statuses)
+                where_parts.append(f"p.status IN ({placeholders})")
+                parameters.extend(statuses)
 
         if text_filter:
             pattern = f"%{text_filter.strip()}%"

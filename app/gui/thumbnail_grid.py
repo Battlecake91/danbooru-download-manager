@@ -539,10 +539,10 @@ class ThumbnailCard(QFrame):
 
         relation_parts = []
         if int(self.value("known_parent_loaded") or 0):
-            relation_parts.append("Parent lokal")
+            relation_parts.append("Parent bekannt")
         child_count = int(self.value("known_child_count") or 0)
         if child_count:
-            relation_parts.append(f"{child_count} Child(s) lokal")
+            relation_parts.append(f"{child_count} Child(s) bekannt")
 
         if relation_parts:
             self.relation_label.setText("Verwandt: " + ", ".join(relation_parts))

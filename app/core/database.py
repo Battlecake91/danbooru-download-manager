@@ -558,28 +558,32 @@ class Database:
 
         has_specific_status_filter = bool(status_filter and status_filter != "all")
 
-        if view_mode == "worklist" and not has_specific_status_filter:
-            statuses = worklist_statuses or sorted(ACTIVE_STATUSES)
-            placeholders = ", ".join("?" for _ in statuses)
-            where_parts.append(f"p.status IN ({placeholders})")
-            parameters.extend(statuses)
-        elif view_mode == "saved" and not has_specific_status_filter:
-            where_parts.append("p.status = ?")
-            parameters.append("saved")
-        elif view_mode == "rejected" and not has_specific_status_filter:
-            where_parts.append("p.status IN (?, ?)")
-            parameters.extend(["rejected", "auto_rejected"])
-        elif view_mode == "known" and not has_specific_status_filter:
-            where_parts.append("p.status IN (?, ?)")
-            parameters.extend(["already_known", "downloaded"])
-        elif view_mode == "all" or has_specific_status_filter:
-            pass
-        else:
-            raise ValueError(f"Ungültiger view_mode: {view_mode}")
+        # Bei aktiver Text-/Tag-Suche wird bewusst über alle Status gesucht,
+        # damit bereits lokal gespeicherte Bilder über Tags auffindbar bleiben.
+        # Sonst versteckt die Arbeitsliste exakt die Dateien, die man sucht. Klassiker.
+        if not text_filter:
+            if view_mode == "worklist" and not has_specific_status_filter:
+                statuses = worklist_statuses or sorted(ACTIVE_STATUSES)
+                placeholders = ", ".join("?" for _ in statuses)
+                where_parts.append(f"p.status IN ({placeholders})")
+                parameters.extend(statuses)
+            elif view_mode == "saved" and not has_specific_status_filter:
+                where_parts.append("p.status = ?")
+                parameters.append("saved")
+            elif view_mode == "rejected" and not has_specific_status_filter:
+                where_parts.append("p.status IN (?, ?)")
+                parameters.extend(["rejected", "auto_rejected"])
+            elif view_mode == "known" and not has_specific_status_filter:
+                where_parts.append("p.status IN (?, ?)")
+                parameters.extend(["already_known", "downloaded"])
+            elif view_mode == "all" or has_specific_status_filter:
+                pass
+            else:
+                raise ValueError(f"Ungültiger view_mode: {view_mode}")
 
-        if has_specific_status_filter:
-            where_parts.append("p.status = ?")
-            parameters.append(status_filter)
+            if has_specific_status_filter:
+                where_parts.append("p.status = ?")
+                parameters.append(status_filter)
 
         if text_filter:
             pattern = f"%{text_filter.strip()}%"
@@ -855,6 +859,38 @@ class Database:
 
         shutil.move(str(source), str(target))
         return str(target)
+
+
+    def assign_post_category(self, post_id: int, category_id: int, source: str = "manual") -> None:
+        """Store exactly one effective category assignment for a post."""
+        self.execute("DELETE FROM post_categories WHERE post_id = ?", (post_id,))
+        self.execute(
+            """
+            INSERT INTO post_categories (post_id, category_id, source)
+            VALUES (?, ?, ?)
+            """,
+            (post_id, category_id, source),
+        )
+        self.commit()
+
+    def assign_post_category_by_name(self, post_id: int, category_name: str, source: str = "manual") -> None:
+        category = self.get_category_by_name(category_name)
+        if category is None:
+            raise RuntimeError(f"Kategorie nicht gefunden: {category_name}")
+        self.assign_post_category(post_id, int(category["id"]), source)
+
+    def get_assigned_category_for_post(self, post_id: int) -> sqlite3.Row | None:
+        return self.execute(
+            """
+            SELECT c.*, pc.source AS assignment_source
+            FROM post_categories pc
+            JOIN categories c ON c.id = pc.category_id
+            WHERE pc.post_id = ?
+            ORDER BY CASE pc.source WHEN 'manual' THEN 0 ELSE 1 END, c.sort_order, c.name
+            LIMIT 1
+            """,
+            (post_id,),
+        ).fetchone()
 
 
     def delete_post_record(self, post_id: int) -> None:
