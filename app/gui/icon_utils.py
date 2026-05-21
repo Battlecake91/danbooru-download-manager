@@ -11,11 +11,21 @@ DANBOORU_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Danboor
 
 
 def ensure_app_icon(config: dict[str, Any]) -> QIcon:
+    """Return the configured Danbooru app icon.
+
+    Prefer a configured local file, then a bundled asset, then a cached download from
+    the Wikimedia Danbooru icon URL. If the machine is offline, Qt simply gets an
+    empty icon instead of exploding theatrically.
+    """
     configured_icon = config.get("app_icon_file")
     if configured_icon:
         path = Path(str(configured_icon))
         if path.exists():
             return QIcon(str(path))
+
+    bundled_icon = Path(__file__).resolve().parents[1] / "assets" / "danbooru_icon.png"
+    if bundled_icon.exists():
+        return QIcon(str(bundled_icon))
 
     work_dir = Path(str(config.get("work_dir", ".")))
     icon_dir = work_dir / "assets"

@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import copy
 import traceback
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -25,19 +23,6 @@ from PySide6.QtWidgets import (
 
 from app.core.database import Database
 from app.services.post_import_service import PostImportService
-
-
-@dataclass(frozen=True)
-class FetchPreset:
-    name: str
-    mode: str
-    query: str
-    saved_search_labels: list[str]
-    saved_search_queries: list[str]
-    extra_tags: str
-    limit: int | None
-    max_posts_per_query: int | None
-    max_total_posts: int | None
 
 
 class FetchWorker(QObject):
@@ -92,47 +77,54 @@ class FetchTab(QWidget):
         self.thread: QThread | None = None
         self.worker: FetchWorker | None = None
 
-        self.presets = self.load_presets()
-
         self.main_layout = QVBoxLayout(self)
 
         self.info_label = QLabel(
-            "Fetch lädt neue Posts nach SQLite. Danach kannst du sie im Preview/Review-Tab prüfen."
+            "Fetch lädt neue Posts nach SQLite. Wähle klar zwischen manueller Tag-Suche und Saved Searches. "
+            "Ja, so simpel hätte es natürlich von Anfang an sein können."
         )
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
 
-        self.preset_group = QGroupBox("Vordefinierte Suche")
-        self.preset_layout = QFormLayout(self.preset_group)
+        self.source_group = QGroupBox("Suchquelle")
+        self.source_layout = QFormLayout(self.source_group)
 
-        self.preset_combo = QComboBox()
-        for preset in self.presets:
-            self.preset_combo.addItem(preset.name, preset.name)
-        self.preset_combo.currentIndexChanged.connect(self.on_preset_changed)
-        self.preset_layout.addRow("Preset:", self.preset_combo)
+        self.source_mode_combo = QComboBox()
+        self.source_mode_combo.addItem("Manuelle Tags / Query", "tags")
+        self.source_mode_combo.addItem("Saved Searches", "saved_searches")
+        self.source_mode_combo.currentIndexChanged.connect(self.on_source_mode_changed)
+        self.source_layout.addRow("Quelle:", self.source_mode_combo)
 
-        self.preset_description = QLabel("")
-        self.preset_description.setWordWrap(True)
-        self.preset_layout.addRow("Details:", self.preset_description)
+        self.main_layout.addWidget(self.source_group)
 
-        self.main_layout.addWidget(self.preset_group)
-
-        self.manual_group = QGroupBox("Manuelle Suche")
+        self.manual_group = QGroupBox("Manuelle Tags")
         self.manual_layout = QFormLayout(self.manual_group)
 
         self.manual_query_edit = QLineEdit()
-        self.manual_query_edit.setPlaceholderText("z. B. 1girl rating:q order:id_desc")
+        self.manual_query_edit.setPlaceholderText("z. B. 1girl cute smile ( rating:s or rating:q )")
         self.manual_layout.addRow("Tags / Query:", self.manual_query_edit)
 
-        self.manual_extra_tags_edit = QLineEdit()
-        self.manual_extra_tags_edit.setPlaceholderText("optional, z. B. ( rating:q or rating:e )")
-        self.manual_layout.addRow("Zusatz-Tags:", self.manual_extra_tags_edit)
-
-        self.use_manual_checkbox = QCheckBox("Manuelle Query verwenden statt Preset")
-        self.use_manual_checkbox.setChecked(False)
-        self.manual_layout.addRow("", self.use_manual_checkbox)
-
         self.main_layout.addWidget(self.manual_group)
+
+        self.saved_search_group = QGroupBox("Saved Searches")
+        self.saved_search_layout = QFormLayout(self.saved_search_group)
+
+        self.saved_search_label_edit = QLineEdit()
+        self.saved_search_label_edit.setPlaceholderText("z. B. default")
+        self.saved_search_layout.addRow("Label:", self.saved_search_label_edit)
+
+        self.saved_search_query_edit = QLineEdit()
+        self.saved_search_query_edit.setPlaceholderText("optional: exakter Saved-Search-Querystring")
+        self.saved_search_layout.addRow("Query-Filter:", self.saved_search_query_edit)
+
+        self.saved_search_hint = QLabel(
+            "Label filtert nach Saved-Search-Labels. Query-Filter ist optional und muss exakt zur Saved Search passen. "
+            "Mehrere Labels oder Queries kannst du mit Komma trennen."
+        )
+        self.saved_search_hint.setWordWrap(True)
+        self.saved_search_layout.addRow("Hinweis:", self.saved_search_hint)
+
+        self.main_layout.addWidget(self.saved_search_group)
 
         self.options_group = QGroupBox("Fetch-Optionen")
         self.options_layout = QFormLayout(self.options_group)
@@ -155,10 +147,6 @@ class FetchTab(QWidget):
         self.max_total_posts_spin.setKeyboardTracking(False)
         self.options_layout.addRow("Max Posts gesamt:", self.max_total_posts_spin)
 
-        self.fetch_saved_searches_checkbox = QCheckBox("Saved Searches verwenden")
-        self.fetch_saved_searches_checkbox.setChecked(bool(config.get("use_saved_searches", False)))
-        self.options_layout.addRow("", self.fetch_saved_searches_checkbox)
-
         self.main_layout.addWidget(self.options_group)
 
         self.button_row = QHBoxLayout()
@@ -179,69 +167,32 @@ class FetchTab(QWidget):
         self.log_text.setMinimumHeight(180)
         self.main_layout.addWidget(self.log_text, stretch=1)
 
-        self.on_preset_changed()
+        self.load_initial_values_from_config()
+        self.on_source_mode_changed()
 
-    def load_presets(self) -> list[FetchPreset]:
-        raw_presets = self.config.get("fetch_presets", []) or []
-        presets: list[FetchPreset] = []
+    def load_initial_values_from_config(self) -> None:
+        self.manual_query_edit.setText(str(self.config.get("search_tags", "") or ""))
+        self.saved_search_label_edit.setText(", ".join(str(v) for v in self.config.get("saved_search_labels", []) or []))
+        self.saved_search_query_edit.setText(", ".join(str(v) for v in self.config.get("saved_search_queries", []) or []))
 
-        for item in raw_presets:
-            if not isinstance(item, dict):
-                continue
+        mode = "saved_searches" if bool(self.config.get("use_saved_searches", False)) else "tags"
+        index = self.source_mode_combo.findData(mode)
+        if index >= 0:
+            self.source_mode_combo.setCurrentIndex(index)
 
-            presets.append(
-                FetchPreset(
-                    name=str(item.get("name", "Unnamed")),
-                    mode=str(item.get("mode", "tags")),
-                    query=str(item.get("query", "")),
-                    saved_search_labels=[str(v) for v in item.get("saved_search_labels", []) or []],
-                    saved_search_queries=[str(v) for v in item.get("saved_search_queries", []) or []],
-                    extra_tags=str(item.get("extra_tags", item.get("saved_search_extra_tags", "")) or ""),
-                    limit=int(item["limit"]) if item.get("limit") is not None else None,
-                    max_posts_per_query=int(item["max_posts_per_query"]) if item.get("max_posts_per_query") is not None else None,
-                    max_total_posts=int(item["max_total_posts"]) if item.get("max_total_posts") is not None else None,
-                )
-            )
+    def on_source_mode_changed(self, *_args) -> None:
+        mode = self.selected_source_mode()
+        self.manual_group.setVisible(mode == "tags")
+        self.saved_search_group.setVisible(mode == "saved_searches")
 
-        if not presets:
-            presets.append(
-                FetchPreset(
-                    name="Config: Standard-Suche",
-                    mode="saved_searches" if bool(self.config.get("use_saved_searches", False)) else "tags",
-                    query=str(self.config.get("search_tags", "")),
-                    saved_search_labels=[str(v) for v in self.config.get("saved_search_labels", []) or []],
-                    saved_search_queries=[str(v) for v in self.config.get("saved_search_queries", []) or []],
-                    extra_tags=str(self.config.get("saved_search_extra_tags", "") or ""),
-                    limit=int(self.config.get("limit", 100)),
-                    max_posts_per_query=int(self.config.get("max_posts_per_query", 200)),
-                    max_total_posts=int(self.config.get("max_total_posts", 500)),
-                )
-            )
+    def selected_source_mode(self) -> str:
+        value = self.source_mode_combo.currentData()
+        return str(value or "tags")
 
-        return presets
-
-    def selected_preset(self) -> FetchPreset:
-        index = max(0, self.preset_combo.currentIndex())
-        return self.presets[index]
-
-    def on_preset_changed(self) -> None:
-        preset = self.selected_preset()
-        self.preset_description.setText(
-            f"Modus: {preset.mode}\n"
-            f"Query: {preset.query or '-'}\n"
-            f"Labels: {', '.join(preset.saved_search_labels) or '-'}\n"
-            f"Saved-Search-Queries: {', '.join(preset.saved_search_queries) or '-'}\n"
-            f"Extra Tags: {preset.extra_tags or '-'}"
-        )
-
-        if preset.limit is not None:
-            self.limit_spin.setValue(preset.limit)
-        if preset.max_posts_per_query is not None:
-            self.max_posts_per_query_spin.setValue(preset.max_posts_per_query)
-        if preset.max_total_posts is not None:
-            self.max_total_posts_spin.setValue(preset.max_total_posts)
-
-        self.fetch_saved_searches_checkbox.setChecked(preset.mode == "saved_searches")
+    @staticmethod
+    def split_csv_text(text: str) -> list[str]:
+        normalized = text.replace(";", ",")
+        return [part.strip() for part in normalized.split(",") if part.strip()]
 
     def build_fetch_config(self) -> dict[str, Any]:
         fetch_config = copy.deepcopy(self.config)
@@ -250,42 +201,31 @@ class FetchTab(QWidget):
         fetch_config["max_posts_per_query"] = int(self.max_posts_per_query_spin.value())
         fetch_config["max_total_posts"] = int(self.max_total_posts_spin.value())
 
-        if self.use_manual_checkbox.isChecked():
+        mode = self.selected_source_mode()
+
+        if mode == "tags":
             query = self.manual_query_edit.text().strip()
-            extra = self.manual_extra_tags_edit.text().strip()
-
             if not query:
-                raise ValueError("Manuelle Query ist leer. So findet selbst ein Computer nichts, und die sind darin eigentlich gut.")
-
-            if extra:
-                query = f"{query} {extra}"
+                raise ValueError("Manuelle Tags/Query ist leer. Suchmaschinen funktionieren leider selten mit Telepathie.")
 
             fetch_config["use_saved_searches"] = False
             fetch_config["search_tags"] = query
             fetch_config["saved_search_labels"] = []
             fetch_config["saved_search_queries"] = []
             fetch_config["saved_search_extra_tags"] = ""
-
             return fetch_config
 
-        preset = self.selected_preset()
+        labels = self.split_csv_text(self.saved_search_label_edit.text())
+        queries = self.split_csv_text(self.saved_search_query_edit.text())
 
-        if preset.mode == "saved_searches" or self.fetch_saved_searches_checkbox.isChecked():
-            fetch_config["use_saved_searches"] = True
-            fetch_config["search_tags"] = preset.query or fetch_config.get("search_tags", "")
-            fetch_config["saved_search_labels"] = preset.saved_search_labels
-            fetch_config["saved_search_queries"] = preset.saved_search_queries
-            fetch_config["saved_search_extra_tags"] = preset.extra_tags
-        else:
-            query = preset.query.strip()
-            if preset.extra_tags:
-                query = f"{query} {preset.extra_tags}".strip()
+        if not labels:
+            raise ValueError("Saved-Search-Label fehlt. Irgendein Anker in diesem Meer aus Tags wäre schon nett.")
 
-            fetch_config["use_saved_searches"] = False
-            fetch_config["search_tags"] = query
-            fetch_config["saved_search_labels"] = []
-            fetch_config["saved_search_queries"] = []
-            fetch_config["saved_search_extra_tags"] = ""
+        fetch_config["use_saved_searches"] = True
+        fetch_config["search_tags"] = ""
+        fetch_config["saved_search_labels"] = labels
+        fetch_config["saved_search_queries"] = queries
+        fetch_config["saved_search_extra_tags"] = ""
 
         return fetch_config
 

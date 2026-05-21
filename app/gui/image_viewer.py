@@ -31,6 +31,7 @@ from app.core.category_engine import CategoryMatch
 from app.core.database import Database
 from app.services.download_service import DownloadService
 from app.danbooru.api import DanbooruApi
+from app.gui.icon_utils import ensure_app_icon
 from app.gui.tag_display import TypedTagListWidget, typed_tags_for_post
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 from app.services.post_import_service import PostImportService
@@ -85,6 +86,7 @@ class ImageViewerWindow(QMainWindow):
         self.auto_advance_after_reject = bool(viewer_config.get("auto_advance_after_reject", True))
 
         self.setWindowTitle("Danbooru Manager - Bildbetrachter")
+        self.setWindowIcon(ensure_app_icon(config))
         self.setFocusPolicy(Qt.StrongFocus)
 
         self.toolbar = QToolBar("Viewer")

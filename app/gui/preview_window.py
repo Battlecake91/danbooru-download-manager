@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from app.core.database import Database
 from app.gui.image_viewer import ImageViewerWindow
+from app.gui.icon_utils import ensure_app_icon
 from app.gui.thumbnail_grid import ThumbnailGrid
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 
@@ -99,6 +100,7 @@ class PreviewWindow(QMainWindow):
         gui_config = config.get("gui", {}) or {}
 
         self.setWindowTitle("Danbooru Manager - Preview")
+        self.setWindowIcon(ensure_app_icon(config))
 
         self.toolbar = QToolBar("Preview")
         self.toolbar.setMovable(False)
@@ -559,15 +561,15 @@ class PreviewWindow(QMainWindow):
         where_parts: list[str] = []
         parameters: list[Any] = []
 
-        # Bei Tag-/Textsuche über alle Status suchen. Sonst findet man lokal
-        # gespeicherte Bilder nicht, nur weil die Arbeitsliste sie ausblendet.
-        if not text_filter:
-            if not statuses:
-                where_parts.append("1 = 0")
-            elif set(statuses) != set(STATUS_ORDER):
-                placeholders = ", ".join("?" for _ in statuses)
-                where_parts.append(f"p.status IN ({placeholders})")
-                parameters.extend(statuses)
+        # Statusfilter gilt immer, auch bei Tag-/Textsuche.
+        # Wer gespeicherte lokale Bilder suchen will, aktiviert den Status "saved"
+        # oder die Ansicht "Alle bekannten Posts". Revolutionäres Konzept: Filter filtern.
+        if not statuses:
+            where_parts.append("1 = 0")
+        elif set(statuses) != set(STATUS_ORDER):
+            placeholders = ", ".join("?" for _ in statuses)
+            where_parts.append(f"p.status IN ({placeholders})")
+            parameters.extend(statuses)
 
         if text_filter:
             pattern = f"%{text_filter.strip()}%"

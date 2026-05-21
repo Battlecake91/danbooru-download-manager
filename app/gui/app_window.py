@@ -8,6 +8,7 @@ from app.core.database import Database
 from app.gui.category_tab import CategoryTab
 from app.gui.config_tab import ConfigTab
 from app.gui.fetch_tab import FetchTab
+from app.gui.icon_utils import ensure_app_icon
 from app.gui.maintenance_tab import MaintenanceTab
 from app.gui.preview_window import PreviewWindow
 from app.gui.tag_tab import TagTab
@@ -21,6 +22,7 @@ class AppWindow(QMainWindow):
         self.db = db
 
         self.setWindowTitle("Danbooru Manager")
+        self.setWindowIcon(ensure_app_icon(config))
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)

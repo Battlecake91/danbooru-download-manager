@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from app.core.database import Database
 from app.gui.app_window import AppWindow
 from app.gui.error_handler import install_global_exception_hook
+from app.gui.icon_utils import ensure_app_icon
 
 
 def run_gui(config: dict[str, Any], db: Database) -> int:
@@ -16,6 +17,8 @@ def run_gui(config: dict[str, Any], db: Database) -> int:
 
     if app is None:
         app = QApplication(sys.argv)
+
+    app.setWindowIcon(ensure_app_icon(config))
 
     error_logger = install_global_exception_hook(config)
 

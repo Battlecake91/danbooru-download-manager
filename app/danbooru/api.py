@@ -101,7 +101,11 @@ def build_search_queries(config: dict[str, Any], api: DanbooruApi) -> list[str]:
 
     for saved in saved_searches:
         query = str(saved.get("query", "")).strip()
-        labels = set(saved.get("labels", []) or [])
+        raw_labels = saved.get("labels", []) or saved.get("label_list", []) or []
+        if isinstance(raw_labels, str):
+            labels = {part.strip() for part in raw_labels.replace(",", " ").split() if part.strip()}
+        else:
+            labels = {str(label).strip() for label in raw_labels if str(label).strip()}
 
         if wanted_labels and not labels.intersection(wanted_labels):
             continue
