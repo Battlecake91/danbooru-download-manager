@@ -66,7 +66,9 @@ class FetchWorker(QObject):
 
 
 class FetchTab(QWidget):
+    fetch_started = Signal()
     fetch_finished = Signal()
+    fetch_failed_signal = Signal()
     open_preview_requested = Signal()
 
     def __init__(self, config: dict[str, Any], db: Database) -> None:
@@ -242,6 +244,7 @@ class FetchTab(QWidget):
 
         self.fetch_button.setEnabled(False)
         self.log_text.append("Starte Fetch...")
+        self.fetch_started.emit()
 
         self.thread = QThread(self)
         self.worker = FetchWorker(fetch_config)
@@ -268,6 +271,7 @@ class FetchTab(QWidget):
         self.log_text.append("Fetch fehlgeschlagen:")
         self.log_text.append(traceback_text)
         self.fetch_button.setEnabled(True)
+        self.fetch_failed_signal.emit()
         QMessageBox.critical(self, "Fetch fehlgeschlagen", traceback_text)
 
     def cleanup_thread(self) -> None:

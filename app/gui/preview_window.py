@@ -131,6 +131,7 @@ class PreviewWindow(QMainWindow):
         self._is_reloading = False
         self._reload_pending = False
         self._syncing_status_checkboxes = False
+        self._fetch_running = False
 
         self.status_checkboxes: dict[str, QCheckBox] = {}
         self.category_rule_cache: list[dict[str, Any]] = []
@@ -152,6 +153,15 @@ class PreviewWindow(QMainWindow):
         self.reload_button = QPushButton("Neu laden")
         self.reload_button.clicked.connect(self.reload_posts)
         self.toolbar.addWidget(self.reload_button)
+
+        self.fetch_status_label = QLabel("Fetch läuft…")
+        self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
+        self.fetch_status_label.setStyleSheet(
+            "QLabel { padding: 3px 8px; border: 1px solid #d6a000; "
+            "border-radius: 6px; color: #ffd166; background: rgba(214, 160, 0, 0.12); }"
+        )
+        self.fetch_status_label.setVisible(False)
+        self.toolbar.addWidget(self.fetch_status_label)
 
         self.final_save_button = QPushButton("Final speichern (F)")
         self.final_save_button.clicked.connect(self.final_save_selected_posts)
@@ -269,12 +279,31 @@ class PreviewWindow(QMainWindow):
         self.reload_category_filter()
         self.reload_posts()
 
+
+    def set_fetch_running(self, running: bool) -> None:
+        self._fetch_running = bool(running)
+        self.fetch_status_label.setVisible(self._fetch_running)
+
+        if self._fetch_running:
+            self.status_bar.showMessage("Fetch läuft: Preview wird aktualisiert, sobald neue Posts geladen wurden.")
+            if not self.grid.has_visible_content():
+                self.grid.show_empty_message("Fetch läuft… Noch keine Posts in dieser Ansicht.")
+        else:
+            self.status_bar.showMessage("Fetch beendet. Preview wird aktualisiert.", 5000)
+
+        self.grid.viewport().update()
+        self.grid.update()
+        self.update()
+
     def on_tab_activated(self) -> None:
         # Wenn der Tab ohne vorhandene Posts geöffnet wird, muss der Preview-Bereich
         # trotzdem aktiv etwas zeichnen. Sonst zeigt Qt in manchen Styles den zuletzt
         # sichtbaren Tab-Inhalt weiter an. Natürlich tut es das. Warum auch nicht.
         if not self.grid.has_visible_content():
-            self.grid.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
+            if self._fetch_running:
+                self.grid.show_empty_message("Fetch läuft… Noch keine Posts in dieser Ansicht.")
+            else:
+                self.grid.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
         self.grid.viewport().update()
         self.grid.update()
         self.update()
@@ -493,6 +522,7 @@ class PreviewWindow(QMainWindow):
                 checkbox.setChecked(checked)
         finally:
             self._syncing_status_checkboxes = False
+        self._fetch_running = False
 
         self.schedule_reload()
 
@@ -521,6 +551,7 @@ class PreviewWindow(QMainWindow):
             self.all_status_checkbox.setChecked(all_checked)
         finally:
             self._syncing_status_checkboxes = False
+        self._fetch_running = False
 
     def set_checked_statuses(self, statuses: set[str]) -> None:
         self._syncing_status_checkboxes = True
@@ -529,6 +560,7 @@ class PreviewWindow(QMainWindow):
                 checkbox.setChecked(status in statuses)
         finally:
             self._syncing_status_checkboxes = False
+        self._fetch_running = False
 
         self.sync_all_checkbox_from_statuses()
 

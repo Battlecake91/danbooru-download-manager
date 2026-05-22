@@ -38,7 +38,9 @@ class AppWindow(QMainWindow):
         self.tabs.addTab(self.category_tab, "Kategorien")
         self.tabs.addTab(self.config_tab, "Konfiguration")
 
+        self.fetch_tab.fetch_started.connect(self.on_fetch_started)
         self.fetch_tab.fetch_finished.connect(self.on_fetch_finished)
+        self.fetch_tab.fetch_failed_signal.connect(self.on_fetch_failed)
         self.fetch_tab.open_preview_requested.connect(self.open_preview_tab)
         self.config_tab.config_changed.connect(self.on_config_changed)
         self.tabs.currentChanged.connect(self.on_tab_changed)
@@ -48,8 +50,24 @@ class AppWindow(QMainWindow):
         if widget is self.preview_window:
             self.preview_window.on_tab_activated()
 
+    def on_fetch_started(self) -> None:
+        self.preview_window.set_fetch_running(True)
+        index = self.tabs.indexOf(self.preview_window)
+        if index >= 0:
+            self.tabs.setTabText(index, "Preview / Review · Fetch läuft")
+
     def on_fetch_finished(self) -> None:
+        self.preview_window.set_fetch_running(False)
+        index = self.tabs.indexOf(self.preview_window)
+        if index >= 0:
+            self.tabs.setTabText(index, "Preview / Review")
         self.preview_window.schedule_reload()
+
+    def on_fetch_failed(self) -> None:
+        self.preview_window.set_fetch_running(False)
+        index = self.tabs.indexOf(self.preview_window)
+        if index >= 0:
+            self.tabs.setTabText(index, "Preview / Review")
 
     def open_preview_tab(self) -> None:
         index = self.tabs.indexOf(self.preview_window)
