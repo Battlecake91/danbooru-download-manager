@@ -121,16 +121,23 @@ class TypedTagListWidget(QWidget):
         self._typed_tags: dict[str, list[str]] = {"artist": [], "character": [], "copyright": [], "meta": [], "general": []}
         self._filename_excluded_tags: set[str] = set()
 
-        top_grid = QGridLayout()
-        top_grid.setContentsMargins(0, 0, 0, 0)
-        top_grid.setHorizontalSpacing(6)
-        top_grid.setVerticalSpacing(0)
-        self.layout.addLayout(top_grid)
+        self.identity_group = QWidget()
+        self.identity_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.identity_grid = QGridLayout(self.identity_group)
+        self.identity_grid.setContentsMargins(0, 0, 0, 0)
+        self.identity_grid.setHorizontalSpacing(6)
+        self.identity_grid.setVerticalSpacing(2)
+        self.layout.addWidget(self.identity_group)
 
         for column, tag_type in enumerate(("artist", "copyright", "character")):
-            group = self._create_tag_group(tag_type)
-            top_grid.addWidget(group, 0, column)
-            top_grid.setColumnStretch(column, 1)
+            label = self._create_group_label(tag_type)
+            list_widget = self._create_list(tag_type)
+            self.lists[tag_type] = list_widget
+            self.identity_grid.addWidget(label, 0, column)
+            self.identity_grid.addWidget(list_widget, 1, column)
+            self.identity_grid.setColumnStretch(column, 1)
+        self.identity_grid.setRowStretch(0, 0)
+        self.identity_grid.setRowStretch(1, 0)
 
         for tag_type in ("general", "meta"):
             group = self._create_tag_group(tag_type)
@@ -143,16 +150,23 @@ class TypedTagListWidget(QWidget):
         self.filename_filter_checkbox.toggled.connect(self._refresh_all_lists)
         self.layout.addWidget(self.filename_filter_checkbox)
 
-    def _create_tag_group(self, tag_type: str) -> QWidget:
-        group = QWidget()
-        group_layout = QVBoxLayout(group)
-        group_layout.setContentsMargins(0, 0, 0, 0)
-        group_layout.setSpacing(1)
-
+    def _create_group_label(self, tag_type: str) -> QLabel:
         label = QLabel(TAG_TYPE_LABELS[tag_type])
+        label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
         label.setStyleSheet(
             f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; margin: 0px; padding: 0px; }}"
         )
+        return label
+
+    def _create_tag_group(self, tag_type: str) -> QWidget:
+        group = QWidget()
+        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        group_layout = QVBoxLayout(group)
+        group_layout.setContentsMargins(0, 0, 0, 0)
+        group_layout.setSpacing(2)
+
+        label = self._create_group_label(tag_type)
         group_layout.addWidget(label)
 
         list_widget = self._create_list(tag_type)
@@ -217,17 +231,30 @@ class TypedTagListWidget(QWidget):
             list_widget.addItem(item)
 
     def _autosize_lists(self) -> None:
-        for tag_type, list_widget in self.lists.items():
-            if tag_type == "general":
-                max_rows = 14
-            elif tag_type == "meta":
-                max_rows = 4
-            else:
-                max_rows = 2
+        identity_types = ("artist", "copyright", "character")
+        identity_row_height = 18
+        for tag_type in identity_types:
+            list_widget = self.lists[tag_type]
+            if list_widget.count():
+                identity_row_height = max(identity_row_height, list_widget.sizeHintForRow(0))
+        identity_rows = max(1, min(2, max(self.lists[tag_type].count() for tag_type in identity_types)))
+        identity_height = identity_rows * max(18, identity_row_height) + 8
+
+        for tag_type in identity_types:
+            list_widget = self.lists[tag_type]
+            list_widget.setMinimumHeight(identity_height)
+            list_widget.setMaximumHeight(identity_height)
+
+        label_height = 20
+        self.identity_group.setMinimumHeight(label_height + identity_height + 2)
+        self.identity_group.setMaximumHeight(label_height + identity_height + 2)
+
+        for tag_type in ("general", "meta"):
+            list_widget = self.lists[tag_type]
+            max_rows = 14 if tag_type == "general" else 4
             rows = max(1, min(max_rows, list_widget.count()))
             row_height = max(18, list_widget.sizeHintForRow(0) if list_widget.count() else 18)
-            padding = 6
-            height = rows * row_height + padding
+            height = rows * row_height + 8
             list_widget.setMinimumHeight(height)
             list_widget.setMaximumHeight(height)
 
