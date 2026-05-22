@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import shlex
 import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
 
-ACTIVE_STATUSES = {"new", "potential", "review", "selected_save"}
+ACTIVE_STATUSES = {"new", "potential"}
 
 ALL_ALLOWED_STATUSES = {
     "new",
@@ -20,6 +21,33 @@ ALL_ALLOWED_STATUSES = {
     "downloaded",
     "saved",
 }
+
+
+def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
+    """Parse preview search into include and exclude terms.
+
+    Example: ``brown_eyes -red_hair`` means: must match brown_eyes,
+    must not have red_hair as tag. Quoted terms are supported because even
+    search strings deserve a tiny bit of dignity.
+    """
+    try:
+        tokens = shlex.split(search_text)
+    except ValueError:
+        tokens = search_text.split()
+
+    positive: list[str] = []
+    negative: list[str] = []
+
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if token.startswith("-") and len(token) > 1:
+            negative.append(token[1:].strip())
+        else:
+            positive.append(token)
+
+    return positive, negative
 
 
 class Database:
@@ -205,6 +233,7 @@ class Database:
         self.add_column_if_missing("posts", "rejected_at", "TEXT")
         self.add_column_if_missing("posts", "already_known_at", "TEXT")
         self.migrate_personal_rating_to_0_10()
+        self.migrate_legacy_statuses()
 
         self.execute(
             """
@@ -217,6 +246,21 @@ class Database:
             """
         )
 
+
+    def migrate_legacy_statuses(self) -> None:
+        """Collapse UI-deprecated statuses into the current workflow statuses."""
+        self.execute("UPDATE posts SET status = 'new' WHERE status IN ('review', 'selected_save')")
+        self.execute("UPDATE posts SET status = 'rejected', rejected_at = COALESCE(rejected_at, CURRENT_TIMESTAMP) WHERE status = 'auto_rejected'")
+        self.execute("UPDATE posts SET status = 'potential' WHERE status = 'accepted'")
+        self.execute("UPDATE posts SET status = 'already_known', already_known_at = COALESCE(already_known_at, downloaded_at, CURRENT_TIMESTAMP) WHERE status = 'downloaded'")
+        self.execute(
+            """
+            UPDATE app_settings
+            SET value = '["new", "potential"]', updated_at = CURRENT_TIMESTAMP
+            WHERE key = 'workflow.worklist_statuses'
+              AND value != '["new", "potential"]'
+            """
+        )
 
     def migrate_personal_rating_to_0_10(self) -> None:
         marker = self.execute(
@@ -602,10 +646,10 @@ class Database:
                 parameters.append("saved")
             elif view_mode == "rejected" and not has_specific_status_filter:
                 where_parts.append("p.status IN (?, ?)")
-                parameters.extend(["rejected", "auto_rejected"])
+                parameters.append("rejected")
             elif view_mode == "known" and not has_specific_status_filter:
                 where_parts.append("p.status IN (?, ?)")
-                parameters.extend(["already_known", "downloaded"])
+                parameters.append("already_known")
             elif view_mode == "all" or has_specific_status_filter:
                 pass
             else:
@@ -616,23 +660,40 @@ class Database:
                 parameters.append(status_filter)
 
         if text_filter:
-            pattern = f"%{text_filter.strip()}%"
-            where_parts.append(
-                """
-                (
-                    CAST(p.id AS TEXT) LIKE ?
-                    OR p.final_file_path LIKE ?
-                    OR p.final_directory LIKE ?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id
-                        AND pt.tag LIKE ?
+            positive_terms, negative_terms = parse_preview_search_terms(text_filter)
+
+            for term in positive_terms:
+                pattern = f"%{term}%"
+                where_parts.append(
+                    """
+                    (
+                        CAST(p.id AS TEXT) LIKE ?
+                        OR p.final_file_path LIKE ?
+                        OR p.final_directory LIKE ?
+                        OR EXISTS (
+                            SELECT 1
+                            FROM post_tags pt
+                            WHERE pt.post_id = p.id
+                            AND (pt.tag = ? OR pt.tag LIKE ?)
+                        )
                     )
+                    """
                 )
-                """
-            )
-            parameters.extend([pattern, pattern, pattern, pattern])
+                parameters.extend([pattern, pattern, pattern, term, pattern])
+
+            for term in negative_terms:
+                pattern = f"%{term}%"
+                where_parts.append(
+                    """
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM post_tags pt_excl
+                        WHERE pt_excl.post_id = p.id
+                        AND (pt_excl.tag = ? OR pt_excl.tag LIKE ?)
+                    )
+                    """
+                )
+                parameters.extend([term, pattern])
 
         where_sql = ""
         if where_parts:
@@ -963,8 +1024,8 @@ class Database:
                     COUNT(DISTINCT pt.post_id) AS post_count,
 
                     SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
-                    SUM(CASE WHEN p.status IN ('rejected', 'auto_rejected') THEN 1 ELSE 0 END) AS rejected_count,
-                    SUM(CASE WHEN p.status IN ('new', 'potential', 'review', 'selected_save') THEN 1 ELSE 0 END) AS open_count,
+                    SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                    SUM(CASE WHEN p.status IN ('new', 'potential') THEN 1 ELSE 0 END) AS open_count,
 
                     COALESCE(ts.manual_score, '') AS manual_score,
                     COALESCE(ts.computed_score, 0) AS computed_score,

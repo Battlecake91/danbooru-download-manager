@@ -45,7 +45,7 @@ def import_downloaded_ids_history(db: Database, history_file: Path) -> int:
                 VALUES (?, 'already_known', ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                     status = CASE
-                        WHEN posts.status IN ('new', 'potential', 'review', 'selected_save', 'downloaded') THEN 'already_known'
+                        WHEN posts.status IN ('new', 'potential', 'downloaded') THEN 'already_known'
                         ELSE posts.status
                     END,
                     original_path = COALESCE(posts.original_path, excluded.original_path),

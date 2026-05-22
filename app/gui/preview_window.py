@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
@@ -25,16 +26,32 @@ from app.gui.thumbnail_grid import ThumbnailGrid
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 
 
+def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
+    try:
+        tokens = shlex.split(search_text)
+    except ValueError:
+        tokens = search_text.split()
+
+    positive: list[str] = []
+    negative: list[str] = []
+
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if token.startswith("-") and len(token) > 1:
+            negative.append(token[1:].strip())
+        else:
+            positive.append(token)
+
+    return positive, negative
+
+
 STATUS_LABELS: dict[str, str] = {
     "new": "Ungeprüft",
     "potential": "Hohes Potential",
-    "review": "Prüfen",
-    "selected_save": "Zum Speichern",
-    "auto_rejected": "Automatisch aussortiert",
     "rejected": "Abgelehnt",
-    "accepted": "Akzeptiert",
     "already_known": "Bereits bekannt",
-    "downloaded": "Heruntergeladen/alt",
     "saved": "Gespeichert",
 }
 
@@ -42,13 +59,8 @@ STATUS_LABELS: dict[str, str] = {
 STATUS_ORDER: list[str] = [
     "new",
     "potential",
-    "review",
-    "selected_save",
-    "auto_rejected",
     "rejected",
-    "accepted",
     "already_known",
-    "downloaded",
     "saved",
 ]
 
@@ -56,8 +68,6 @@ STATUS_ORDER: list[str] = [
 DEFAULT_VISIBLE_STATUSES: set[str] = {
     "new",
     "potential",
-    "review",
-    "selected_save",
 }
 
 
@@ -66,7 +76,7 @@ VIEW_LABELS: dict[str, str] = {
     "worklist": "Arbeitsliste",
     "saved": "Gespeichert",
     "rejected": "Aussortiert",
-    "known": "Bekannte/importierte",
+    "known": "Bereits bekannt",
     "all": "Alle bekannten Posts",
 }
 
@@ -152,7 +162,7 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar.addWidget(QLabel("Suche: "))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("ID, Tag oder Pfad suchen...")
+        self.search_edit.setPlaceholderText("ID, Tag oder Pfad suchen, Ausschluss mit -tag...")
         self.search_edit.returnPressed.connect(self.reload_posts)
         self.search_edit.setMinimumWidth(260)
         self.toolbar.addWidget(self.search_edit)
@@ -393,8 +403,8 @@ class PreviewWindow(QMainWindow):
         presets: dict[str, set[str]] = {
             "worklist": {"new", "potential"},
             "saved": {"saved"},
-            "rejected": {"rejected", "auto_rejected"},
-            "known": {"already_known", "downloaded"},
+            "rejected": {"rejected"},
+            "known": {"already_known"},
             "all": set(STATUS_ORDER),
         }
 
@@ -572,23 +582,40 @@ class PreviewWindow(QMainWindow):
             parameters.extend(statuses)
 
         if text_filter:
-            pattern = f"%{text_filter.strip()}%"
-            where_parts.append(
-                """
-                (
-                    CAST(p.id AS TEXT) LIKE ?
-                    OR p.final_file_path LIKE ?
-                    OR p.final_directory LIKE ?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id
-                        AND pt.tag LIKE ?
+            positive_terms, negative_terms = parse_preview_search_terms(text_filter)
+
+            for term in positive_terms:
+                pattern = f"%{term}%"
+                where_parts.append(
+                    """
+                    (
+                        CAST(p.id AS TEXT) LIKE ?
+                        OR p.final_file_path LIKE ?
+                        OR p.final_directory LIKE ?
+                        OR EXISTS (
+                            SELECT 1
+                            FROM post_tags pt
+                            WHERE pt.post_id = p.id
+                            AND (pt.tag = ? OR pt.tag LIKE ?)
+                        )
                     )
+                    """
                 )
-                """
-            )
-            parameters.extend([pattern, pattern, pattern, pattern])
+                parameters.extend([pattern, pattern, pattern, term, pattern])
+
+            for term in negative_terms:
+                pattern = f"%{term}%"
+                where_parts.append(
+                    """
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM post_tags pt_excl
+                        WHERE pt_excl.post_id = p.id
+                        AND (pt_excl.tag = ? OR pt_excl.tag LIKE ?)
+                    )
+                    """
+                )
+                parameters.extend([term, pattern])
 
         where_sql = ""
         if where_parts:

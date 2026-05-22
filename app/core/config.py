@@ -42,7 +42,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "username": None,
     "api_key": None,
     "workflow": {
-        "worklist_statuses": ["new", "potential", "review", "selected_save"],
+        "worklist_statuses": ["new", "potential"],
         "rejected_thumbnail_retention_days": 7,
     },
     "viewer": {
@@ -62,19 +62,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "status_colors": {
             "new": "#666666",
             "potential": "#2e7d32",
-            "review": "#f9a825",
-            "selected_save": "#00acc1",
-            "auto_rejected": "#546e7a",
             "rejected": "#b71c1c",
-            "accepted": "#1565c0",
             "already_known": "#6d4c41",
-            "downloaded": "#8e24aa",
             "saved": "#00838f",
         },
         "status_border_width": {
             "default": 2,
             "marked": 3,
-            "downloaded": 4,
             "saved": 4,
             "rejected": 3,
         },

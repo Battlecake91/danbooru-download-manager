@@ -41,13 +41,8 @@ from app.services.post_import_service import PostImportService
 STATUS_LABELS: dict[str, str] = {
     "new": "Neu",
     "potential": "Hohes Potential",
-    "review": "Prüfen",
-    "selected_save": "Zum Speichern",
-    "auto_rejected": "Automatisch aussortiert",
     "rejected": "Abgelehnt",
-    "accepted": "Akzeptiert",
     "already_known": "Bereits bekannt",
-    "downloaded": "Heruntergeladen/alt",
     "saved": "Gespeichert",
 }
 
@@ -56,9 +51,7 @@ STATUS_COLORS: dict[str, str] = {
     "new": "#6c757d",
     "potential": "#3ddc84",
     "rejected": "#ff4d4d",
-    "accepted": "#38d36a",
     "already_known": "#9b5de5",
-    "downloaded": "#4dabf7",
     "saved": "#ffd166",
 }
 
@@ -908,7 +901,7 @@ class ImageViewerWindow(QMainWindow):
         self.status_chips.set_status(status)
         self.status_changed.emit(self.current_post_id, status)
 
-        if status in {"rejected", "auto_rejected"} and self.auto_advance_after_reject:
+        if status == "rejected" and self.auto_advance_after_reject:
             self.next_post()
 
     def set_stars(self, stars: int) -> None:

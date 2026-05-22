@@ -208,7 +208,7 @@ class ConfigTab(QWidget):
         workflow_config = config.get("workflow", {}) or {}
 
         self.worklist_statuses_edit = QLineEdit(
-            ", ".join(str(v) for v in workflow_config.get("worklist_statuses", ["new", "potential", "review", "selected_save"]))
+            ", ".join(str(v) for v in workflow_config.get("worklist_statuses", ["new", "potential"]))
         )
 
         self.rejected_retention_spin = QSpinBox()
@@ -246,7 +246,7 @@ class ConfigTab(QWidget):
         self.reload_button.clicked.connect(self.reload_from_sql)
         self.button_row.addWidget(self.reload_button)
 
-        self.runtime_reload_button = QPushButton("Runtime neu anzeigen")
+        self.runtime_reload_button = QPushButton("Formular zurücksetzen")
         self.runtime_reload_button.clicked.connect(self.reload_from_runtime)
         self.button_row.addWidget(self.runtime_reload_button)
 
@@ -409,7 +409,7 @@ class ConfigTab(QWidget):
         self.filename_max_length_spin.setValue(int(self.runtime_value("filename.max_length", 180)))
         self.filename_hash_length_spin.setValue(int(self.runtime_value("filename.hash_length", 8)))
 
-        workflow_statuses = self.runtime_value("workflow.worklist_statuses", ["new", "potential", "review", "selected_save"])
+        workflow_statuses = self.runtime_value("workflow.worklist_statuses", ["new", "potential"])
         if isinstance(workflow_statuses, list):
             self.worklist_statuses_edit.setText(", ".join(str(v) for v in workflow_statuses))
         else:

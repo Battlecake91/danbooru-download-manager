@@ -20,18 +20,13 @@ from PySide6.QtWidgets import (
 from app.core.database import Database
 
 
-TERMINAL_STATUSES = {"auto_rejected", "rejected", "already_known", "saved"}
+TERMINAL_STATUSES = {"rejected", "already_known", "saved"}
 
 STATUS_TEXT: dict[str, str] = {
     "new": "Neu",
     "potential": "Hohes Potential",
-    "review": "Prüfen",
-    "selected_save": "Zum Speichern",
-    "auto_rejected": "Auto aussortiert",
     "rejected": "Abgelehnt",
-    "accepted": "Akzeptiert",
     "already_known": "Bereits bekannt",
-    "downloaded": "Geladen/alt",
     "saved": "Gespeichert",
 }
 
@@ -39,13 +34,8 @@ STATUS_TEXT: dict[str, str] = {
 DEFAULT_STATUS_COLORS: dict[str, str] = {
     "new": "#666666",
     "potential": "#2e7d32",
-    "review": "#f9a825",
-    "selected_save": "#00acc1",
-    "auto_rejected": "#546e7a",
     "rejected": "#b71c1c",
-    "accepted": "#1565c0",
     "already_known": "#6d4c41",
-    "downloaded": "#8e24aa",
     "saved": "#00838f",
 }
 
