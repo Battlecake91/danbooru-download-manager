@@ -118,6 +118,7 @@ class TypedTagListWidget(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(3)
         self.lists: dict[str, QListWidget] = {}
+        self.group_widgets: dict[str, QWidget] = {}
         self._typed_tags: dict[str, list[str]] = {"artist": [], "character": [], "copyright": [], "meta": [], "general": []}
         self._filename_excluded_tags: set[str] = set()
 
@@ -139,9 +140,11 @@ class TypedTagListWidget(QWidget):
         self.identity_grid.setRowStretch(0, 0)
         self.identity_grid.setRowStretch(1, 0)
 
-        for tag_type in ("general", "meta"):
-            group = self._create_tag_group(tag_type)
-            self.layout.addWidget(group)
+        general_group = self._create_tag_group("general", expanding=True)
+        self.layout.addWidget(general_group, stretch=1)
+
+        meta_group = self._create_tag_group("meta", expanding=False)
+        self.layout.addWidget(meta_group)
 
         self.filename_filter_checkbox = QCheckBox("Nur nicht ausgeschlossene Filename-Tags anzeigen")
         self.filename_filter_checkbox.setToolTip(
@@ -159,9 +162,9 @@ class TypedTagListWidget(QWidget):
         )
         return label
 
-    def _create_tag_group(self, tag_type: str) -> QWidget:
+    def _create_tag_group(self, tag_type: str, expanding: bool = False) -> QWidget:
         group = QWidget()
-        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding if expanding else QSizePolicy.Fixed)
         group_layout = QVBoxLayout(group)
         group_layout.setContentsMargins(0, 0, 0, 0)
         group_layout.setSpacing(2)
@@ -170,8 +173,11 @@ class TypedTagListWidget(QWidget):
         group_layout.addWidget(label)
 
         list_widget = self._create_list(tag_type)
+        if expanding:
+            list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.lists[tag_type] = list_widget
-        group_layout.addWidget(list_widget)
+        group_layout.addWidget(list_widget, stretch=1 if expanding else 0)
+        self.group_widgets[tag_type] = group
         return group
 
     def _create_list(self, tag_type: str) -> QListWidget:
@@ -249,14 +255,25 @@ class TypedTagListWidget(QWidget):
         self.identity_group.setMinimumHeight(label_height + identity_height + 2)
         self.identity_group.setMaximumHeight(label_height + identity_height + 2)
 
-        for tag_type in ("general", "meta"):
-            list_widget = self.lists[tag_type]
-            max_rows = 14 if tag_type == "general" else 4
-            rows = max(1, min(max_rows, list_widget.count()))
-            row_height = max(18, list_widget.sizeHintForRow(0) if list_widget.count() else 18)
-            height = rows * row_height + 8
-            list_widget.setMinimumHeight(height)
-            list_widget.setMaximumHeight(height)
+        # General is the high-volume tag group. It may expand into all free
+        # vertical space instead of becoming a tiny scroll box while the panel
+        # below is mostly empty. Yes, layouts should not need babysitting, yet
+        # here we are.
+        general_widget = self.lists["general"]
+        general_row_height = max(18, general_widget.sizeHintForRow(0) if general_widget.count() else 18)
+        general_min_rows = max(4, min(10, general_widget.count() or 4))
+        general_min_height = general_min_rows * general_row_height + 8
+        general_widget.setMinimumHeight(general_min_height)
+        general_widget.setMaximumHeight(16777215)
+        general_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        meta_widget = self.lists["meta"]
+        meta_rows = max(1, min(4, meta_widget.count()))
+        meta_row_height = max(18, meta_widget.sizeHintForRow(0) if meta_widget.count() else 18)
+        meta_height = meta_rows * meta_row_height + 8
+        meta_widget.setMinimumHeight(meta_height)
+        meta_widget.setMaximumHeight(meta_height)
+        meta_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     def selected_tags(self) -> list[str]:
         result: list[str] = []
