@@ -233,6 +233,7 @@ class ImageViewerWindow(QMainWindow):
         self.last_saved_path: Path | None = None
         self._tag_context_menu: QMenu | None = None
         self._related_context_menu: QMenu | None = None
+        self.related_list_expanded = False
         self.max_score_in_view = self.calculate_max_score_in_view()
 
         viewer_config = config.get("viewer", {}) or {}
@@ -316,26 +317,44 @@ class ImageViewerWindow(QMainWindow):
 
         self.below_image_controls = QHBoxLayout()
         self.below_image_controls.setContentsMargins(0, 0, 0, 0)
-        self.below_image_controls.setSpacing(10)
+        self.below_image_controls.setSpacing(12)
 
-        self.personal_rating_label = QLabel("Persönliches Rating:")
+        self.personal_rating_label = QLabel("Persönliches Rating")
+        self.personal_rating_label.setStyleSheet("QLabel { font-weight: bold; }")
         self.below_image_controls.addWidget(self.personal_rating_label)
+
         self.personal_stars_widget = PersonalStarRatingWidget()
         self.personal_stars_widget.rating_changed.connect(self.set_personal_rating)
         self.below_image_controls.addWidget(self.personal_stars_widget)
 
-        self.below_image_controls.addSpacing(16)
-        self.category_label = QLabel()
-        self.category_label.setWordWrap(True)
+        self.below_image_controls.addStretch(1)
+
+        self.prev_button = QPushButton("< Vorheriges")
+        self.prev_button.clicked.connect(self.previous_post)
+        self.below_image_controls.addWidget(self.prev_button)
+
+        self.footer_label = QLabel()
+        self.footer_label.setAlignment(Qt.AlignCenter)
+        self.footer_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.footer_label.setMinimumWidth(190)
+        self.footer_label.setStyleSheet("QLabel { font-size: 22px; font-weight: bold; padding: 4px 10px; }")
+        self.below_image_controls.addWidget(self.footer_label)
+
+        self.next_button = QPushButton("Nächstes >")
+        self.next_button.clicked.connect(self.next_post)
+        self.below_image_controls.addWidget(self.next_button)
+
+        self.below_image_controls.addStretch(1)
+
+        self.category_label = QLabel("Kategorie")
+        self.category_label.setStyleSheet("QLabel { font-weight: bold; }")
         self.category_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.category_label.setMaximumWidth(360)
         self.below_image_controls.addWidget(self.category_label)
 
         self.category_combo = QComboBox()
         self.category_combo.currentIndexChanged.connect(self.on_category_changed)
         self.category_combo.setMinimumWidth(220)
         self.below_image_controls.addWidget(self.category_combo)
-        self.below_image_controls.addStretch(1)
 
         self.image_panel_layout.addLayout(self.below_image_controls)
         self.splitter.addWidget(self.image_panel)
@@ -346,26 +365,29 @@ class ImageViewerWindow(QMainWindow):
         self.info_label = QLabel()
         self.info_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.info_label.setWordWrap(True)
+        self.info_label.hide()
         self.side_layout.addWidget(self.info_label)
 
         self.score_label = QLabel()
         self.score_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.score_label.setStyleSheet("QLabel { font-size: 13px; padding: 2px; }")
+        self.score_label.hide()
         self.side_layout.addWidget(self.score_label)
 
-        self.related_warning_label = QLabel()
-        self.related_warning_label.setWordWrap(True)
-        self.related_warning_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.related_warning_label = QPushButton()
+        self.related_warning_label.setToolTip("Parent/Child-Liste ein- oder ausklappen")
+        self.related_warning_label.clicked.connect(self.toggle_related_posts_visible)
         self.related_warning_label.setStyleSheet(
             """
-            QLabel {
+            QPushButton {
                 background: #5a3d00;
                 color: #ffd166;
                 border: 2px solid #ffb000;
                 border-radius: 6px;
                 padding: 6px;
                 font-weight: bold;
+                text-align: left;
             }
+            QPushButton:hover { background: #704c00; }
             """
         )
         self.related_warning_label.hide()
@@ -375,6 +397,7 @@ class ImageViewerWindow(QMainWindow):
         self.side_layout.addWidget(self.status_chips)
 
         self.related_label = QLabel("Bekannte Parent/Child-Posts:")
+        self.related_label.hide()
         self.side_layout.addWidget(self.related_label)
 
         self.related_list = QListWidget()
@@ -382,6 +405,7 @@ class ImageViewerWindow(QMainWindow):
         self.related_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.related_list.customContextMenuRequested.connect(self.open_related_context_menu)
         self.related_list.setMaximumHeight(130)
+        self.related_list.hide()
         self.side_layout.addWidget(self.related_list)
 
         self.final_path_label = QLabel()
@@ -392,6 +416,7 @@ class ImageViewerWindow(QMainWindow):
         self.filename_preview_button = QPushButton("Dateiname-Vorschau anzeigen")
         self.filename_preview_button.setCheckable(True)
         self.filename_preview_button.toggled.connect(self.toggle_filename_preview)
+        self.filename_preview_button.hide()
         self.side_layout.addWidget(self.filename_preview_button)
 
         self.filename_preview_label = QLabel()
@@ -411,7 +436,7 @@ class ImageViewerWindow(QMainWindow):
             list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
             list_widget.customContextMenuRequested.connect(self.open_tag_context_menu)
             list_widget.itemDoubleClicked.connect(self.copy_single_tag_from_item)
-        self.side_layout.addWidget(self.tags_widget, stretch=1)
+        self.side_layout.addWidget(self.tags_widget)
 
         self.button_row_1 = QHBoxLayout()
         self.potential_button = QPushButton("High Potential [H]")
@@ -441,27 +466,6 @@ class ImageViewerWindow(QMainWindow):
         self.splitter.setStretchFactor(0, 4)
         self.splitter.setStretchFactor(1, 1)
         self.central_layout.addWidget(self.splitter, stretch=1)
-
-        self.footer_nav_layout = QHBoxLayout()
-        self.footer_nav_layout.setContentsMargins(0, 4, 0, 0)
-
-        self.prev_button = QPushButton("< Vorheriges")
-        self.prev_button.clicked.connect(self.previous_post)
-        self.footer_nav_layout.addWidget(self.prev_button)
-
-        self.footer_label = QLabel()
-        self.footer_label.setAlignment(Qt.AlignCenter)
-        self.footer_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.footer_label.setStyleSheet(
-            "QLabel { font-size: 22px; font-weight: bold; padding: 6px; border-top: 1px solid #444; }"
-        )
-        self.footer_nav_layout.addWidget(self.footer_label, stretch=1)
-
-        self.next_button = QPushButton("Nächstes >")
-        self.next_button.clicked.connect(self.next_post)
-        self.footer_nav_layout.addWidget(self.next_button)
-
-        self.central_layout.addLayout(self.footer_nav_layout)
 
         self.setCentralWidget(self.central_container)
 
@@ -544,31 +548,36 @@ class ImageViewerWindow(QMainWindow):
         rating_html_value = rating_html(row["rating"])
         score_value = row["score"] if row["score"] is not None else None
 
-        self.header_label.setText(f"ID {post_id} - {rating_html_value}")
+        parent_text = row['parent_id'] if row['parent_id'] is not None else '-'
+        self.header_label.setText(
+            f"ID {post_id} - {rating_html_value} - Score: {score_value if score_value is not None else '-'} "
+            f"&nbsp;&nbsp;|&nbsp;&nbsp; Parent: {parent_text} "
+            f"&nbsp;&nbsp;|&nbsp;&nbsp; Parent/Child bekannt: {related_total_count} "
+            f"| final gespeichert: {related_local_count}"
+        )
         self.footer_label.setText(f"Position {self.current_index + 1} / {len(self.post_ids)}")
 
-        self.info_label.setText(
-            f"Rating: {rating_html_value}<br>"
-            f"Score: {score_value if score_value is not None else '-'}<br>"
-            f"Parent: {row['parent_id'] if row['parent_id'] is not None else '-'}<br>"
-            f"Bekannte Parent/Child-Posts: {related_total_count} | lokal final gespeichert: {related_local_count}"
-        )
-        self.score_label.setText(f"Offizieller Score: {score_value if score_value is not None else '-'}")
+        self.info_label.setText("")
+        self.score_label.setText("")
 
-        if related_local_count:
-            self.related_warning_label.setText(
-                f"⚠ Es existiert bereits mindestens eine lokal final gespeicherte Parent/Child-Version "
-                f"({related_local_count}). Vor dem Speichern prüfen, sonst züchtest du Varianten-Duplikate."
-            )
+        self.related_list_expanded = False
+        if related_total_count:
+            if related_local_count:
+                self.related_warning_label.setText(
+                    f"⚠ Parent/Child-Posts vorhanden: {related_total_count} bekannt, "
+                    f"{related_local_count} lokal final gespeichert. Anklicken zum Anzeigen."
+                )
+            else:
+                self.related_warning_label.setText(
+                    f"⚠ Parent/Child-Posts vorhanden: {related_total_count} bekannt. Anklicken zum Anzeigen."
+                )
             self.related_warning_label.show()
-        elif related_total_count:
-            self.related_warning_label.setText(
-                f"ℹ Es gibt {related_total_count} bekannte Parent/Child-DB-Einträge, "
-                f"aber keine davon ist lokal final gespeichert."
-            )
-            self.related_warning_label.show()
+            self.related_label.hide()
+            self.related_list.hide()
         else:
             self.related_warning_label.hide()
+            self.related_label.hide()
+            self.related_list.hide()
 
         status = row["status"] or "new"
         self.status_chips.set_status(status)
@@ -602,6 +611,19 @@ class ImageViewerWindow(QMainWindow):
             typed_tags_for_post(self.db, post_id),
             filename_excluded_tags=self.db.filename_excluded_tag_set(),
         )
+
+
+    def toggle_related_posts_visible(self) -> None:
+        if self.related_list.count() <= 0:
+            return
+
+        first_item = self.related_list.item(0)
+        if first_item is not None and not (first_item.flags() & Qt.ItemIsEnabled):
+            return
+
+        self.related_list_expanded = not self.related_list_expanded
+        self.related_label.setVisible(self.related_list_expanded)
+        self.related_list.setVisible(self.related_list_expanded)
 
     def update_related_posts(self, post_id: int, related: list[Any] | None = None) -> None:
         self.related_list.clear()
@@ -770,12 +792,10 @@ class ImageViewerWindow(QMainWindow):
 
         self.category_combo.blockSignals(False)
 
-        assigned_text = f"\nGesetzt: {assigned_name} ({assigned_source})" if assigned_name else ""
-        self.category_label.setText(
-            f"Vorschlag: {suggested.name}\n"
-            f"Grund: {suggested.reason}"
-            f"{assigned_text}"
-        )
+        if assigned_name:
+            self.category_label.setText(f"Kategorie: gesetzt ({assigned_source})")
+        else:
+            self.category_label.setText(f"Kategorie: Vorschlag {suggested.name}")
         self.update_final_path_preview()
 
     def selected_category(self) -> CategoryMatch | None:
@@ -789,10 +809,7 @@ class ImageViewerWindow(QMainWindow):
             category = self.selected_category()
             if category is not None and category.id is not None:
                 self.db.assign_post_category(self.current_post_id, category.id, "manual")
-                self.category_label.setText(
-                    f"Vorschlag: {self.suggested_category_name or '-'}\n"
-                    f"Gesetzt: {category.name} (manual)"
-                )
+                self.category_label.setText("Kategorie: gesetzt (manual)")
                 self.status_changed.emit(self.current_post_id, str(self.db.get_post_detail(self.current_post_id)["status"] or "new"))
         self.update_final_path_preview()
 
@@ -940,10 +957,7 @@ class ImageViewerWindow(QMainWindow):
         self.last_saved_path = result.final_path
 
         self.status_chips.set_status("saved")
-        self.category_label.setText(
-            f"Kategorie: {result.category.name}\n"
-            f"Quelle: {result.category_source}"
-        )
+        self.category_label.setText(f"Kategorie: {result.category.name} ({result.category_source})")
         self.final_path_label.setText(f"Gespeichert: {result.final_path}")
         self.status_changed.emit(post_id, "saved")
 

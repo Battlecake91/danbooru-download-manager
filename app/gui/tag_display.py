@@ -4,7 +4,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget
 
 TAG_TYPE_LABELS = {
     "artist": "Artist",
@@ -113,6 +113,7 @@ class TypedTagListWidget(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(4)
@@ -123,7 +124,9 @@ class TypedTagListWidget(QWidget):
         top_grid = QGridLayout()
         top_grid.setContentsMargins(0, 0, 0, 0)
         top_grid.setHorizontalSpacing(4)
-        top_grid.setVerticalSpacing(2)
+        top_grid.setVerticalSpacing(1)
+        top_grid.setRowStretch(0, 0)
+        top_grid.setRowStretch(1, 0)
         self.layout.addLayout(top_grid)
 
         for column, tag_type in enumerate(("artist", "copyright", "character")):
@@ -156,7 +159,8 @@ class TypedTagListWidget(QWidget):
         list_widget.setSelectionMode(QListWidget.ExtendedSelection)
         list_widget.setUniformItemSizes(True)
         list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        list_widget.setMaximumHeight(90)
+        list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        list_widget.setMaximumHeight(54)
         list_widget.setStyleSheet(
             f"""
             QListWidget {{
@@ -208,11 +212,13 @@ class TypedTagListWidget(QWidget):
 
     def _autosize_lists(self) -> None:
         for tag_type, list_widget in self.lists.items():
-            rows = max(1, min(8 if tag_type in {"general", "meta"} else 5, list_widget.count()))
-            row_height = max(20, list_widget.sizeHintForRow(0) if list_widget.count() else 20)
-            header_padding = 10
-            list_widget.setMaximumHeight(rows * row_height + header_padding)
-            list_widget.setMinimumHeight(min(rows, 2) * row_height + header_padding)
+            max_rows = 6 if tag_type in {"general", "meta"} else 2
+            rows = max(1, min(max_rows, list_widget.count()))
+            row_height = max(18, list_widget.sizeHintForRow(0) if list_widget.count() else 18)
+            padding = 6
+            height = rows * row_height + padding
+            list_widget.setMinimumHeight(height)
+            list_widget.setMaximumHeight(height)
 
     def selected_tags(self) -> list[str]:
         result: list[str] = []
