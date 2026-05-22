@@ -81,6 +81,39 @@ VIEW_LABELS: dict[str, str] = {
 }
 
 
+SORT_LABELS: dict[str, str] = {
+    "id_desc": "Post-ID: neueste zuerst",
+    "id_asc": "Post-ID: älteste zuerst",
+    "score_desc": "Danbooru-Score: hoch → niedrig",
+    "score_asc": "Danbooru-Score: niedrig → hoch",
+    "personal_desc": "Persönliches Rating: hoch → niedrig",
+    "personal_asc": "Persönliches Rating: niedrig → hoch",
+    "rating": "Danbooru-Rating: safe → explicit",
+    "status": "Status",
+    "category": "Kategorie",
+    "saved_desc": "Zuletzt gespeichert",
+    "seen_desc": "Zuletzt gesehen",
+    "resolution_desc": "Auflösung: groß → klein",
+    "filesize_desc": "Dateigröße: groß → klein",
+}
+
+
+SQL_SORT_ORDER: dict[str, str] = {
+    "id_desc": "p.id DESC",
+    "id_asc": "p.id ASC",
+    "score_desc": "COALESCE(p.score, -999999) DESC, p.id DESC",
+    "score_asc": "COALESCE(p.score, 999999) ASC, p.id DESC",
+    "personal_desc": "COALESCE(pr.stars, -1) DESC, p.id DESC",
+    "personal_asc": "COALESCE(pr.stars, 999) ASC, p.id DESC",
+    "rating": "CASE p.rating WHEN 's' THEN 0 WHEN 'q' THEN 1 WHEN 'e' THEN 2 ELSE 9 END ASC, p.id DESC",
+    "status": "CASE p.status WHEN 'new' THEN 0 WHEN 'potential' THEN 1 WHEN 'saved' THEN 2 WHEN 'already_known' THEN 3 WHEN 'rejected' THEN 4 ELSE 9 END ASC, p.id DESC",
+    "saved_desc": "COALESCE(p.saved_at, '') DESC, p.id DESC",
+    "seen_desc": "COALESCE(p.last_seen_at, '') DESC, p.id DESC",
+    "resolution_desc": "COALESCE(p.image_width, 0) * COALESCE(p.image_height, 0) DESC, p.id DESC",
+    "filesize_desc": "COALESCE(p.file_size, 0) DESC, p.id DESC",
+}
+
+
 class PreviewWindow(QMainWindow):
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         super().__init__()
@@ -157,6 +190,16 @@ class PreviewWindow(QMainWindow):
         self.category_filter = QComboBox()
         self.category_filter.currentIndexChanged.connect(self.schedule_reload)
         self.toolbar.addWidget(self.category_filter)
+
+        self.toolbar.addSeparator()
+
+        self.toolbar.addWidget(QLabel("Sortierung: "))
+        self.sort_combo = QComboBox()
+        for sort_key, sort_label in SORT_LABELS.items():
+            self.sort_combo.addItem(sort_label, sort_key)
+        self.sort_combo.setCurrentIndex(self.sort_combo.findData("id_desc"))
+        self.sort_combo.currentIndexChanged.connect(self.schedule_reload)
+        self.toolbar.addWidget(self.sort_combo)
 
         self.toolbar.addSeparator()
 
@@ -254,6 +297,10 @@ class PreviewWindow(QMainWindow):
         value = self.category_filter.currentData()
         return str(value) if value is not None else "__all__"
 
+    def selected_sort_key(self) -> str:
+        value = self.sort_combo.currentData()
+        return str(value) if value is not None else "id_desc"
+
     def load_category_rule_cache(self) -> None:
         categories = self.db.list_categories_full()
         rules = self.db.list_category_rules()
@@ -343,6 +390,18 @@ class PreviewWindow(QMainWindow):
             enriched.append(data)
 
         return enriched
+
+    def sort_preview_rows_in_python(self, rows: list[dict[str, Any]], sort_key: str) -> list[dict[str, Any]]:
+        if sort_key != "category":
+            return rows
+
+        return sorted(
+            rows,
+            key=lambda row: (
+                str(row.get("preview_category_name") or "_unmatched").lower(),
+                -int(row.get("id") or 0),
+            ),
+        )
 
     def category_matches_filter(self, row: dict[str, Any], category_filter: str) -> bool:
         if category_filter == "__all__":
@@ -514,15 +573,18 @@ class PreviewWindow(QMainWindow):
             statuses = self.selected_statuses()
             text_filter = self.current_search_text()
             category_filter = self.selected_category_filter()
+            sort_key = self.selected_sort_key()
             self.current_limit = int(self.limit_spin.value())
 
-            internal_limit = self.current_limit if category_filter == "__all__" else max(self.current_limit * 5, 2000)
+            python_sorted = sort_key == "category"
+            internal_limit = self.current_limit if category_filter == "__all__" and not python_sorted else max(self.current_limit * 5, 2000)
 
             candidates = self.fetch_preview_posts_by_statuses(
                 statuses=statuses,
                 text_filter=text_filter,
                 limit=internal_limit,
                 offset=self.current_offset,
+                sort_key=sort_key,
             )
             enriched = self.enrich_preview_rows_with_categories(candidates)
             filtered = [
@@ -530,6 +592,7 @@ class PreviewWindow(QMainWindow):
                 for row in enriched
                 if self.category_matches_filter(row, category_filter)
             ]
+            filtered = self.sort_preview_rows_in_python(filtered, sort_key)
 
             posts = filtered[: self.current_limit]
             total = len(filtered)
@@ -543,6 +606,7 @@ class PreviewWindow(QMainWindow):
                 f"Ansicht: {VIEW_LABELS.get(self.selected_view_mode(), self.selected_view_mode())} | "
                 f"Angezeigt: {len(posts)} / Treffer im geladenen Bereich: {total} | "
                 f"Status: {status_text} | Kategorie: {category_text} | "
+                f"Sortierung: {self.sort_combo.currentText()} | "
                 f"Thumbnail: {self.grid.thumbnail_size}px"
             )
             self.status_bar.showMessage("Preview geladen")
@@ -629,8 +693,10 @@ class PreviewWindow(QMainWindow):
         text_filter: str | None,
         limit: int,
         offset: int,
+        sort_key: str = "id_desc",
     ) -> list[Any]:
         where_sql, parameters = self.build_preview_where(statuses, text_filter)
+        order_sql = SQL_SORT_ORDER.get(sort_key, SQL_SORT_ORDER["id_desc"])
         parameters.extend([limit, offset])
 
         return list(
@@ -689,9 +755,10 @@ class PreviewWindow(QMainWindow):
                 FROM posts p
                 LEFT JOIN post_categories pc ON pc.post_id = p.id
                 LEFT JOIN categories assigned_category ON assigned_category.id = pc.category_id
+                LEFT JOIN post_reviews pr ON pr.post_id = p.id
                 {where_sql}
                 GROUP BY p.id
-                ORDER BY p.id DESC
+                ORDER BY {order_sql}
                 LIMIT ?
                 OFFSET ?
                 """,
