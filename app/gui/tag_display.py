@@ -113,7 +113,7 @@ class TypedTagListWidget(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(4)
@@ -212,7 +212,12 @@ class TypedTagListWidget(QWidget):
 
     def _autosize_lists(self) -> None:
         for tag_type, list_widget in self.lists.items():
-            max_rows = 6 if tag_type in {"general", "meta"} else 2
+            if tag_type == "general":
+                max_rows = 14
+            elif tag_type == "meta":
+                max_rows = 4
+            else:
+                max_rows = 2
             rows = max(1, min(max_rows, list_widget.count()))
             row_height = max(18, list_widget.sizeHintForRow(0) if list_widget.count() else 18)
             padding = 6

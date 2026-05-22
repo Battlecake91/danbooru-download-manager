@@ -74,11 +74,14 @@ class StatusChipBar(QWidget):
         for status in ("new", "potential", "rejected", "saved"):
             label = QLabel(STATUS_LABELS.get(status, status))
             label.setAlignment(Qt.AlignCenter)
-            label.setMinimumHeight(26)
+            label.setFixedHeight(30)
+            label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
             self._labels[status] = label
             layout.addWidget(label)
 
         layout.addStretch(1)
+        self.setFixedHeight(34)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.set_status("new")
 
     def set_status(self, active_status: str | None) -> None:
@@ -88,12 +91,12 @@ class StatusChipBar(QWidget):
             if status == active:
                 label.setStyleSheet(
                     f"QLabel {{ background: {color}; color: #000000; border: 2px solid {color}; "
-                    "border-radius: 5px; padding: 3px 7px; font-weight: bold; }}"
+                    "border-radius: 5px; padding: 2px 8px; font-weight: bold; }}"
                 )
             else:
                 label.setStyleSheet(
                     f"QLabel {{ background: transparent; color: {color}; border: 2px solid {color}; "
-                    "border-radius: 5px; padding: 3px 7px; font-weight: bold; }}"
+                    "border-radius: 5px; padding: 2px 8px; font-weight: bold; }}"
                 )
 
 
@@ -373,9 +376,14 @@ class ImageViewerWindow(QMainWindow):
         self.score_label.hide()
         self.side_layout.addWidget(self.score_label)
 
+        self.status_chips = StatusChipBar()
+        self.side_layout.addWidget(self.status_chips)
+
         self.related_warning_label = QPushButton()
         self.related_warning_label.setToolTip("Parent/Child-Liste ein- oder ausklappen")
         self.related_warning_label.clicked.connect(self.toggle_related_posts_visible)
+        self.related_warning_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.related_warning_label.setMaximumHeight(42)
         self.related_warning_label.setStyleSheet(
             """
             QPushButton {
@@ -393,9 +401,6 @@ class ImageViewerWindow(QMainWindow):
         self.related_warning_label.hide()
         self.side_layout.addWidget(self.related_warning_label)
 
-        self.status_chips = StatusChipBar()
-        self.side_layout.addWidget(self.status_chips)
-
         self.related_label = QLabel("Bekannte Parent/Child-Posts:")
         self.related_label.hide()
         self.side_layout.addWidget(self.related_label)
@@ -408,9 +413,19 @@ class ImageViewerWindow(QMainWindow):
         self.related_list.hide()
         self.side_layout.addWidget(self.related_list)
 
+        self.final_path_title_label = QLabel("Zielpfad")
+        self.final_path_title_label.setStyleSheet("QLabel { font-weight: bold; margin-top: 4px; }")
+        self.side_layout.addWidget(self.final_path_title_label)
+
         self.final_path_label = QLabel()
         self.final_path_label.setWordWrap(True)
         self.final_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.final_path_label.setMaximumHeight(78)
+        self.final_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.final_path_label.setStyleSheet(
+            "QLabel { background: #f5f5f5; color: #111111; border: 1px solid #cccccc; "
+            "border-radius: 5px; padding: 6px; }"
+        )
         self.side_layout.addWidget(self.final_path_label)
 
         self.filename_preview_button = QPushButton("Dateiname-Vorschau anzeigen")
@@ -427,9 +442,6 @@ class ImageViewerWindow(QMainWindow):
         )
         self.filename_preview_label.hide()
         self.side_layout.addWidget(self.filename_preview_label)
-
-        self.tags_label = QLabel("Tags nach Danbooru-Typ:")
-        self.side_layout.addWidget(self.tags_label)
 
         self.tags_widget = TypedTagListWidget()
         for list_widget in self.tags_widget.lists.values():
@@ -825,10 +837,10 @@ class ImageViewerWindow(QMainWindow):
             source = "auto"
             if category is not None and category.name != self.suggested_category_name:
                 source = "manual"
-            self.final_path_label.setText(f"Zielpfad ({source}): {final_preview}")
+            self.final_path_label.setText(f"{source}: {final_preview}")
             self.filename_preview_label.setText(self.format_filename_preview(details))
         else:
-            self.final_path_label.setText("Zielpfad: noch nicht bestimmbar, Datei wird bei F geladen.")
+            self.final_path_label.setText("Noch nicht bestimmbar, Datei wird bei F geladen.")
             self.filename_preview_label.setText("Dateiname: noch nicht bestimmbar")
 
     def format_filename_preview(self, details) -> str:  # noqa: ANN001
