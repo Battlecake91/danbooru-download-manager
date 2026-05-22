@@ -4,3 +4,7 @@ downloaded_ids.txt
 .env
 danbooru_manager_data/
 danbooru_saved
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
