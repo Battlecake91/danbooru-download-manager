@@ -144,25 +144,25 @@ def star_text(value: float) -> str:
 
 
 class PersonalStarRatingWidget(QWidget):
-    rating_changed = Signal(float)
+    rating_changed = Signal(int)
 
     def __init__(self) -> None:
         super().__init__()
-        self._rating = 0.0
+        self._rating = 0
         self.setMinimumHeight(34)
-        self.setMinimumWidth(150)
+        self.setMinimumWidth(260)
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.setToolTip("Persönliches Rating: Klick links/rechts in einen Stern setzt halbe Schritte.")
+        self.setToolTip("Persönliches Rating 0–10: Linksklick setzt 1–10, Rechtsklick setzt 0.")
 
     def set_rating(self, value: int | float | None) -> None:
         try:
-            rating = float(value if value is not None else 0.0)
+            rating = int(round(float(value if value is not None else 0)))
         except (TypeError, ValueError):
-            rating = 0.0
-        self._rating = max(0.0, min(5.0, round(rating * 2.0) / 2.0))
+            rating = 0
+        self._rating = max(0, min(10, rating))
         self.update()
 
-    def rating(self) -> float:
+    def rating(self) -> int:
         return self._rating
 
     def paintEvent(self, event) -> None:  # noqa: ANN001
@@ -171,39 +171,35 @@ class PersonalStarRatingWidget(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         font = self.font()
-        font.setPointSize(max(18, font.pointSize() + 8))
+        font.setPointSize(max(15, font.pointSize() + 5))
         painter.setFont(font)
 
-        star_width = max(24, self.width() // 5)
-        y = self.height() - 8
+        star_width = max(22, self.width() // 10)
 
-        for index in range(5):
-            x = index * star_width + 2
+        for index in range(10):
+            x = index * star_width + 1
             rect = QRectF(x, 2, star_width, self.height() - 4)
 
             painter.setPen(QColor("#555555"))
             painter.drawText(rect, Qt.AlignCenter, "★")
 
-            fill = max(0.0, min(1.0, self._rating - index))
-            if fill <= 0:
+            if index >= self._rating:
                 continue
 
-            painter.save()
-            painter.setClipRect(QRectF(x, 2, star_width * fill, self.height() - 4))
             painter.setPen(QColor("#ff7ab6"))
             painter.drawText(rect, Qt.AlignCenter, "★")
-            painter.restore()
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        if event.button() == Qt.RightButton:
+            self.set_rating(0)
+            self.rating_changed.emit(self._rating)
+            return
         if event.button() != Qt.LeftButton:
             return
-        star_width = max(1, self.width() / 5.0)
+        star_width = max(1, self.width() / 10.0)
         raw_index = int(event.position().x() // star_width)
-        raw_index = max(0, min(4, raw_index))
-        within_star = event.position().x() - raw_index * star_width
-        half = 0.5 if within_star < star_width / 2.0 else 1.0
-        value = raw_index + half
-        self.set_rating(value)
+        raw_index = max(0, min(9, raw_index))
+        self.set_rating(raw_index + 1)
         self.rating_changed.emit(self._rating)
 
 
@@ -322,7 +318,7 @@ class ImageViewerWindow(QMainWindow):
         self.below_image_controls.setContentsMargins(0, 0, 0, 0)
         self.below_image_controls.setSpacing(12)
 
-        self.personal_rating_label = QLabel("Persönliches Rating")
+        self.personal_rating_label = QLabel("Persönliches Rating: 0/10")
         self.personal_rating_label.setStyleSheet("QLabel { font-weight: bold; }")
         self.below_image_controls.addWidget(self.personal_rating_label)
 
@@ -598,6 +594,7 @@ class ImageViewerWindow(QMainWindow):
 
         stars = row["stars"]
         self.personal_stars_widget.set_rating(stars)
+        self.update_personal_rating_label()
 
         self.update_related_posts(post_id, related)
         self.update_category_controls(post_id)
@@ -915,14 +912,19 @@ class ImageViewerWindow(QMainWindow):
             self.next_post()
 
     def set_stars(self, stars: int) -> None:
-        self.set_personal_rating(float(stars))
+        self.set_personal_rating(int(stars))
 
-    def set_personal_rating(self, rating: float) -> None:
+    def update_personal_rating_label(self) -> None:
+        self.personal_rating_label.setText(f"Persönliches Rating: {self.personal_stars_widget.rating()}/10")
+
+    def set_personal_rating(self, rating: int | float) -> None:
         if self.current_post_id is None:
             return
 
-        self.db.set_post_review(self.current_post_id, stars=rating)
-        self.personal_stars_widget.set_rating(rating)
+        rating_int = max(0, min(10, int(round(float(rating)))))
+        self.db.set_post_review(self.current_post_id, stars=rating_int)
+        self.personal_stars_widget.set_rating(rating_int)
+        self.update_personal_rating_label()
 
     def final_save_current_post(self) -> None:
         if self.current_post_id is None:

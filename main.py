@@ -22,12 +22,12 @@ def setup_logging(debug: bool) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Danbooru Manager 0.2 - Datenbank, API-Import, Thumbnail-Cache und Preview-GUI"
+        description="Danbooru Manager - SQLite-Konfiguration, API-Import, Thumbnail-Cache und Preview-GUI"
     )
     parser.add_argument(
         "--config",
         default="config.yaml",
-        help="Pfad zur YAML-Konfiguration",
+        help="Optionaler Pfad zu einer alten YAML-Konfiguration als Start-Overlay",
     )
     parser.add_argument(
         "--env-file",

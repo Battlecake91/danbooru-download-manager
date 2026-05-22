@@ -204,6 +204,7 @@ class Database:
         self.add_column_if_missing("posts", "selected_at", "TEXT")
         self.add_column_if_missing("posts", "rejected_at", "TEXT")
         self.add_column_if_missing("posts", "already_known_at", "TEXT")
+        self.migrate_personal_rating_to_0_10()
 
         self.execute(
             """
@@ -214,6 +215,35 @@ class Database:
               AND final_file_path IS NULL
               AND id IN (SELECT post_id FROM downloaded_history_import)
             """
+        )
+
+
+    def migrate_personal_rating_to_0_10(self) -> None:
+        marker = self.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("migration.personal_rating_0_10",),
+        ).fetchone()
+        if marker is not None:
+            return
+
+        self.execute(
+            """
+            UPDATE post_reviews
+            SET stars = ROUND(stars * 2)
+            WHERE stars IS NOT NULL
+              AND stars > 0
+              AND stars <= 5
+            """
+        )
+        self.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            ("migration.personal_rating_0_10", "true"),
         )
 
     def create_safe_indexes(self) -> None:

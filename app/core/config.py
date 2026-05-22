@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import copy
 import os
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml  # type: ignore[import-untyped]
+except Exception:  # PyYAML ist nur noch optional fuer Alt-Imports.
+    yaml = None
+
 from dotenv import load_dotenv
 
 
@@ -100,17 +105,28 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return result
 
 
-def load_config(config_path: Path, env_path: Path | None = None) -> dict[str, Any]:
+def load_config(config_path: Path | None = None, env_path: Path | None = None) -> dict[str, Any]:
+    """Load runtime config.
+
+    SQLite/app_settings is the leading configuration inside the GUI. YAML is no
+    longer required; an existing YAML file is only used as an optional legacy
+    import/default overlay at startup. Yes, finally, one less file pretending to
+    be a database.
+    """
     if env_path and env_path.exists():
         load_dotenv(env_path)
 
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config nicht gefunden: {config_path}")
+    loaded: dict[str, Any] = {}
+    if config_path is not None and config_path.exists():
+        if yaml is None:
+            raise RuntimeError(
+                f"YAML-Konfiguration gefunden ({config_path}), aber PyYAML ist nicht installiert. "
+                "Installiere PyYAML oder entferne/ignoriere die YAML-Datei."
+            )
+        with config_path.open("r", encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
 
-    with config_path.open("r", encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
-
-    config = deep_merge(DEFAULT_CONFIG, loaded)
+    config = deep_merge(copy.deepcopy(DEFAULT_CONFIG), loaded)
 
     env_username = os.getenv("DANBOORU_USERNAME")
     env_api_key = os.getenv("DANBOORU_API_KEY")
@@ -127,6 +143,17 @@ def load_config(config_path: Path, env_path: Path | None = None) -> dict[str, An
 
     validate_config(config)
     return config
+
+
+def flatten_config(config: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in config.items():
+        dotted = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            result.update(flatten_config(value, dotted))
+        else:
+            result[dotted] = value
+    return result
 
 
 def validate_config(config: dict[str, Any]) -> None:

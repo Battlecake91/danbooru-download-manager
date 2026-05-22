@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import Signal
@@ -19,8 +21,10 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
 )
 
+from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
 
 
@@ -36,8 +40,8 @@ class ConfigTab(QWidget):
         self.main_layout = QVBoxLayout(self)
 
         self.info_label = QLabel(
-            "Konfiguration aus SQLite. config.yaml bleibt Import-/Default-Basis. "
-            "Änderungen hier gelten für laufende GUI/Future-Starts, soweit der Code die Werte aus app_settings lädt."
+            "Konfiguration wird in SQLite geführt. Eine YAML-Datei ist nicht mehr nötig; "
+            "sie wird nur noch optional als altes Start-Overlay gelesen, wenn sie existiert."
         )
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
@@ -242,9 +246,21 @@ class ConfigTab(QWidget):
         self.reload_button.clicked.connect(self.reload_from_sql)
         self.button_row.addWidget(self.reload_button)
 
-        self.reset_button = QPushButton("Aus aktueller YAML/Runtime neu anzeigen")
-        self.reset_button.clicked.connect(self.reload_from_runtime)
-        self.button_row.addWidget(self.reset_button)
+        self.runtime_reload_button = QPushButton("Runtime neu anzeigen")
+        self.runtime_reload_button.clicked.connect(self.reload_from_runtime)
+        self.button_row.addWidget(self.runtime_reload_button)
+
+        self.export_button = QPushButton("Konfiguration exportieren")
+        self.export_button.clicked.connect(self.export_configuration)
+        self.button_row.addWidget(self.export_button)
+
+        self.import_button = QPushButton("Konfiguration importieren")
+        self.import_button.clicked.connect(self.import_configuration)
+        self.button_row.addWidget(self.import_button)
+
+        self.reset_defaults_button = QPushButton("SQLite-Konfiguration auf Defaults")
+        self.reset_defaults_button.clicked.connect(self.reset_sql_config_to_defaults)
+        self.button_row.addWidget(self.reset_defaults_button)
 
         self.button_row.addStretch(1)
         self.main_layout.addLayout(self.button_row)
@@ -465,4 +481,220 @@ class ConfigTab(QWidget):
             "Konfiguration gespeichert",
             "Konfiguration wurde in SQLite gespeichert.\n"
             "Einige Werte wirken sofort, andere erst beim nächsten Start oder neuem Fetch.",
+        )
+
+
+    # -------------------------------------------------------------------------
+    # Export / Import / Defaults
+    # -------------------------------------------------------------------------
+
+    def _json_value(self, raw_value: Any) -> Any:
+        if raw_value is None:
+            return None
+        if not isinstance(raw_value, str):
+            return raw_value
+        try:
+            return json.loads(raw_value)
+        except Exception:
+            return raw_value
+
+    def _export_payload(self) -> dict[str, Any]:
+        settings_rows = self.db.execute(
+            """
+            SELECT key, value
+            FROM app_settings
+            ORDER BY key ASC
+            """
+        ).fetchall()
+        app_settings = {str(row["key"]): self._json_value(row["value"]) for row in settings_rows}
+
+        category_rows = self.db.execute(
+            """
+            SELECT id, name, folder_name, output_path, hotkey, sort_order
+            FROM categories
+            ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+            """
+        ).fetchall()
+        categories: list[dict[str, Any]] = []
+        for category in category_rows:
+            rules = self.db.list_category_rules(int(category["id"]))
+            categories.append(
+                {
+                    "name": category["name"],
+                    "folder_name": category["folder_name"],
+                    "output_path": category["output_path"],
+                    "hotkey": category["hotkey"],
+                    "sort_order": category["sort_order"],
+                    "rules": [
+                        {"rule_type": rule["rule_type"], "tag": rule["tag"]}
+                        for rule in rules
+                    ],
+                }
+            )
+
+        filename_excluded_tags = [
+            {"tag": row["tag"], "reason": row["reason"]}
+            for row in self.db.execute(
+                """
+                SELECT tag, reason
+                FROM filename_excluded_tags
+                ORDER BY tag COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        ]
+        tag_aliases = [
+            {"original_tag": row["original_tag"], "alias_tag": row["alias_tag"]}
+            for row in self.db.execute(
+                """
+                SELECT original_tag, alias_tag
+                FROM tag_aliases
+                ORDER BY original_tag COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        ]
+        tag_scores = [
+            {"tag": row["tag"], "manual_score": row["manual_score"]}
+            for row in self.db.execute(
+                """
+                SELECT tag, manual_score
+                FROM tag_scores
+                WHERE manual_score IS NOT NULL
+                ORDER BY tag COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        ]
+
+        return {
+            "format": "danbooru_downloader_config_export",
+            "version": 1,
+            "exported_at": datetime.now().isoformat(timespec="seconds"),
+            "app_settings": app_settings,
+            "categories": categories,
+            "filename_excluded_tags": filename_excluded_tags,
+            "tag_aliases": tag_aliases,
+            "tag_scores": tag_scores,
+        }
+
+    def export_configuration(self) -> None:
+        default_name = f"danbooru_downloader_config_export_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Konfiguration exportieren",
+            default_name,
+            "JSON (*.json);;Alle Dateien (*)",
+        )
+        if not file_name:
+            return
+
+        try:
+            payload = self._export_payload()
+            Path(file_name).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.critical(self, "Konfiguration exportieren", str(exc))
+            return
+
+        QMessageBox.information(self, "Konfiguration exportiert", f"Export gespeichert:\n{file_name}")
+
+    def import_configuration(self) -> None:
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Konfiguration importieren",
+            "",
+            "JSON (*.json);;Alle Dateien (*)",
+        )
+        if not file_name:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Konfiguration importieren",
+            "Die Konfiguration aus der JSON-Datei wird in die SQLite-Konfiguration übernommen.\n"
+            "Kategorien, Filename-Ausschlüsse, Aliase und manuelle Tag-Gewichtungen werden ergänzt/aktualisiert, nicht gelöscht.\n\n"
+            "Import starten?",
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        try:
+            payload = json.loads(Path(file_name).read_text(encoding="utf-8"))
+            settings = payload.get("app_settings", {}) or {}
+            if isinstance(settings, list):
+                settings = {str(item.get("key")): item.get("value") for item in settings if isinstance(item, dict) and item.get("key")}
+            if not isinstance(settings, dict):
+                raise ValueError("app_settings muss ein Objekt sein")
+
+            for key, value in settings.items():
+                self.set_setting(str(key), value)
+                self.set_runtime_value(str(key), value)
+
+            for category in payload.get("categories", []) or []:
+                if not isinstance(category, dict) or not category.get("name"):
+                    continue
+                category_id = self.db.upsert_category(
+                    name=str(category["name"]),
+                    folder_name=str(category.get("folder_name") or category["name"]),
+                    output_path=category.get("output_path"),
+                    hotkey=category.get("hotkey"),
+                    sort_order=int(category.get("sort_order") or self.db.next_category_sort_order()),
+                )
+                for rule in category.get("rules", []) or []:
+                    if isinstance(rule, dict) and rule.get("tag") and rule.get("rule_type"):
+                        self.db.add_category_rule(category_id, str(rule["rule_type"]), str(rule["tag"]))
+
+            for item in payload.get("filename_excluded_tags", []) or []:
+                if isinstance(item, dict) and item.get("tag"):
+                    self.db.add_filename_excluded_tag(str(item["tag"]), str(item.get("reason") or "config-import"))
+                elif isinstance(item, str):
+                    self.db.add_filename_excluded_tag(item, "config-import")
+
+            for item in payload.get("tag_aliases", []) or []:
+                if isinstance(item, dict) and item.get("original_tag"):
+                    self.db.set_tag_alias(str(item["original_tag"]), str(item.get("alias_tag") or ""))
+
+            for item in payload.get("tag_scores", []) or []:
+                if isinstance(item, dict) and item.get("tag"):
+                    self.db.set_tag_manual_score(str(item["tag"]), item.get("manual_score"))
+
+            self.db.commit()
+            self.reload_from_sql()
+            self.config_changed.emit()
+        except Exception as exc:
+            QMessageBox.critical(self, "Konfiguration importieren", str(exc))
+            return
+
+        QMessageBox.information(self, "Konfiguration importiert", "Import abgeschlossen.")
+
+    def reset_sql_config_to_defaults(self) -> None:
+        answer = QMessageBox.warning(
+            self,
+            "SQLite-Konfiguration auf Defaults",
+            "Die Werte in app_settings werden gelöscht und aus den internen Defaults neu geschrieben.\n"
+            "Kategorien, Tags, Aliase, Gewichtungen, Posts und Downloads bleiben erhalten.\n\n"
+            "Das ist also kein Datenbank-Nuklearangriff, nur Konfig-Putzdienst. Fortfahren?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        try:
+            self.db.execute("DELETE FROM app_settings")
+            default_settings = flatten_config(DEFAULT_CONFIG)
+            # categories wird in eigenen Tabellen verwaltet; leere Defaults sollen vorhandene Kategorien nicht vernichten.
+            default_settings.pop("categories", None)
+            for key, value in default_settings.items():
+                self.set_setting(key, value)
+                self.set_runtime_value(key, value)
+            self.db.commit()
+            self.reload_from_sql()
+            self.config_changed.emit()
+        except Exception as exc:
+            QMessageBox.critical(self, "Defaults wiederherstellen", str(exc))
+            return
+
+        QMessageBox.information(
+            self,
+            "Defaults wiederhergestellt",
+            "SQLite-Konfiguration wurde auf interne Defaults zurückgesetzt.\n"
+            "Einige Pfade wirken erst nach einem Neustart vollständig.",
         )
