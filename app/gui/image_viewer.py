@@ -5,8 +5,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QKeySequence, QPixmap, QShortcut
+from PySide6.QtCore import Qt, QRectF, Signal, QTimer
+from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QToolBar,
     QVBoxLayout,
     QWidget,
+    QSizePolicy,
 )
 
 from app.core.category_engine import CategoryMatch
@@ -49,6 +50,114 @@ STATUS_LABELS: dict[str, str] = {
     "downloaded": "Heruntergeladen/alt",
     "saved": "Gespeichert",
 }
+
+
+
+RATING_LABELS: dict[str, tuple[str, str]] = {
+    "s": ("safe", "#38d36a"),
+    "safe": ("safe", "#38d36a"),
+    "q": ("questionable", "#ffd166"),
+    "questionable": ("questionable", "#ffd166"),
+    "e": ("explizit", "#ff4d4d"),
+    "explicit": ("explizit", "#ff4d4d"),
+}
+
+
+def rating_text_and_color(rating: str | None) -> tuple[str, str]:
+    key = str(rating or "").strip().lower()
+    return RATING_LABELS.get(key, (key or "?", "#cccccc"))
+
+
+def rating_html(rating: str | None) -> str:
+    text, color = rating_text_and_color(rating)
+    return f'<span style="color:{color}; font-weight:bold;">{text}</span>'
+
+
+def score_to_stars(score: int | float | None, max_score: int | float | None) -> float:
+    try:
+        current = float(score if score is not None else 0)
+        maximum = float(max_score if max_score is not None else 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if maximum <= 0:
+        return 0.0
+    return max(0.0, min(5.0, current / maximum * 5.0))
+
+
+def star_text(value: float) -> str:
+    full = int(value)
+    half = value - full >= 0.5
+    chars = ["★" for _ in range(full)]
+    if half and len(chars) < 5:
+        chars.append("◐")
+    while len(chars) < 5:
+        chars.append("☆")
+    return "".join(chars[:5])
+
+
+class PersonalStarRatingWidget(QWidget):
+    rating_changed = Signal(float)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._rating = 0.0
+        self.setMinimumHeight(34)
+        self.setMinimumWidth(150)
+        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        self.setToolTip("Persönliches Rating: Klick links/rechts in einen Stern setzt halbe Schritte.")
+
+    def set_rating(self, value: int | float | None) -> None:
+        try:
+            rating = float(value if value is not None else 0.0)
+        except (TypeError, ValueError):
+            rating = 0.0
+        self._rating = max(0.0, min(5.0, round(rating * 2.0) / 2.0))
+        self.update()
+
+    def rating(self) -> float:
+        return self._rating
+
+    def paintEvent(self, event) -> None:  # noqa: ANN001
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        font = self.font()
+        font.setPointSize(max(18, font.pointSize() + 8))
+        painter.setFont(font)
+
+        star_width = max(24, self.width() // 5)
+        y = self.height() - 8
+
+        for index in range(5):
+            x = index * star_width + 2
+            rect = QRectF(x, 2, star_width, self.height() - 4)
+
+            painter.setPen(QColor("#555555"))
+            painter.drawText(rect, Qt.AlignCenter, "★")
+
+            fill = max(0.0, min(1.0, self._rating - index))
+            if fill <= 0:
+                continue
+
+            painter.save()
+            painter.setClipRect(QRectF(x, 2, star_width * fill, self.height() - 4))
+            painter.setPen(QColor("#ff7ab6"))
+            painter.drawText(rect, Qt.AlignCenter, "★")
+            painter.restore()
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        if event.button() != Qt.LeftButton:
+            return
+        star_width = max(1, self.width() / 5.0)
+        raw_index = int(event.position().x() // star_width)
+        raw_index = max(0, min(4, raw_index))
+        within_star = event.position().x() - raw_index * star_width
+        half = 0.5 if within_star < star_width / 2.0 else 1.0
+        value = raw_index + half
+        self.set_rating(value)
+        self.rating_changed.emit(self._rating)
 
 
 class ImageViewerWindow(QMainWindow):
@@ -80,6 +189,7 @@ class ImageViewerWindow(QMainWindow):
         self.last_saved_path: Path | None = None
         self._tag_context_menu: QMenu | None = None
         self._related_context_menu: QMenu | None = None
+        self.max_score_in_view = self.calculate_max_score_in_view()
 
         viewer_config = config.get("viewer", {}) or {}
         self.auto_advance_after_save = bool(viewer_config.get("auto_advance_after_save", True))
@@ -142,6 +252,15 @@ class ImageViewerWindow(QMainWindow):
         self.copy_link_button.clicked.connect(self.copy_original_post_url)
         self.toolbar.addWidget(self.copy_link_button)
 
+        self.central_container = QWidget()
+        self.central_layout = QVBoxLayout(self.central_container)
+        self.central_layout.setContentsMargins(4, 4, 4, 4)
+
+        self.header_label = QLabel()
+        self.header_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.header_label.setStyleSheet("QLabel { font-size: 16px; font-weight: bold; padding: 4px; }")
+        self.central_layout.addWidget(self.header_label)
+
         self.splitter = QSplitter(Qt.Horizontal)
 
         self.scroll_area = QScrollArea()
@@ -164,6 +283,17 @@ class ImageViewerWindow(QMainWindow):
         self.info_label.setWordWrap(True)
         self.side_layout.addWidget(self.info_label)
 
+        self.score_stars_label = QLabel()
+        self.score_stars_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.score_stars_label.setStyleSheet("QLabel { font-size: 18px; color: #ffd166; }")
+        self.side_layout.addWidget(self.score_stars_label)
+
+        self.personal_rating_label = QLabel("Persönliches Rating:")
+        self.side_layout.addWidget(self.personal_rating_label)
+        self.personal_stars_widget = PersonalStarRatingWidget()
+        self.personal_stars_widget.rating_changed.connect(self.set_personal_rating)
+        self.side_layout.addWidget(self.personal_stars_widget)
+
         self.related_warning_label = QLabel()
         self.related_warning_label.setWordWrap(True)
         self.related_warning_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -185,9 +315,6 @@ class ImageViewerWindow(QMainWindow):
         self.status_label = QLabel()
         self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.side_layout.addWidget(self.status_label)
-
-        self.stars_label = QLabel()
-        self.side_layout.addWidget(self.stars_label)
 
         self.related_label = QLabel("Bekannte Parent/Child-Posts:")
         self.side_layout.addWidget(self.related_label)
@@ -213,12 +340,18 @@ class ImageViewerWindow(QMainWindow):
         self.final_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.side_layout.addWidget(self.final_path_label)
 
+        self.filename_preview_button = QPushButton("Dateiname-Vorschau anzeigen")
+        self.filename_preview_button.setCheckable(True)
+        self.filename_preview_button.toggled.connect(self.toggle_filename_preview)
+        self.side_layout.addWidget(self.filename_preview_button)
+
         self.filename_preview_label = QLabel()
         self.filename_preview_label.setWordWrap(True)
         self.filename_preview_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.filename_preview_label.setStyleSheet(
             "QLabel { background: #202020; border: 1px solid #555; border-radius: 6px; padding: 6px; }"
         )
+        self.filename_preview_label.hide()
         self.side_layout.addWidget(self.filename_preview_label)
 
         self.tags_label = QLabel("Tags nach Danbooru-Typ:")
@@ -232,38 +365,23 @@ class ImageViewerWindow(QMainWindow):
         self.side_layout.addWidget(self.tags_widget, stretch=1)
 
         self.button_row_1 = QHBoxLayout()
-        self.potential_button = QPushButton("H Potential")
+        self.potential_button = QPushButton("High Potential [H]")
         self.potential_button.clicked.connect(lambda: self.set_status("potential"))
         self.button_row_1.addWidget(self.potential_button)
 
-        self.review_button = QPushButton("P Prüfen")
-        self.review_button.clicked.connect(lambda: self.set_status("review"))
-        self.button_row_1.addWidget(self.review_button)
+        self.reject_button = QPushButton("Ablehnen [Entf]")
+        self.reject_button.clicked.connect(lambda: self.set_status("rejected"))
+        self.button_row_1.addWidget(self.reject_button)
 
-        self.save_select_button = QPushButton("S Speichern vormerken")
-        self.save_select_button.clicked.connect(lambda: self.set_status("selected_save"))
-        self.button_row_1.addWidget(self.save_select_button)
+        self.new_button = QPushButton("Neu [N]")
+        self.new_button.clicked.connect(lambda: self.set_status("new"))
+        self.button_row_1.addWidget(self.new_button)
 
         self.side_layout.addLayout(self.button_row_1)
 
-        self.button_row_2 = QHBoxLayout()
-        self.reject_button = QPushButton("Entf Ablehnen")
-        self.reject_button.clicked.connect(lambda: self.set_status("rejected"))
-        self.button_row_2.addWidget(self.reject_button)
-
-        self.auto_reject_button = QPushButton("A Auto raus")
-        self.auto_reject_button.clicked.connect(lambda: self.set_status("auto_rejected"))
-        self.button_row_2.addWidget(self.auto_reject_button)
-
-        self.new_button = QPushButton("N Neu")
-        self.new_button.clicked.connect(lambda: self.set_status("new"))
-        self.button_row_2.addWidget(self.new_button)
-
-        self.side_layout.addLayout(self.button_row_2)
-
         self.hint_label = QLabel(
-            "Hotkeys: ←/→ blättern | 1-5 Sterne | H/P/S Status | F final speichern | "
-            "Entf ablehnen | A auto raus | N neu | O Originalpost | "
+            "Hotkeys: ←/→ blättern | 1-5 oder Sternklick persönliches Rating | "
+            "H High Potential | F final speichern | Entf ablehnen | N neu | O Originalpost | "
             "Tags markieren + Rechtsklick für Tag-Aktionen | "
             "Parent/Child: Doppelklick lokal öffnen, Rechtsklick für Lokal/Remote"
         )
@@ -273,8 +391,14 @@ class ImageViewerWindow(QMainWindow):
         self.splitter.addWidget(self.side_panel)
         self.splitter.setStretchFactor(0, 4)
         self.splitter.setStretchFactor(1, 1)
+        self.central_layout.addWidget(self.splitter, stretch=1)
 
-        self.setCentralWidget(self.splitter)
+        self.footer_label = QLabel()
+        self.footer_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.footer_label.setStyleSheet("QLabel { padding: 4px; border-top: 1px solid #444; }")
+        self.central_layout.addWidget(self.footer_label)
+
+        self.setCentralWidget(self.central_container)
 
         self.install_shortcuts()
         self.load_current_post()
@@ -283,16 +407,13 @@ class ImageViewerWindow(QMainWindow):
         shortcut_map: list[tuple[str, Callable[[], None]]] = [
             ("Left", self.previous_post),
             ("Right", self.next_post),
-            ("1", lambda: self.set_stars(1)),
-            ("2", lambda: self.set_stars(2)),
-            ("3", lambda: self.set_stars(3)),
-            ("4", lambda: self.set_stars(4)),
-            ("5", lambda: self.set_stars(5)),
+            ("1", lambda: self.set_personal_rating(1.0)),
+            ("2", lambda: self.set_personal_rating(2.0)),
+            ("3", lambda: self.set_personal_rating(3.0)),
+            ("4", lambda: self.set_personal_rating(4.0)),
+            ("5", lambda: self.set_personal_rating(5.0)),
             ("H", lambda: self.set_status("potential")),
-            ("P", lambda: self.set_status("review")),
-            ("S", lambda: self.set_status("selected_save")),
             ("F", self.final_save_current_post),
-            ("A", lambda: self.set_status("auto_rejected")),
             ("Delete", lambda: self.set_status("rejected")),
             ("N", lambda: self.set_status("new")),
             ("O", self.open_original_post),
@@ -311,6 +432,26 @@ class ImageViewerWindow(QMainWindow):
     def focusInEvent(self, event) -> None:  # noqa: ANN001
         super().focusInEvent(event)
         self.update_final_path_preview()
+
+    def calculate_max_score_in_view(self) -> int | None:
+        max_score: int | None = None
+        for post_id in self.post_ids:
+            row = self.db.get_post_detail(int(post_id))
+            if row is None or row["score"] is None:
+                continue
+            try:
+                score = int(row["score"])
+            except (TypeError, ValueError):
+                continue
+            if max_score is None or score > max_score:
+                max_score = score
+        return max_score
+
+    def toggle_filename_preview(self, checked: bool) -> None:
+        self.filename_preview_label.setVisible(checked)
+        self.filename_preview_button.setText(
+            "Dateiname-Vorschau ausblenden" if checked else "Dateiname-Vorschau anzeigen"
+        )
 
     def current_post_id_value(self) -> int | None:
         if 0 <= self.current_index < len(self.post_ids):
@@ -335,14 +476,25 @@ class ImageViewerWindow(QMainWindow):
 
         self.setWindowTitle(f"Danbooru Manager - Bildbetrachter - {post_id}")
 
-        self.info_label.setText(
-            f"ID: {post_id}\n"
-            f"Rating: {row['rating'] or '?'}\n"
-            f"Score: {row['score'] if row['score'] is not None else '-'}\n"
-            f"Parent: {row['parent_id'] if row['parent_id'] is not None else '-'}\n"
-            f"Bekannte Parent/Child-Posts: {related_total_count} | lokal final gespeichert: {related_local_count}\n"
-            f"Position: {self.current_index + 1} / {len(self.post_ids)}"
+        rating_html_value = rating_html(row["rating"])
+        rating_text_value, rating_color_value = rating_text_and_color(row["rating"])
+        score_value = row["score"] if row["score"] is not None else None
+        score_star_value = score_to_stars(score_value, self.max_score_in_view)
+
+        self.header_label.setText(f"ID {post_id} - {rating_html_value}")
+        self.footer_label.setText(
+            f"{rating_html_value} - Position {self.current_index + 1} / {len(self.post_ids)}"
         )
+
+        self.info_label.setText(
+            f"Parent: {row['parent_id'] if row['parent_id'] is not None else '-'}\n"
+            f"Bekannte Parent/Child-Posts: {related_total_count} | lokal final gespeichert: {related_local_count}"
+        )
+        self.score_stars_label.setText(
+            f"Score: {score_value if score_value is not None else '-'} / max {self.max_score_in_view if self.max_score_in_view is not None else '-'}  "
+            f"{star_text(score_star_value)}"
+        )
+        self.score_stars_label.setStyleSheet(f"QLabel {{ font-size: 18px; color: {rating_color_value}; }}")
 
         if related_local_count:
             self.related_warning_label.setText(
@@ -366,7 +518,7 @@ class ImageViewerWindow(QMainWindow):
         self.open_local_image_button.setEnabled(self.local_path_for_post(post_id) is not None)
 
         stars = row["stars"]
-        self.stars_label.setText(f"Sterne: {stars if stars is not None else '-'}")
+        self.personal_stars_widget.set_rating(stars)
 
         self.update_related_posts(post_id, related)
         self.update_category_controls(post_id)
@@ -673,11 +825,14 @@ class ImageViewerWindow(QMainWindow):
             self.next_post()
 
     def set_stars(self, stars: int) -> None:
+        self.set_personal_rating(float(stars))
+
+    def set_personal_rating(self, rating: float) -> None:
         if self.current_post_id is None:
             return
 
-        self.db.set_post_review(self.current_post_id, stars=stars)
-        self.stars_label.setText(f"Sterne: {stars}")
+        self.db.set_post_review(self.current_post_id, stars=rating)
+        self.personal_stars_widget.set_rating(rating)
 
     def final_save_current_post(self) -> None:
         if self.current_post_id is None:
@@ -783,6 +938,9 @@ class ImageViewerWindow(QMainWindow):
                 self.current_pixmap = None
                 self.image_label.clear()
                 self.info_label.setText("Keine Posts mehr im Viewer.")
+                self.header_label.setText("")
+                self.footer_label.setText("")
+                self.score_stars_label.setText("")
                 self.final_path_label.setText("")
                 self.filename_preview_label.setText("")
 

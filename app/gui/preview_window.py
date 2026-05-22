@@ -391,7 +391,7 @@ class PreviewWindow(QMainWindow):
             return
 
         presets: dict[str, set[str]] = {
-            "worklist": {"new", "potential", "review", "selected_save"},
+            "worklist": {"new", "potential"},
             "saved": {"saved"},
             "rejected": {"rejected", "auto_rejected"},
             "known": {"already_known", "downloaded"},

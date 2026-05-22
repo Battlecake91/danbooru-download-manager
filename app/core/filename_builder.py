@@ -45,11 +45,13 @@ class FilenameBuilder:
             included_tags[tag_type] = [tag for tag in tags if tag not in excluded]
             excluded_tags[tag_type] = [tag for tag in tags if tag in excluded]
 
+        artist_value = self.artist_placeholder_value(included_tags)
+
         values = {
             "postid": str(post_id),
             "id": str(post_id),
-            "artist": self.join_tags(included_tags["artist"]),
-            "artists": self.join_tags(included_tags["artist"]),
+            "artist": artist_value,
+            "artists": artist_value,
             "character": self.join_tags(included_tags["character"]),
             "characters": self.join_tags(included_tags["character"]),
             "copyright": self.join_tags(included_tags["copyright"]),
@@ -71,6 +73,8 @@ class FilenameBuilder:
             filename = f"{filename}{extension}"
 
         filename = collapse_separators(safe_filename(filename))
+        if not filename or filename == extension.lstrip(".") or filename == extension:
+            filename = f"{post_id}{extension}"
         if len(filename) > max_length:
             filename = truncate_filename(filename, max_length)
 
@@ -147,7 +151,19 @@ class FilenameBuilder:
 
     def join_tags(self, tags: list[str]) -> str:
         clean = [safe_filename_part(tag) for tag in tags if tag]
-        return "_".join(clean) if clean else "unknown"
+        clean = [tag for tag in clean if tag]
+        return "_".join(clean)
+
+    def artist_placeholder_value(self, typed_tags: dict[str, list[str]]) -> str:
+        artist_value = self.join_tags(typed_tags["artist"])
+        if artist_value:
+            return artist_value
+
+        copyright_tags = {tag.lower() for tag in typed_tags.get("copyright", [])}
+        if "original" in copyright_tags:
+            return "original"
+
+        return ""
 
     def short_hash(self, post_id: int, source_path: Path) -> str:
         hash_length = int(self.filename_config().get("hash_length", 8))
@@ -159,7 +175,7 @@ def safe_filename_part(value: str) -> str:
     value = value.strip().replace(" ", "_")
     value = re.sub(r"[^\w.\-]+", "_", value, flags=re.UNICODE)
     value = re.sub(r"_+", "_", value)
-    return value.strip("._-") or "unknown"
+    return value.strip("._-")
 
 
 def safe_filename(value: str) -> str:
@@ -167,7 +183,7 @@ def safe_filename(value: str) -> str:
     value = re.sub(r'[<>:"|?*\x00-\x1F]', "_", value)
     value = re.sub(r"_+", "_", value)
     value = value.strip(" ._")
-    return value or "unknown"
+    return value
 
 
 def collapse_separators(value: str) -> str:

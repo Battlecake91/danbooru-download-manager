@@ -774,7 +774,7 @@ class Database:
         )
         self.commit()
 
-    def set_post_review(self, post_id: int, stars: int | None = None, decision: str | None = None) -> None:
+    def set_post_review(self, post_id: int, stars: float | None = None, decision: str | None = None) -> None:
         self.execute(
             """
             INSERT INTO post_reviews (post_id, stars, decision, reviewed_at)

@@ -383,9 +383,6 @@ class ThumbnailGrid(QScrollArea):
     def status_for_key(self, key: int) -> str | None:
         mapping = {
             Qt.Key_H: "potential",
-            Qt.Key_P: "review",
-            Qt.Key_S: "selected_save",
-            Qt.Key_A: "auto_rejected",
             Qt.Key_Delete: "rejected",
             Qt.Key_G: "saved",
             Qt.Key_K: "already_known",
@@ -702,14 +699,11 @@ class ThumbnailCard(QFrame):
         menu.addSeparator()
 
         actions: list[tuple[str, str]] = [
-            ("Hohes Potential (H)", "potential"),
-            ("Prüfen (P)", "review"),
-            ("Zum Speichern vormerken (S)", "selected_save"),
-            ("Automatisch aussortiert (A)", "auto_rejected"),
-            ("Ablehnen (Entf)", "rejected"),
-            ("Als gespeichert markieren (G)", "saved"),
-            ("Bereits bekannt (K)", "already_known"),
-            ("Neu zurücksetzen (N)", "new"),
+            ("High Potential [H]", "potential"),
+            ("Ablehnen [Entf]", "rejected"),
+            ("Als gespeichert markieren [G]", "saved"),
+            ("Bereits bekannt [K]", "already_known"),
+            ("Neu zurücksetzen [N]", "new"),
         ]
 
         for label, status in actions:
