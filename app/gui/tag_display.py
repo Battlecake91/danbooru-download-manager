@@ -107,8 +107,8 @@ class TypedTagListWidget(QWidget):
     """Compact tag view for the image viewer.
 
     Artist, copyright and character are shown next to each other because they are
-    the important identity tags. General/meta stay below. The general list can be
-    filtered to show only tags which are still allowed for filename generation.
+    the important identity tags. General/meta stay below. The optional filename
+    filter applies to all tag groups, not only General.
     """
 
     def __init__(self) -> None:
@@ -116,43 +116,49 @@ class TypedTagListWidget(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(4)
+        self.layout.setSpacing(3)
         self.lists: dict[str, QListWidget] = {}
         self._typed_tags: dict[str, list[str]] = {"artist": [], "character": [], "copyright": [], "meta": [], "general": []}
         self._filename_excluded_tags: set[str] = set()
 
         top_grid = QGridLayout()
         top_grid.setContentsMargins(0, 0, 0, 0)
-        top_grid.setHorizontalSpacing(4)
-        top_grid.setVerticalSpacing(1)
-        top_grid.setRowStretch(0, 0)
-        top_grid.setRowStretch(1, 0)
+        top_grid.setHorizontalSpacing(6)
+        top_grid.setVerticalSpacing(0)
         self.layout.addLayout(top_grid)
 
         for column, tag_type in enumerate(("artist", "copyright", "character")):
-            label = QLabel(TAG_TYPE_LABELS[tag_type])
-            label.setStyleSheet(f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; }}")
-            top_grid.addWidget(label, 0, column)
-
-            list_widget = self._create_list(tag_type)
-            self.lists[tag_type] = list_widget
-            top_grid.addWidget(list_widget, 1, column)
+            group = self._create_tag_group(tag_type)
+            top_grid.addWidget(group, 0, column)
             top_grid.setColumnStretch(column, 1)
 
-        self.general_filter_checkbox = QCheckBox("General: nur nicht ausgeschlossene Filename-Tags anzeigen")
-        self.general_filter_checkbox.setToolTip(
-            "Blendet General-Tags aus, die bereits im Filename-Exclude stehen. Praktisch zum Aussortieren, leider."
-        )
-        self.general_filter_checkbox.toggled.connect(self._refresh_general_list)
-        self.layout.addWidget(self.general_filter_checkbox)
-
         for tag_type in ("general", "meta"):
-            label = QLabel(TAG_TYPE_LABELS[tag_type])
-            label.setStyleSheet(f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; }}")
-            self.layout.addWidget(label)
-            list_widget = self._create_list(tag_type)
-            self.lists[tag_type] = list_widget
-            self.layout.addWidget(list_widget)
+            group = self._create_tag_group(tag_type)
+            self.layout.addWidget(group)
+
+        self.filename_filter_checkbox = QCheckBox("Nur nicht ausgeschlossene Filename-Tags anzeigen")
+        self.filename_filter_checkbox.setToolTip(
+            "Blendet alle Tags aus, die bereits im Filename-Exclude stehen. Praktisch zum Aussortieren, leider."
+        )
+        self.filename_filter_checkbox.toggled.connect(self._refresh_all_lists)
+        self.layout.addWidget(self.filename_filter_checkbox)
+
+    def _create_tag_group(self, tag_type: str) -> QWidget:
+        group = QWidget()
+        group_layout = QVBoxLayout(group)
+        group_layout.setContentsMargins(0, 0, 0, 0)
+        group_layout.setSpacing(1)
+
+        label = QLabel(TAG_TYPE_LABELS[tag_type])
+        label.setStyleSheet(
+            f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; margin: 0px; padding: 0px; }}"
+        )
+        group_layout.addWidget(label)
+
+        list_widget = self._create_list(tag_type)
+        self.lists[tag_type] = list_widget
+        group_layout.addWidget(list_widget)
+        return group
 
     def _create_list(self, tag_type: str) -> QListWidget:
         list_widget = ToggleSelectListWidget()
@@ -187,17 +193,17 @@ class TypedTagListWidget(QWidget):
             "general": list(typed_tags.get("general", [])),
         }
         self._filename_excluded_tags = set(filename_excluded_tags or set())
+        self._refresh_all_lists()
 
-        for tag_type in ("artist", "copyright", "character", "meta"):
-            self._fill_list(tag_type, self._typed_tags.get(tag_type, []))
-        self._refresh_general_list()
-        self._autosize_lists()
+    def _visible_tags_for_type(self, tag_type: str) -> list[str]:
+        tags = self._typed_tags.get(tag_type, [])
+        if self.filename_filter_checkbox.isChecked():
+            return [tag for tag in tags if tag not in self._filename_excluded_tags]
+        return tags
 
-    def _refresh_general_list(self) -> None:
-        tags = self._typed_tags.get("general", [])
-        if self.general_filter_checkbox.isChecked():
-            tags = [tag for tag in tags if tag not in self._filename_excluded_tags]
-        self._fill_list("general", tags)
+    def _refresh_all_lists(self) -> None:
+        for tag_type in ("artist", "copyright", "character", "general", "meta"):
+            self._fill_list(tag_type, self._visible_tags_for_type(tag_type))
         self._autosize_lists()
 
     def _fill_list(self, tag_type: str, tags: list[str]) -> None:

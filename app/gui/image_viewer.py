@@ -423,7 +423,7 @@ class ImageViewerWindow(QMainWindow):
         self.final_path_label.setMaximumHeight(78)
         self.final_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.final_path_label.setStyleSheet(
-            "QLabel { background: #f5f5f5; color: #111111; border: 1px solid #cccccc; "
+            "QLabel { background: transparent; color: #eeeeee; border: 1px solid #eeeeee; "
             "border-radius: 5px; padding: 6px; }"
         )
         self.side_layout.addWidget(self.final_path_label)
