@@ -4,7 +4,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
 TAG_TYPE_LABELS = {
     "artist": "Artist",
@@ -23,22 +23,12 @@ TAG_TYPE_COLORS = {
 }
 
 
-
-
 class ToggleSelectListWidget(QListWidget):
-    """QListWidget variant where a plain second click deselects a selected tag.
-
-    Qt's ExtendedSelection normally keeps an already selected item selected on a
-    plain click. For tag actions this feels broken, because a user expects a tag
-    chip/list entry to toggle. Humanity survived worse UI crimes, but barely.
-    """
+    """QListWidget variant where a plain second click deselects a selected tag."""
 
     def mousePressEvent(self, event):  # noqa: ANN001
         item = self.itemAt(event.position().toPoint())
-        plain_left_click = (
-            event.button() == Qt.LeftButton
-            and event.modifiers() == Qt.NoModifier
-        )
+        plain_left_click = event.button() == Qt.LeftButton and event.modifiers() == Qt.NoModifier
 
         if plain_left_click and item is not None and item.isSelected():
             item.setSelected(False)
@@ -114,46 +104,115 @@ def compact_typed_tags_text(typed_tags: dict[str, list[str]], general_limit: int
 
 
 class TypedTagListWidget(QWidget):
+    """Compact tag view for the image viewer.
+
+    Artist, copyright and character are shown next to each other because they are
+    the important identity tags. General/meta stay below. The general list can be
+    filtered to show only tags which are still allowed for filename generation.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(4)
         self.lists: dict[str, QListWidget] = {}
+        self._typed_tags: dict[str, list[str]] = {"artist": [], "character": [], "copyright": [], "meta": [], "general": []}
+        self._filename_excluded_tags: set[str] = set()
 
-        for tag_type in ("artist", "character", "copyright", "general", "meta"):
+        top_grid = QGridLayout()
+        top_grid.setContentsMargins(0, 0, 0, 0)
+        top_grid.setHorizontalSpacing(4)
+        top_grid.setVerticalSpacing(2)
+        self.layout.addLayout(top_grid)
+
+        for column, tag_type in enumerate(("artist", "copyright", "character")):
+            label = QLabel(TAG_TYPE_LABELS[tag_type])
+            label.setStyleSheet(f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; }}")
+            top_grid.addWidget(label, 0, column)
+
+            list_widget = self._create_list(tag_type)
+            self.lists[tag_type] = list_widget
+            top_grid.addWidget(list_widget, 1, column)
+            top_grid.setColumnStretch(column, 1)
+
+        self.general_filter_checkbox = QCheckBox("General: nur nicht ausgeschlossene Filename-Tags anzeigen")
+        self.general_filter_checkbox.setToolTip(
+            "Blendet General-Tags aus, die bereits im Filename-Exclude stehen. Praktisch zum Aussortieren, leider."
+        )
+        self.general_filter_checkbox.toggled.connect(self._refresh_general_list)
+        self.layout.addWidget(self.general_filter_checkbox)
+
+        for tag_type in ("general", "meta"):
             label = QLabel(TAG_TYPE_LABELS[tag_type])
             label.setStyleSheet(f"QLabel {{ color: {TAG_TYPE_COLORS[tag_type]}; font-weight: bold; }}")
             self.layout.addWidget(label)
-            list_widget = ToggleSelectListWidget()
-            list_widget.setSelectionMode(QListWidget.ExtendedSelection)
-            list_widget.setMaximumHeight(95 if tag_type != "general" else 170)
-            list_widget.setStyleSheet(
-                f"""
-                QListWidget {{
-                    border: 1px solid {TAG_TYPE_COLORS[tag_type]};
-                    border-radius: 4px;
-                    background: #1f1f1f;
-                    color: #eeeeee;
-                }}
-                QListWidget::item:selected {{
-                    background: {TAG_TYPE_COLORS[tag_type]};
-                    color: #000000;
-                }}
-                """
-            )
+            list_widget = self._create_list(tag_type)
             self.lists[tag_type] = list_widget
             self.layout.addWidget(list_widget)
 
-    def set_typed_tags(self, typed_tags: dict[str, list[str]]) -> None:
+    def _create_list(self, tag_type: str) -> QListWidget:
+        list_widget = ToggleSelectListWidget()
+        list_widget.setSelectionMode(QListWidget.ExtendedSelection)
+        list_widget.setUniformItemSizes(True)
+        list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        list_widget.setMaximumHeight(90)
+        list_widget.setStyleSheet(
+            f"""
+            QListWidget {{
+                border: 1px solid {TAG_TYPE_COLORS[tag_type]};
+                border-radius: 4px;
+                background: #1f1f1f;
+                color: #eeeeee;
+            }}
+            QListWidget::item {{ padding: 1px 4px; }}
+            QListWidget::item:selected {{
+                background: {TAG_TYPE_COLORS[tag_type]};
+                color: #000000;
+            }}
+            """
+        )
+        return list_widget
+
+    def set_typed_tags(self, typed_tags: dict[str, list[str]], filename_excluded_tags: set[str] | None = None) -> None:
+        self._typed_tags = {
+            "artist": list(typed_tags.get("artist", [])),
+            "character": list(typed_tags.get("character", [])),
+            "copyright": list(typed_tags.get("copyright", [])),
+            "meta": list(typed_tags.get("meta", [])),
+            "general": list(typed_tags.get("general", [])),
+        }
+        self._filename_excluded_tags = set(filename_excluded_tags or set())
+
+        for tag_type in ("artist", "copyright", "character", "meta"):
+            self._fill_list(tag_type, self._typed_tags.get(tag_type, []))
+        self._refresh_general_list()
+        self._autosize_lists()
+
+    def _refresh_general_list(self) -> None:
+        tags = self._typed_tags.get("general", [])
+        if self.general_filter_checkbox.isChecked():
+            tags = [tag for tag in tags if tag not in self._filename_excluded_tags]
+        self._fill_list("general", tags)
+        self._autosize_lists()
+
+    def _fill_list(self, tag_type: str, tags: list[str]) -> None:
+        list_widget = self.lists[tag_type]
+        list_widget.clear()
+        for tag in tags:
+            item = QListWidgetItem(tag)
+            item.setData(Qt.UserRole, tag)
+            item.setData(Qt.UserRole + 1, tag_type)
+            item.setForeground(QColor(TAG_TYPE_COLORS[tag_type]))
+            list_widget.addItem(item)
+
+    def _autosize_lists(self) -> None:
         for tag_type, list_widget in self.lists.items():
-            list_widget.clear()
-            for tag in typed_tags.get(tag_type, []):
-                item = QListWidgetItem(tag)
-                item.setData(Qt.UserRole, tag)
-                item.setData(Qt.UserRole + 1, tag_type)
-                item.setForeground(QColor(TAG_TYPE_COLORS[tag_type]))
-                list_widget.addItem(item)
+            rows = max(1, min(8 if tag_type in {"general", "meta"} else 5, list_widget.count()))
+            row_height = max(20, list_widget.sizeHintForRow(0) if list_widget.count() else 20)
+            header_padding = 10
+            list_widget.setMaximumHeight(rows * row_height + header_padding)
+            list_widget.setMinimumHeight(min(rows, 2) * row_height + header_padding)
 
     def selected_tags(self) -> list[str]:
         result: list[str] = []
