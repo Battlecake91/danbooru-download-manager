@@ -309,6 +309,12 @@ class Database:
             ON category_rules(category_id, rule_type, tag)
             """
         )
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_score ON posts(score)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_saved_at ON posts(saved_at)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_last_seen_at ON posts(last_seen_at)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_rating ON posts(rating)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_file_size ON posts(file_size)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_resolution ON posts(image_width, image_height)")
 
     def add_column_if_missing(self, table_name: str, column_name: str, declaration: str) -> None:
         columns = self.execute(f"PRAGMA table_info({table_name})").fetchall()

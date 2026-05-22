@@ -59,6 +59,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "thumbnail_size_max": 700,
         "thumbnail_size_step": 20,
         "card_width_extra": 100,
+        "preview_render_batch_size": 40,
         "status_colors": {
             "new": "#666666",
             "potential": "#2e7d32",

@@ -41,6 +41,12 @@ class AppWindow(QMainWindow):
         self.fetch_tab.fetch_finished.connect(self.on_fetch_finished)
         self.fetch_tab.open_preview_requested.connect(self.open_preview_tab)
         self.config_tab.config_changed.connect(self.on_config_changed)
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+
+    def on_tab_changed(self, index: int) -> None:
+        widget = self.tabs.widget(index)
+        if widget is self.preview_window:
+            self.preview_window.on_tab_activated()
 
     def on_fetch_finished(self) -> None:
         self.preview_window.schedule_reload()

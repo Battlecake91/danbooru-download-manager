@@ -4,7 +4,10 @@ import sqlite3
 import webbrowser
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal, QSize
+from collections import OrderedDict
+from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -40,6 +43,37 @@ DEFAULT_STATUS_COLORS: dict[str, str] = {
 }
 
 
+PIXMAP_CACHE: "OrderedDict[tuple[str, int, int], QPixmap]" = OrderedDict()
+MAX_PIXMAP_CACHE_ITEMS = 300
+
+
+def cached_scaled_pixmap(path_text: str, size: int) -> QPixmap | None:
+    path = Path(path_text)
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+
+    cache_key = (str(path), int(size), int(stat.st_mtime))
+    cached = PIXMAP_CACHE.get(cache_key)
+    if cached is not None and not cached.isNull():
+        PIXMAP_CACHE.move_to_end(cache_key)
+        return QPixmap(cached)
+
+    pixmap = QPixmap(str(path))
+    if pixmap.isNull():
+        return None
+
+    scaled = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    PIXMAP_CACHE[cache_key] = scaled
+    PIXMAP_CACHE.move_to_end(cache_key)
+
+    while len(PIXMAP_CACHE) > MAX_PIXMAP_CACHE_ITEMS:
+        PIXMAP_CACHE.popitem(last=False)
+
+    return QPixmap(scaled)
+
+
 class ThumbnailGrid(QScrollArea):
     status_changed = Signal(int, str)
     request_reload = Signal()
@@ -60,6 +94,11 @@ class ThumbnailGrid(QScrollArea):
         self.columns = 5
         self.items: list[ThumbnailCard] = []
         self.current_posts: list[Any] = []
+        self._pending_rows: list[Any] = []
+        self._restore_selected_ids: set[int] = set()
+        self._restore_current_id: int | None = None
+        self._build_generation = 0
+        self.batch_size = int(gui_config.get("preview_render_batch_size", 40))
 
         self.selected_ids: set[int] = set()
         self.current_index: int = -1
@@ -76,6 +115,43 @@ class ThumbnailGrid(QScrollArea):
 
         self.setWidget(self.container)
 
+        # Wichtig, wenn der Preview-Tab leer ist: Qt malt sonst je nach Plattform
+        # gerne noch den vorherigen Tab-Inhalt durch. Transparentes Nichts, aber
+        # mit maximaler Verwirrung.
+        self.setAutoFillBackground(True)
+        self.viewport().setAutoFillBackground(True)
+        self.container.setAutoFillBackground(True)
+        self.empty_label: QLabel | None = None
+
+    def show_empty_message(self, message: str = "Keine Posts in dieser Ansicht.") -> None:
+        if self.empty_label is not None:
+            self.empty_label.setText(message)
+            self.empty_label.show()
+            return
+
+        label = QLabel(message)
+        label.setAlignment(Qt.AlignCenter)
+        label.setMinimumHeight(240)
+        label.setStyleSheet(
+            "QLabel { color: #bdbdbd; font-size: 16px; "
+            "border: 1px dashed #555; border-radius: 8px; padding: 24px; }"
+        )
+        self.empty_label = label
+        self.layout.addWidget(label, 0, 0, 1, max(1, self.columns))
+
+    def hide_empty_message(self) -> None:
+        if self.empty_label is None:
+            return
+
+        label = self.empty_label
+        self.empty_label = None
+        self.layout.removeWidget(label)
+        label.setParent(None)
+        label.deleteLater()
+
+    def has_visible_content(self) -> bool:
+        return bool(self.items or self._pending_rows or self.empty_label is not None)
+
     def resizeEvent(self, event) -> None:  # noqa: ANN001
         super().resizeEvent(event)
         self.update_columns()
@@ -86,7 +162,11 @@ class ThumbnailGrid(QScrollArea):
         new_columns = max(1, width // card_width)
         if new_columns != self.columns:
             self.columns = new_columns
-            self.relayout()
+            if self.empty_label is not None and not self.items:
+                self.layout.removeWidget(self.empty_label)
+                self.layout.addWidget(self.empty_label, 0, 0, 1, max(1, self.columns))
+            else:
+                self.relayout()
 
     def set_thumbnail_size(self, size: int) -> None:
         if size == self.thumbnail_size:
@@ -101,6 +181,10 @@ class ThumbnailGrid(QScrollArea):
         self.relayout()
 
     def clear(self) -> None:
+        self._build_generation += 1
+        self._pending_rows = []
+        self.hide_empty_message()
+
         while self.layout.count():
             item = self.layout.takeAt(0)
             widget = item.widget()
@@ -120,7 +204,34 @@ class ThumbnailGrid(QScrollArea):
         self.current_posts = list(posts)
         self.clear()
 
-        for row in self.current_posts:
+        if not self.current_posts:
+            self.setUpdatesEnabled(True)
+            self.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
+            self.update_columns()
+            self.viewport().update()
+            self.update()
+            return
+
+        self._restore_selected_ids = old_selected
+        self._restore_current_id = old_current_id
+        self._pending_rows = list(self.current_posts)
+        self._build_generation += 1
+        generation = self._build_generation
+
+        self.setUpdatesEnabled(False)
+        self.append_cards_batch(generation)
+
+    def append_cards_batch(self, generation: int) -> None:
+        if generation != self._build_generation:
+            return
+
+        self.hide_empty_message()
+        start_index = len(self.items)
+        batch_size = max(1, int(self.batch_size))
+        batch = self._pending_rows[:batch_size]
+        self._pending_rows = self._pending_rows[batch_size:]
+
+        for row in batch:
             card = ThumbnailCard(self.db, self.config, row, self.thumbnail_size)
             card.status_changed.connect(self.status_changed.emit)
             card.request_reload.connect(self.request_reload.emit)
@@ -130,11 +241,17 @@ class ThumbnailGrid(QScrollArea):
             card.category_assign_requested.connect(self.on_card_category_assign_requested)
             self.items.append(card)
 
-        self.selected_ids = {card.post_id for card in self.items if card.post_id in old_selected}
+            index = len(self.items) - 1
+            row_index = index // self.columns
+            column_index = index % self.columns
+            self.layout.addWidget(card, row_index, column_index)
 
-        if old_current_id is not None:
+        if self._restore_selected_ids:
+            self.selected_ids = {card.post_id for card in self.items if card.post_id in self._restore_selected_ids}
+
+        if self._restore_current_id is not None and self.current_index < 0:
             for index, card in enumerate(self.items):
-                if card.post_id == old_current_id:
+                if card.post_id == self._restore_current_id:
                     self.current_index = index
                     break
 
@@ -142,8 +259,14 @@ class ThumbnailGrid(QScrollArea):
             self.current_index = 0
             self.anchor_index = 0
 
+        self.refresh_selection_styles()
+
+        if self._pending_rows:
+            QTimer.singleShot(0, lambda gen=generation: self.append_cards_batch(gen))
+            return
+
+        self.setUpdatesEnabled(True)
         self.update_columns()
-        self.relayout()
         self.refresh_selection_styles()
 
     def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:
@@ -155,6 +278,8 @@ class ThumbnailGrid(QScrollArea):
         self.category_assign_requested.emit(post_ids, category_name)
 
     def relayout(self) -> None:
+        was_updates_enabled = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
         while self.layout.count():
             item = self.layout.takeAt(0)
             widget = item.widget()
@@ -165,8 +290,18 @@ class ThumbnailGrid(QScrollArea):
             row = index // self.columns
             col = index % self.columns
             self.layout.addWidget(card, row, col)
+        self.setUpdatesEnabled(was_updates_enabled)
 
     def visible_post_ids(self) -> list[int]:
+        ids: list[int] = []
+        for row in self.current_posts:
+            try:
+                ids.append(int(row["id"]))
+            except Exception:
+                if isinstance(row, dict) and "id" in row:
+                    ids.append(int(row["id"]))
+        if ids:
+            return ids
         return [card.post_id for card in self.items]
 
     def selected_or_current_post_ids(self) -> list[int]:
@@ -585,14 +720,9 @@ class ThumbnailCard(QFrame):
 
         for candidate in candidates:
             if candidate:
-                pixmap = QPixmap(str(candidate))
-                if not pixmap.isNull():
-                    return pixmap.scaled(
-                        self.thumbnail_size,
-                        self.thumbnail_size,
-                        Qt.KeepAspectRatio,
-                        Qt.SmoothTransformation,
-                    )
+                pixmap = cached_scaled_pixmap(str(candidate), self.thumbnail_size)
+                if pixmap is not None and not pixmap.isNull():
+                    return pixmap
 
         placeholder = QPixmap(self.thumbnail_size, self.thumbnail_size)
         placeholder.fill(Qt.darkGray)

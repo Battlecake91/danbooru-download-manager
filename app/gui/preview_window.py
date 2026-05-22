@@ -269,6 +269,16 @@ class PreviewWindow(QMainWindow):
         self.reload_category_filter()
         self.reload_posts()
 
+    def on_tab_activated(self) -> None:
+        # Wenn der Tab ohne vorhandene Posts geöffnet wird, muss der Preview-Bereich
+        # trotzdem aktiv etwas zeichnen. Sonst zeigt Qt in manchen Styles den zuletzt
+        # sichtbaren Tab-Inhalt weiter an. Natürlich tut es das. Warum auch nicht.
+        if not self.grid.has_visible_content():
+            self.grid.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
+        self.grid.viewport().update()
+        self.grid.update()
+        self.update()
+
     # -------------------------------------------------------------------------
     # Kategorie-Filter / Kategorie-Vorschlag
     # -------------------------------------------------------------------------
