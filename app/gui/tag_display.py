@@ -267,7 +267,11 @@ class TypedTagListWidget(QWidget):
                     average_text=average_text,
                 )
 
-            item = QListWidgetItem(display_text)
+            # For widget-backed General/Meta rows the QListWidgetItem text must
+            # stay empty. Otherwise some styles/delegates still paint the item
+            # text behind the widget, which looks like a mysterious bold ghost
+            # label. Naturally, text rendering needed an exorcism.
+            item = QListWidgetItem("" if meta_item_widget is not None else display_text)
             item.setData(Qt.UserRole, tag)
             item.setData(Qt.UserRole + 1, tag_type)
             item.setToolTip(tooltip)
@@ -300,10 +304,14 @@ class TypedTagListWidget(QWidget):
         row_layout.setContentsMargins(4, 0, 4, 0)
         row_layout.setSpacing(6)
 
+        base_font = self.lists[tag_type].font() if tag_type in self.lists else self.font()
+        base_font.setBold(False)
+
         tag_label = QLabel(tag)
         tag_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         tag_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        tag_label.setStyleSheet(f"color: {TAG_TYPE_COLORS[tag_type]}; font-weight: normal;")
+        tag_label.setFont(base_font)
+        tag_label.setStyleSheet(f"color: {TAG_TYPE_COLORS[tag_type]}; background: transparent;")
         row_layout.addWidget(tag_label, stretch=1)
 
         columns = (
@@ -316,7 +324,11 @@ class TypedTagListWidget(QWidget):
             label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             label.setFixedWidth(width)
             label.setToolTip(tooltip)
-            label.setStyleSheet("color: #dddddd; font-family: Consolas, 'DejaVu Sans Mono', monospace; font-weight: normal;")
+            label.setFont(base_font)
+            # Keep proportional font like the tag lists. The fixed label widths
+            # provide alignment; a separate monospace font just made the rows
+            # look like they escaped from another UI.
+            label.setStyleSheet("color: #dddddd; background: transparent;")
             row_layout.addWidget(label)
 
         row.setStyleSheet("background: transparent;")
