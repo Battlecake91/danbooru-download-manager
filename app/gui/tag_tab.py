@@ -39,6 +39,29 @@ TAG_TYPE_LABELS = {
 }
 
 
+class SortableTableWidgetItem(QTableWidgetItem):
+    """QTableWidgetItem with sane numeric sorting.
+
+    Qt sorts table items lexicographically by default. That means 100 can
+    happily come before 9, because apparently strings were invited to a number
+    party. Store an explicit sort value and compare that when possible.
+    """
+
+    SORT_ROLE = Qt.UserRole + 10
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        left = self.data(self.SORT_ROLE)
+        right = other.data(self.SORT_ROLE)
+
+        if left is not None and right is not None:
+            try:
+                return float(left) < float(right)
+            except (TypeError, ValueError):
+                return str(left).casefold() < str(right).casefold()
+
+        return self.text().casefold() < other.text().casefold()
+
+
 class TagTab(QWidget):
     """Tag overview/configuration tab.
 
@@ -56,6 +79,8 @@ class TagTab(QWidget):
         self.current_rows: list[Any] = []
         self._context_menu: QMenu | None = None
         self._reload_pending = False
+        self._sort_column: int | None = None
+        self._sort_order = Qt.DescendingOrder
 
         work_dir = Path(str(config.get("work_dir", ".")))
         self.log_dir = work_dir / "logs"
@@ -121,6 +146,9 @@ class TagTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         for col in range(1, 11):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header.sectionClicked.connect(lambda column: self.safe(lambda: self.sort_by_column(column), "Tags sortieren"))
 
         self.main_layout.addWidget(self.table)
 
@@ -233,6 +261,47 @@ class TagTab(QWidget):
 
         QTimer.singleShot(50, do_reload)
 
+    def sort_by_column(self, column: int) -> None:
+        if self._sort_column == column:
+            self._sort_order = (
+                Qt.AscendingOrder
+                if self._sort_order == Qt.DescendingOrder
+                else Qt.DescendingOrder
+            )
+        else:
+            self._sort_column = column
+            self._sort_order = Qt.AscendingOrder if column in {0, 1, 6, 7} else Qt.DescendingOrder
+
+        self.apply_current_sort()
+
+    def apply_current_sort(self) -> None:
+        if self._sort_column is None:
+            return
+
+        header = self.table.horizontalHeader()
+        header.setSortIndicator(self._sort_column, self._sort_order)
+        self.table.sortItems(self._sort_column, self._sort_order)
+
+    def format_number_cell(self, value: Any, decimals: int = 1, empty: str = "") -> str:
+        if value is None or str(value) in {"", "None"}:
+            return empty
+
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+
+        text = f"{number:.{decimals}f}"
+        return text.rstrip("0").rstrip(".")
+
+    def make_table_item(self, tag: str, value: Any, sort_value: Any | None = None, align_right: bool = False) -> QTableWidgetItem:
+        item = SortableTableWidgetItem("" if value is None else str(value))
+        item.setData(Qt.UserRole, tag)
+        item.setData(SortableTableWidgetItem.SORT_ROLE, sort_value if sort_value is not None else value)
+        if align_right:
+            item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        return item
+
     def reload_tags(self) -> None:
         self.log_message("fetch_tag_overview: begin")
         rows = self.db.fetch_tag_overview(
@@ -251,26 +320,34 @@ class TagTab(QWidget):
             self.table.setRowCount(len(self.current_rows))
 
             for row_index, row in enumerate(self.current_rows):
-                values = [
-                    row["tag"],
-                    row["tag_type"],
-                    row["post_count"],
-                    row["open_count"],
-                    row["saved_count"],
-                    row["rejected_count"],
-                    row["alias_tag"] or "",
-                    "ja" if int(row["filename_excluded"] or 0) else "",
-                    row["manual_score"],
-                    row["computed_score"],
-                    row["average_rating"],
+                tag = str(row["tag"] or "")
+                manual_score = row["manual_score"]
+                computed_score = row["computed_score"]
+                average_rating = row["average_rating"]
+                filename_excluded = bool(int(row["filename_excluded"] or 0))
+
+                values: list[tuple[Any, Any, bool]] = [
+                    (tag, tag, False),
+                    (row["tag_type"], row["tag_type"], False),
+                    (row["post_count"], row["post_count"], True),
+                    (row["open_count"], row["open_count"], True),
+                    (row["saved_count"], row["saved_count"], True),
+                    (row["rejected_count"], row["rejected_count"], True),
+                    (row["alias_tag"] or "", row["alias_tag"] or "", False),
+                    ("ja" if filename_excluded else "", 1 if filename_excluded else 0, False),
+                    (self.format_number_cell(manual_score, decimals=2), manual_score if manual_score not in {"", None} else -999999, True),
+                    (self.format_number_cell(computed_score, decimals=2, empty="0"), computed_score, True),
+                    (self.format_number_cell(average_rating, decimals=1), average_rating if average_rating is not None else -1, True),
                 ]
 
-                for column, value in enumerate(values):
-                    item = QTableWidgetItem("" if value is None else str(value))
-                    item.setData(Qt.UserRole, row["tag"])
-                    if column in {2, 3, 4, 5, 8, 9, 10}:
-                        item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                    self.table.setItem(row_index, column, item)
+                for column, (display_value, sort_value, align_right) in enumerate(values):
+                    self.table.setItem(
+                        row_index,
+                        column,
+                        self.make_table_item(tag, display_value, sort_value=sort_value, align_right=align_right),
+                    )
+
+            self.apply_current_sort()
         finally:
             self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)
@@ -391,14 +468,27 @@ class TagTab(QWidget):
             # Defensive fallback: losing this cache update must not break the GUI.
             pass
 
+    def update_current_row_value_for_tag(self, tag: str, key: str, value: Any) -> None:
+        """Update current_rows by tag, independent from visible sort order."""
+        for row_index, row in enumerate(self.current_rows):
+            try:
+                if str(row["tag"]) != tag:
+                    continue
+            except Exception:
+                continue
+
+            self.update_current_row_value(row_index, key, value)
+            return
+
     def set_table_cell_text(self, row_index: int, column: int, tag: str, text: str, align_right: bool = False) -> None:
         item = self.table.item(row_index, column)
         if item is None:
-            item = QTableWidgetItem()
+            item = SortableTableWidgetItem()
             self.table.setItem(row_index, column, item)
 
         item.setData(Qt.UserRole, tag)
         item.setText(text)
+        item.setData(SortableTableWidgetItem.SORT_ROLE, text)
         if align_right:
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
@@ -411,7 +501,7 @@ class TagTab(QWidget):
                 if self.tag_from_item(tag_item) != tag:
                     continue
 
-                self.update_current_row_value(row_index, "alias_tag", alias)
+                self.update_current_row_value_for_tag(tag, "alias_tag", alias)
                 self.set_table_cell_text(row_index, 6, tag, alias)
                 return
         finally:
@@ -428,8 +518,11 @@ class TagTab(QWidget):
                 if self.tag_from_item(tag_item) != tag:
                     continue
 
-                self.update_current_row_value(row_index, "manual_score", score)
+                self.update_current_row_value_for_tag(tag, "manual_score", score)
                 self.set_table_cell_text(row_index, 8, tag, score_text, align_right=True)
+                item = self.table.item(row_index, 8)
+                if item is not None:
+                    item.setData(SortableTableWidgetItem.SORT_ROLE, score)
                 return
         finally:
             self.table.setUpdatesEnabled(True)

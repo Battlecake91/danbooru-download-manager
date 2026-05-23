@@ -254,11 +254,15 @@ class TypedTagListWidget(QWidget):
                 scoring_excluded = bool(meta.get("scoring_excluded", False))
                 average_text = "aus" if scoring_excluded else self._format_average_rating(meta.get("average_rating"))
                 display_text = tag
+                saved_count = int(meta.get("saved_count") or 0)
+                rejected_count = int(meta.get("rejected_count") or 0)
+                post_count = int(meta.get("post_count") or 0)
                 tooltip = (
                     f"Tag: {tag}\n"
                     f"Canonical/Alias: {canonical_text}\n"
                     f"LLM-Token: {llm_token_text or '-'}\n"
                     f"Score: {score_text}\n"
+                    f"Gespeichert/Abgelehnt: {saved_count}/{rejected_count} von {post_count} bekannten Posts\n"
                     f"Filename-Exclude: {'ja' if excluded else 'nein'}\n"
                     f"Scoring ausgeschlossen: {'ja' if scoring_excluded else 'nein'}\n"
                     f"Durchschnittliche Sterne: {average_text}"

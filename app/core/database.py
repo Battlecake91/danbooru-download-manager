@@ -58,6 +58,59 @@ def is_path_like_preview_search_term(term: str) -> bool:
     return any(marker in term for marker in ("/", "\\", "."))
 
 
+def clamp_number(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def calculate_computed_tag_score(
+    *,
+    average_rating: Any,
+    saved_count: int,
+    rejected_count: int,
+    scoring_excluded: bool = False,
+) -> float:
+    """Compute a conservative automatic tag score.
+
+    The score combines user stars and saved/rejected statistics, but heavily
+    dampens extremely common tags. Otherwise `1girl` would become a fake
+    villain just because it appears in almost everything. Computers love that
+    kind of statistical stupidity, so we put a fence around it.
+    """
+    if scoring_excluded:
+        return 0.0
+
+    sample_count = int(saved_count or 0) + int(rejected_count or 0)
+    star_signal = 0.0
+    if average_rating not in {None, "", "None"}:
+        try:
+            # 0..10 stars -> about -2.5..+2.5. Good/bad, but not a dictator.
+            star_signal = clamp_number((float(average_rating) - 5.0) / 2.0, -2.5, 2.5)
+        except (TypeError, ValueError):
+            star_signal = 0.0
+
+    accept_signal = 0.0
+    if sample_count >= 20:
+        accept_rate = (float(saved_count or 0) + 1.0) / (float(sample_count) + 2.0)
+        accept_signal = clamp_number((accept_rate - 0.5) * 10.0, -5.0, 5.0)
+
+        # Confidence grows with samples, but caps early. 20 samples are a hint,
+        # 100+ are usually enough.
+        confidence = clamp_number(sample_count / 100.0, 0.2, 1.0)
+
+        # Very common tags are usually weak predictors. If both sides have lots
+        # of examples, we damp the signal hard instead of letting generic tags
+        # like `1girl` bulldoze the result.
+        generic_damping = 1.0
+        if sample_count >= 1000 and saved_count >= 100 and rejected_count >= 100:
+            generic_damping = 0.25
+        elif sample_count >= 500 and saved_count >= 50 and rejected_count >= 50:
+            generic_damping = 0.45
+
+        accept_signal *= confidence * generic_damping
+
+    return round(clamp_number(star_signal + accept_signal, -5.0, 5.0), 2)
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -247,6 +300,24 @@ class Database:
         self.connection.executescript(schema)
         self.migrate_schema()
         self.create_safe_indexes()
+
+        stats_row = self.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("maintenance.tag_stats_initialized_1_3_42",),
+        ).fetchone()
+        if stats_row is None or str(stats_row["value"] or "") != "1":
+            self.refresh_all_tag_statistics()
+            self.execute(
+                """
+                INSERT INTO app_settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                ("maintenance.tag_stats_initialized_1_3_42", "1"),
+            )
+
         self.commit()
 
     def migrate_schema(self) -> None:
@@ -929,6 +1000,7 @@ class Database:
             (post_id, stars, decision),
         )
         self.execute("UPDATE posts SET reviewed_at = CURRENT_TIMESTAMP WHERE id = ?", (post_id,))
+        self.refresh_tag_statistics_for_post(post_id)
         self.commit()
 
     def set_post_status(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
@@ -974,6 +1046,7 @@ class Database:
             """,
             parameters,
         )
+        self.refresh_tag_statistics_for_post(post_id)
         self.commit()
 
     def move_thumbnail_to_bucket(self, post_id: int, target_dir: Path) -> str | None:
@@ -1080,7 +1153,7 @@ class Database:
 
                     COALESCE(ts.manual_score, '') AS manual_score,
                     COALESCE(ts.computed_score, 0) AS computed_score,
-                    COALESCE(ts.average_rating, '') AS average_rating,
+                    COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
                     COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
 
                     ta.alias_tag AS alias_tag,
@@ -1092,6 +1165,7 @@ class Database:
                 LEFT JOIN tag_scores ts ON ts.tag = pt.tag
                 LEFT JOIN tag_aliases ta ON ta.original_tag = pt.tag
                 LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+                LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
                 {where_sql}
                 GROUP BY pt.tag
                 ORDER BY post_count DESC, pt.tag ASC
@@ -1112,14 +1186,17 @@ class Database:
             f"""
             SELECT
                 pt.tag AS tag,
-                COALESCE(ts.manual_score, ts.computed_score, 0) AS score,
                 ts.manual_score AS manual_score,
-                COALESCE(ts.computed_score, 0) AS computed_score,
+                COALESCE(ts.computed_score, 0) AS stored_computed_score,
                 COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
                 CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
                 COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
-                COUNT(pr.stars) AS rating_count
+                COUNT(pr.stars) AS rating_count,
+                SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
+                SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                COUNT(DISTINCT pt.post_id) AS post_count
             FROM post_tags pt
+            JOIN posts p ON p.id = pt.post_id
             LEFT JOIN tag_scores ts ON ts.tag = pt.tag
             LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
             LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
@@ -1135,16 +1212,31 @@ class Database:
         for row in rows:
             tag = str(row["tag"] or "")
             identity = identities.get(normalize_tag_token(tag), {})
+            scoring_excluded = bool(row["scoring_excluded"])
+            saved_count = int(row["saved_count"] or 0)
+            rejected_count = int(row["rejected_count"] or 0)
+            computed_score = calculate_computed_tag_score(
+                average_rating=row["average_rating"],
+                saved_count=saved_count,
+                rejected_count=rejected_count,
+                scoring_excluded=scoring_excluded,
+            )
+            manual_score = row["manual_score"]
+            effective_score = 0.0 if scoring_excluded else (manual_score if manual_score is not None else computed_score)
             result[tag] = {
                 "canonical_tag": identity.get("canonical_tag", tag),
                 "llm_token": identity.get("llm_token", ""),
-                "score": row["score"],
-                "manual_score": row["manual_score"],
-                "computed_score": row["computed_score"],
-                "scoring_excluded": bool(row["scoring_excluded"]),
+                "score": effective_score,
+                "manual_score": manual_score,
+                "computed_score": computed_score,
+                "stored_computed_score": row["stored_computed_score"],
+                "scoring_excluded": scoring_excluded,
                 "filename_excluded": bool(row["filename_excluded"]),
                 "average_rating": row["average_rating"],
                 "rating_count": int(row["rating_count"] or 0),
+                "saved_count": saved_count,
+                "rejected_count": rejected_count,
+                "post_count": int(row["post_count"] or 0),
             }
         return result
 
@@ -1407,6 +1499,7 @@ class Database:
             """,
             (clean_tag, 1 if excluded else 0),
         )
+        self.refresh_tag_statistics_for_tags([clean_tag])
         self.commit()
 
     def scoring_excluded_tag_set(self) -> set[str]:
@@ -1414,6 +1507,121 @@ class Database:
             "SELECT tag FROM tag_scores WHERE COALESCE(scoring_excluded, 0) != 0"
         ).fetchall()
         return {str(row["tag"]) for row in rows}
+
+    def refresh_tag_statistics_for_tags(self, tags: Iterable[str]) -> None:
+        clean_tags = sorted({str(tag).strip() for tag in tags if str(tag).strip()})
+        if not clean_tags:
+            return
+
+        placeholders = ", ".join("?" for _ in clean_tags)
+        rows = self.execute(
+            f"""
+            SELECT
+                pt.tag AS tag,
+                SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
+                SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
+                COALESCE(ts.scoring_excluded, 0) AS scoring_excluded
+            FROM post_tags pt
+            JOIN posts p ON p.id = pt.post_id
+            LEFT JOIN tag_scores ts ON ts.tag = pt.tag
+            LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
+            WHERE pt.tag IN ({placeholders})
+            GROUP BY pt.tag
+            """,
+            clean_tags,
+        ).fetchall()
+
+        payload: list[tuple[str, float, int, int, float | None]] = []
+        for row in rows:
+            saved_count = int(row["saved_count"] or 0)
+            rejected_count = int(row["rejected_count"] or 0)
+            average_rating = row["average_rating"]
+            scoring_excluded = bool(row["scoring_excluded"])
+            computed_score = calculate_computed_tag_score(
+                average_rating=average_rating,
+                saved_count=saved_count,
+                rejected_count=rejected_count,
+                scoring_excluded=scoring_excluded,
+            )
+            payload.append((str(row["tag"]), computed_score, saved_count, rejected_count, average_rating))
+
+        if payload:
+            self.executemany(
+                """
+                INSERT INTO tag_scores (tag, computed_score, accepted_count, rejected_count, average_rating)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(tag) DO UPDATE SET
+                    computed_score = excluded.computed_score,
+                    accepted_count = excluded.accepted_count,
+                    rejected_count = excluded.rejected_count,
+                    average_rating = excluded.average_rating
+                """,
+                payload,
+            )
+
+    def refresh_tag_statistics_for_post(self, post_id: int) -> None:
+        rows = self.execute("SELECT tag FROM post_tags WHERE post_id = ?", (post_id,)).fetchall()
+        self.refresh_tag_statistics_for_tags([str(row["tag"]) for row in rows])
+
+
+    def refresh_all_tag_statistics(self) -> None:
+        """Refresh cached tag statistics from posts/reviews.
+
+        The viewer computes fresh values on demand anyway. This cache refresh is
+        useful for the Tag tab and exports, because stale counters are the sort
+        of tiny lie that later turns into a debugging afternoon.
+        """
+        rows = self.execute(
+            """
+            SELECT
+                pt.tag AS tag,
+                SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
+                SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
+                COALESCE(ts.scoring_excluded, 0) AS scoring_excluded
+            FROM post_tags pt
+            JOIN posts p ON p.id = pt.post_id
+            LEFT JOIN tag_scores ts ON ts.tag = pt.tag
+            LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
+            GROUP BY pt.tag
+            """
+        ).fetchall()
+
+        payload: list[tuple[str, float, int, int, float | None]] = []
+        for row in rows:
+            saved_count = int(row["saved_count"] or 0)
+            rejected_count = int(row["rejected_count"] or 0)
+            average_rating = row["average_rating"]
+            scoring_excluded = bool(row["scoring_excluded"])
+            computed_score = calculate_computed_tag_score(
+                average_rating=average_rating,
+                saved_count=saved_count,
+                rejected_count=rejected_count,
+                scoring_excluded=scoring_excluded,
+            )
+            payload.append((
+                str(row["tag"]),
+                computed_score,
+                saved_count,
+                rejected_count,
+                average_rating,
+            ))
+
+        if payload:
+            self.executemany(
+                """
+                INSERT INTO tag_scores (tag, computed_score, accepted_count, rejected_count, average_rating)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(tag) DO UPDATE SET
+                    computed_score = excluded.computed_score,
+                    accepted_count = excluded.accepted_count,
+                    rejected_count = excluded.rejected_count,
+                    average_rating = excluded.average_rating
+                """,
+                payload,
+            )
+            self.commit()
 
 
     # ------------------------------------------------------------------
