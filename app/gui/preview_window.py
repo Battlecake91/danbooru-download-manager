@@ -29,6 +29,8 @@ from app.gui.image_viewer import ImageViewerWindow
 from app.gui.icon_utils import ensure_app_icon
 from app.gui.fetch_tab import TagQueryLineEdit
 from app.gui.thumbnail_grid import ThumbnailGrid
+from app.danbooru.api import DanbooruApi
+from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 
 
@@ -164,6 +166,11 @@ class PreviewWindow(QMainWindow):
         self.reload_button.clicked.connect(self.reload_posts)
         self.toolbar.addWidget(self.reload_button)
 
+        self.reload_thumbnails_button = QPushButton("Thumbnail neu laden")
+        self.reload_thumbnails_button.setToolTip("Lädt die Thumbnails der ausgewählten Posts neu. Hilft gegen graue Platzhalter, dieser digitale Schimmel.")
+        self.reload_thumbnails_button.clicked.connect(self.reload_selected_thumbnails)
+        self.toolbar.addWidget(self.reload_thumbnails_button)
+
         self.fetch_status_label = QLabel("Fetch läuft…")
         self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
         self.fetch_status_label.setStyleSheet(
@@ -289,6 +296,7 @@ class PreviewWindow(QMainWindow):
         self.grid.open_viewer_requested.connect(self.open_viewer)
         self.grid.final_save_requested.connect(self.final_save_posts)
         self.grid.category_assign_requested.connect(self.assign_category_to_posts)
+        self.grid.thumbnail_reload_requested.connect(self.reload_thumbnails_for_posts)
         self.grid.build_started.connect(self.on_grid_build_started)
         self.grid.build_progress.connect(self.on_grid_build_progress)
         self.grid.build_finished.connect(self.on_grid_build_finished)
@@ -940,6 +948,10 @@ class PreviewWindow(QMainWindow):
                     p.fav_count,
                     p.thumbnail_path,
                     p.rejected_thumbnail_path,
+                    p.file_url,
+                    p.large_file_url,
+                    p.preview_url,
+                    p.file_ext,
                     p.parent_id,
                     p.has_children,
                     p.status,
@@ -996,6 +1008,106 @@ class PreviewWindow(QMainWindow):
                 parameters,
             ).fetchall()
         )
+
+    # -------------------------------------------------------------------------
+    # Thumbnail-Reparatur aus Preview
+    # -------------------------------------------------------------------------
+
+    def reload_selected_thumbnails(self) -> None:
+        post_ids = self.grid.selected_or_current_post_ids()
+        self.reload_thumbnails_for_posts(post_ids)
+
+    def reload_thumbnails_for_posts(self, post_ids: list[int]) -> None:
+        clean_ids = [int(post_id) for post_id in post_ids if post_id]
+        if not clean_ids:
+            self.status_bar.showMessage("Thumbnail neu laden: kein Post ausgewählt.", 4000)
+            return
+
+        self.reload_thumbnails_button.setEnabled(False)
+        self.status_bar.showMessage(f"Lade {len(clean_ids)} Thumbnail(s) neu…")
+        QApplication.processEvents()
+
+        api = DanbooruApi(self.config)
+        cache = ThumbnailCache(self.config, api.session)
+        updated = 0
+        failed: list[str] = []
+
+        try:
+            for post_id in clean_ids:
+                try:
+                    post = self.thumbnail_post_payload_from_db(post_id)
+                    thumbnail_path = cache.cache_thumbnail(post, force=True)
+                    if not thumbnail_path:
+                        failed.append(str(post_id))
+                        continue
+
+                    self.db.execute(
+                        "UPDATE posts SET thumbnail_path = ? WHERE id = ?",
+                        (thumbnail_path, post_id),
+                    )
+                    self.db.commit()
+                    self.grid.update_card_thumbnail(post_id, thumbnail_path)
+                    updated += 1
+                except Exception as exc:  # noqa: BLE001
+                    failed.append(f"{post_id}: {exc}")
+        finally:
+            self.reload_thumbnails_button.setEnabled(True)
+
+        if failed:
+            self.status_bar.showMessage(
+                f"Thumbnails neu geladen: {updated}, Fehler: {len(failed)}",
+                8000,
+            )
+            QMessageBox.warning(
+                self,
+                "Thumbnail neu laden",
+                "Einige Thumbnails konnten nicht neu geladen werden:\n" + "\n".join(failed[:12]),
+            )
+        else:
+            self.status_bar.showMessage(f"Thumbnails neu geladen: {updated}", 5000)
+
+    def thumbnail_post_payload_from_db(self, post_id: int) -> dict[str, Any]:
+        row = self.db.execute(
+            """
+            SELECT id, file_url, large_file_url, preview_url, file_ext
+            FROM posts
+            WHERE id = ?
+            """,
+            (int(post_id),),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(f"Post {post_id} nicht in der DB")
+
+        post = {
+            "id": int(row["id"]),
+            "file_url": row["file_url"],
+            "large_file_url": row["large_file_url"],
+            "preview_file_url": row["preview_url"],
+            "file_ext": row["file_ext"],
+        }
+
+        if not (post["file_url"] or post["large_file_url"] or post["preview_file_url"]):
+            # Alte DB-Zeilen können kaputte/fehlende URLs haben. Dann holen wir
+            # den Post frisch nach. Manchmal muss man Daten eben nochmal fragen,
+            # weil sie sich beim ersten Mal dumm gestellt haben.
+            post = api_post = DanbooruApi(self.config).get_post(int(post_id))
+            self.db.execute(
+                """
+                UPDATE posts
+                SET file_url = ?, large_file_url = ?, preview_url = ?, file_ext = ?
+                WHERE id = ?
+                """,
+                (
+                    api_post.get("file_url"),
+                    api_post.get("large_file_url"),
+                    api_post.get("preview_file_url"),
+                    api_post.get("file_ext"),
+                    int(post_id),
+                ),
+            )
+            self.db.commit()
+
+        return post
 
     # -------------------------------------------------------------------------
     # Final speichern aus Preview

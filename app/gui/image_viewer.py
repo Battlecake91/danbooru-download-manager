@@ -1185,6 +1185,27 @@ class ImageViewerWindow(QMainWindow):
             )
             menu.addAction(remove_exclude_action)
 
+        scoring_state = self.scoring_exclude_state(frozen_tags)
+        if scoring_state in {"none", "mixed"}:
+            add_scoring_exclude_action = QAction("Vom Tag-Scoring ausschließen", menu)
+            add_scoring_exclude_action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+                    0,
+                    lambda: self.safe_tag_action(lambda: self.set_tags_scoring_excluded(t, True)),
+                )
+            )
+            menu.addAction(add_scoring_exclude_action)
+
+        if scoring_state in {"all", "mixed"}:
+            remove_scoring_exclude_action = QAction("Scoring-Ausschluss entfernen", menu)
+            remove_scoring_exclude_action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+                    0,
+                    lambda: self.safe_tag_action(lambda: self.set_tags_scoring_excluded(t, False)),
+                )
+            )
+            menu.addAction(remove_scoring_exclude_action)
+
         menu.addSeparator()
 
         alias_action = QAction("Alias bearbeiten", menu)
@@ -1264,6 +1285,23 @@ class ImageViewerWindow(QMainWindow):
         if count == len(tags):
             return "all"
         return "mixed"
+
+    def scoring_exclude_state(self, tags: list[str]) -> str:
+        excluded = self.db.scoring_excluded_tag_set()
+        count = sum(1 for tag in tags if tag in excluded)
+
+        if count == 0:
+            return "none"
+        if count == len(tags):
+            return "all"
+        return "mixed"
+
+    def set_tags_scoring_excluded(self, tags: list[str], excluded: bool) -> None:
+        for tag in tags:
+            self.db.set_tag_scoring_excluded(tag, excluded)
+
+        if self.current_post_id is not None:
+            self.populate_tag_lists(self.current_post_id)
 
     def add_tags_to_filename_exclude(self, tags: list[str], show_message: bool = True) -> None:
         for tag in tags:

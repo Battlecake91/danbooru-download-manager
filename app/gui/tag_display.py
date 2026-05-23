@@ -248,13 +248,15 @@ class TypedTagListWidget(QWidget):
                 meta = self._tag_metadata.get(tag, {})
                 score_text = self._format_score(meta.get("score"))
                 excluded = bool(meta.get("filename_excluded", tag in self._filename_excluded_tags))
-                excluded_text = "ja" if excluded else "nein"
-                average_text = self._format_average_rating(meta.get("average_rating"))
+                excluded_text = "✓" if excluded else "–"
+                scoring_excluded = bool(meta.get("scoring_excluded", False))
+                average_text = "aus" if scoring_excluded else self._format_average_rating(meta.get("average_rating"))
                 display_text = tag
                 tooltip = (
                     f"Tag: {tag}\n"
                     f"Score: {score_text}\n"
-                    f"Filename-Exclude: {excluded_text}\n"
+                    f"Filename-Exclude: {'ja' if excluded else 'nein'}\n"
+                    f"Scoring ausgeschlossen: {'ja' if scoring_excluded else 'nein'}\n"
                     f"Durchschnittliche Sterne: {average_text}"
                 )
                 meta_item_widget = self._create_detail_row_widget(
@@ -306,15 +308,15 @@ class TypedTagListWidget(QWidget):
 
         columns = (
             ("S:", score_text, 58, "Score"),
-            ("✖:", excluded_text, 64, "Filename-Exclude"),
-            ("⌀☆:", average_text, 72, "Durchschnittliche Sterne"),
+            ("✖:", excluded_text, 50, "Filename-Exclude"),
+            ("⌀☆:", average_text, 76, "Durchschnittliche Sterne / aus = aus Scoring ausgeschlossen"),
         )
         for prefix, value, width, tooltip in columns:
             label = QLabel(f"{prefix} {value}")
             label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             label.setFixedWidth(width)
             label.setToolTip(tooltip)
-            label.setStyleSheet("color: #dddddd;")
+            label.setStyleSheet("color: #dddddd; font-family: Consolas, 'DejaVu Sans Mono', monospace;")
             row_layout.addWidget(label)
 
         row.setStyleSheet("background: transparent;")

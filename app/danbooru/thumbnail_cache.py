@@ -19,7 +19,7 @@ class ThumbnailCache:
         self.source = str(config.get("thumbnail_download_source", "large")).lower()
         self.redownload_existing = bool(config.get("thumbnail_redownload_existing", False))
 
-    def cache_thumbnail(self, post: dict[str, Any]) -> str | None:
+    def cache_thumbnail(self, post: dict[str, Any], force: bool = False) -> str | None:
         post_id = post.get("id")
         if post_id is None:
             return None
@@ -34,7 +34,7 @@ class ThumbnailCache:
 
         target = self.thumbnail_dir / f"{post_id}_{source_label}{ext}"
 
-        if target.exists() and target.stat().st_size > 0 and not self.redownload_existing:
+        if target.exists() and target.stat().st_size > 0 and not self.redownload_existing and not force:
             return str(target)
 
         part = target.with_suffix(target.suffix + ".part")

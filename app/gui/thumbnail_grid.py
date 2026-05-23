@@ -75,12 +75,22 @@ def cached_scaled_pixmap(path_text: str, size: int) -> QPixmap | None:
     return QPixmap(scaled)
 
 
+def clear_cached_pixmap_for_path(path_text: str) -> None:
+    if not path_text:
+        return
+    path = str(Path(path_text))
+    for key in list(PIXMAP_CACHE.keys()):
+        if key[0] == path:
+            PIXMAP_CACHE.pop(key, None)
+
+
 class ThumbnailGrid(QScrollArea):
     status_changed = Signal(int, str)
     request_reload = Signal()
     open_viewer_requested = Signal(int)
     final_save_requested = Signal(list)
     category_assign_requested = Signal(list, str)
+    thumbnail_reload_requested = Signal(list)
     build_started = Signal(int)
     build_progress = Signal(int, int)
     build_finished = Signal(int)
@@ -326,6 +336,7 @@ class ThumbnailGrid(QScrollArea):
                     card.double_clicked.connect(self.open_viewer_requested.emit)
                     card.final_save_requested.connect(lambda post_id: self.final_save_requested.emit([int(post_id)]))
                     card.category_assign_requested.connect(self.on_card_category_assign_requested)
+                    card.thumbnail_reload_requested.connect(self.on_card_thumbnail_reload_requested)
                     self.items.append(card)
 
                     index = len(self.items) - 1
@@ -365,6 +376,13 @@ class ThumbnailGrid(QScrollArea):
         self.updateGeometry()
         self.update()
         self.build_finished.emit(len(self.items))
+
+    def on_card_thumbnail_reload_requested(self, post_id: int) -> None:
+        if post_id in self.selected_ids and len(self.selected_ids) > 1:
+            post_ids = self.selected_or_current_post_ids()
+        else:
+            post_ids = [int(post_id)]
+        self.thumbnail_reload_requested.emit(post_ids)
 
     def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:
         if post_id in self.selected_ids and len(self.selected_ids) > 1:
@@ -415,6 +433,12 @@ class ThumbnailGrid(QScrollArea):
         for card in self.items:
             if card.post_id == post_id:
                 card.apply_external_category(category_name, source)
+                break
+
+    def update_card_thumbnail(self, post_id: int, thumbnail_path: str) -> None:
+        for card in self.items:
+            if card.post_id == int(post_id):
+                card.update_thumbnail_path(thumbnail_path)
                 break
 
     def current_card(self) -> "ThumbnailCard | None":
@@ -620,6 +644,7 @@ class ThumbnailCard(QFrame):
     double_clicked = Signal(int)
     final_save_requested = Signal(int)
     category_assign_requested = Signal(int, str)
+    thumbnail_reload_requested = Signal(int)
 
     def __init__(
         self,
@@ -809,6 +834,16 @@ class ThumbnailCard(QFrame):
                 "QLabel { color: #cccccc; }"
             )
 
+    def update_thumbnail_path(self, thumbnail_path: str) -> None:
+        if isinstance(self.row, dict):
+            self.row["thumbnail_path"] = thumbnail_path
+        else:
+            self.row = dict(self.row)
+            self.row["thumbnail_path"] = thumbnail_path
+        clear_cached_pixmap_for_path(thumbnail_path)
+        self.image_label.setPixmap(self.load_pixmap())
+        self.image_label.update()
+
     def load_pixmap(self) -> QPixmap:
         candidates = [
             self.value("thumbnail_path"),
@@ -876,6 +911,10 @@ class ThumbnailCard(QFrame):
         open_viewer_action = QAction("Bildbetrachter öffnen (Enter/Doppelklick)", self)
         open_viewer_action.triggered.connect(lambda: self.double_clicked.emit(self.post_id))
         menu.addAction(open_viewer_action)
+
+        reload_thumbnail_action = QAction("Thumbnail neu laden", self)
+        reload_thumbnail_action.triggered.connect(lambda: self.thumbnail_reload_requested.emit(self.post_id))
+        menu.addAction(reload_thumbnail_action)
 
         final_save_action = QAction("Final speichern (F)", self)
         final_save_action.triggered.connect(lambda: self.final_save_requested.emit(self.post_id))

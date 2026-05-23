@@ -553,12 +553,16 @@ class ConfigTab(QWidget):
             ).fetchall()
         ]
         tag_scores = [
-            {"tag": row["tag"], "manual_score": row["manual_score"]}
+            {
+                "tag": row["tag"],
+                "manual_score": row["manual_score"],
+                "scoring_excluded": bool(row["scoring_excluded"]),
+            }
             for row in self.db.execute(
                 """
-                SELECT tag, manual_score
+                SELECT tag, manual_score, COALESCE(scoring_excluded, 0) AS scoring_excluded
                 FROM tag_scores
-                WHERE manual_score IS NOT NULL
+                WHERE manual_score IS NOT NULL OR COALESCE(scoring_excluded, 0) != 0
                 ORDER BY tag COLLATE NOCASE ASC
                 """
             ).fetchall()
@@ -668,7 +672,11 @@ class ConfigTab(QWidget):
 
             for item in payload.get("tag_scores", []) or []:
                 if isinstance(item, dict) and item.get("tag"):
-                    self.db.set_tag_manual_score(str(item["tag"]), item.get("manual_score"))
+                    tag = str(item["tag"])
+                    if "manual_score" in item:
+                        self.db.set_tag_manual_score(tag, item.get("manual_score"))
+                    if "scoring_excluded" in item:
+                        self.db.set_tag_scoring_excluded(tag, bool(item.get("scoring_excluded")))
 
             for item in payload.get("fetch_presets", []) or []:
                 if isinstance(item, dict) and item.get("name"):

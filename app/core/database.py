@@ -202,7 +202,8 @@ class Database:
             computed_score REAL DEFAULT 0,
             accepted_count INTEGER DEFAULT 0,
             rejected_count INTEGER DEFAULT 0,
-            average_rating REAL DEFAULT NULL
+            average_rating REAL DEFAULT NULL,
+            scoring_excluded INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS post_reviews (
@@ -243,6 +244,7 @@ class Database:
         self.add_column_if_missing("posts", "selected_at", "TEXT")
         self.add_column_if_missing("posts", "rejected_at", "TEXT")
         self.add_column_if_missing("posts", "already_known_at", "TEXT")
+        self.add_column_if_missing("tag_scores", "scoring_excluded", "INTEGER DEFAULT 0")
         self.migrate_personal_rating_to_0_10()
         self.migrate_legacy_statuses()
 
@@ -1062,6 +1064,7 @@ class Database:
                     COALESCE(ts.manual_score, '') AS manual_score,
                     COALESCE(ts.computed_score, 0) AS computed_score,
                     COALESCE(ts.average_rating, '') AS average_rating,
+                    COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
 
                     ta.alias_tag AS alias_tag,
 
@@ -1095,6 +1098,7 @@ class Database:
                 COALESCE(ts.manual_score, ts.computed_score, 0) AS score,
                 ts.manual_score AS manual_score,
                 COALESCE(ts.computed_score, 0) AS computed_score,
+                COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
                 CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
                 COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
                 COUNT(pr.stars) AS rating_count
@@ -1115,6 +1119,7 @@ class Database:
                 "score": row["score"],
                 "manual_score": row["manual_score"],
                 "computed_score": row["computed_score"],
+                "scoring_excluded": bool(row["scoring_excluded"]),
                 "filename_excluded": bool(row["filename_excluded"]),
                 "average_rating": row["average_rating"],
                 "rating_count": int(row["rating_count"] or 0),
@@ -1202,6 +1207,27 @@ class Database:
             (clean_tag, score),
         )
         self.commit()
+
+    def set_tag_scoring_excluded(self, tag: str, excluded: bool = True) -> None:
+        clean_tag = tag.strip()
+        if not clean_tag:
+            return
+
+        self.execute(
+            """
+            INSERT INTO tag_scores (tag, scoring_excluded)
+            VALUES (?, ?)
+            ON CONFLICT(tag) DO UPDATE SET scoring_excluded = excluded.scoring_excluded
+            """,
+            (clean_tag, 1 if excluded else 0),
+        )
+        self.commit()
+
+    def scoring_excluded_tag_set(self) -> set[str]:
+        rows = self.execute(
+            "SELECT tag FROM tag_scores WHERE COALESCE(scoring_excluded, 0) != 0"
+        ).fetchall()
+        return {str(row["tag"]) for row in rows}
 
 
     # ------------------------------------------------------------------
