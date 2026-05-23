@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+    QProgressBar,
 )
 
 from app.core.database import Database
@@ -122,6 +123,68 @@ class ThumbnailGrid(QScrollArea):
         self.viewport().setAutoFillBackground(True)
         self.container.setAutoFillBackground(True)
         self.empty_label: QLabel | None = None
+        self.loading_widget: QFrame | None = None
+        self.loading_label: QLabel | None = None
+
+
+    def show_loading_message(self, message: str = "Lädt Preview…") -> None:
+        if self.loading_widget is not None:
+            if self.loading_label is not None:
+                self.loading_label.setText(message)
+            self.loading_widget.show()
+            self.viewport().update()
+            self.update()
+            return
+
+        self.hide_empty_message()
+
+        box = QFrame()
+        box.setObjectName("previewLoadingBox")
+        box.setMinimumHeight(260)
+        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        box.setStyleSheet(
+            "QFrame#previewLoadingBox { "
+            "border: 1px solid #555; border-radius: 10px; "
+            "background: rgba(30, 30, 30, 0.96); "
+            "}"
+        )
+
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(36, 36, 36, 36)
+        layout.setSpacing(16)
+        layout.addStretch(1)
+
+        label = QLabel(message)
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("QLabel { color: #e0e0e0; font-size: 18px; font-weight: 600; }")
+        layout.addWidget(label)
+
+        progress = QProgressBar()
+        progress.setRange(0, 0)
+        progress.setTextVisible(False)
+        progress.setMinimumHeight(18)
+        progress.setMaximumWidth(420)
+        progress.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        layout.addWidget(progress, 0, Qt.AlignHCenter)
+
+        layout.addStretch(1)
+
+        self.loading_widget = box
+        self.loading_label = label
+        self.layout.addWidget(box, 0, 0, 1, max(1, self.columns))
+        self.viewport().update()
+        self.update()
+
+    def hide_loading_message(self) -> None:
+        if self.loading_widget is None:
+            return
+
+        widget = self.loading_widget
+        self.loading_widget = None
+        self.loading_label = None
+        self.layout.removeWidget(widget)
+        widget.setParent(None)
+        widget.deleteLater()
 
     def show_empty_message(self, message: str = "Keine Posts in dieser Ansicht.") -> None:
         if self.empty_label is not None:
@@ -150,7 +213,7 @@ class ThumbnailGrid(QScrollArea):
         label.deleteLater()
 
     def has_visible_content(self) -> bool:
-        return bool(self.items or self._pending_rows or self.empty_label is not None)
+        return bool(self.items or self._pending_rows or self.empty_label is not None or self.loading_widget is not None)
 
     def resizeEvent(self, event) -> None:  # noqa: ANN001
         super().resizeEvent(event)
@@ -184,6 +247,7 @@ class ThumbnailGrid(QScrollArea):
         self._build_generation += 1
         self._pending_rows = []
         self.hide_empty_message()
+        self.hide_loading_message()
 
         while self.layout.count():
             item = self.layout.takeAt(0)

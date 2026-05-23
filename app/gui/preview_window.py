@@ -5,6 +5,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QLabel,
@@ -133,6 +134,7 @@ class PreviewWindow(QMainWindow):
         self._reload_pending = False
         self._syncing_status_checkboxes = False
         self._fetch_running = False
+        self._has_loaded_once = False
 
         self.status_checkboxes: dict[str, QCheckBox] = {}
         self.category_rule_cache: list[dict[str, Any]] = []
@@ -309,14 +311,20 @@ class PreviewWindow(QMainWindow):
         self.update()
 
     def on_tab_activated(self) -> None:
-        # Wenn der Tab ohne vorhandene Posts geöffnet wird, muss der Preview-Bereich
-        # trotzdem aktiv etwas zeichnen. Sonst zeigt Qt in manchen Styles den zuletzt
-        # sichtbaren Tab-Inhalt weiter an. Natürlich tut es das. Warum auch nicht.
-        if not self.grid.has_visible_content():
+        # Wenn der Preview-Tab erstmals sichtbar wird, muss sofort etwas Deckendes
+        # gemalt werden. Sonst zeigt Qt je nach Timing noch den vorherigen Tab-Inhalt,
+        # während im Hintergrund DB-Abfragen und Thumbnail-Aufbau laufen. Natürlich.
+        if self._is_reloading or self.grid._pending_rows:
+            self.grid.show_loading_message("Lädt Preview…")
+        elif not self._has_loaded_once:
+            self.grid.show_loading_message("Lädt Preview…")
+            self.schedule_reload()
+        elif not self.grid.has_visible_content():
             if self._fetch_running:
                 self.grid.show_empty_message("Fetch läuft… Noch keine Posts in dieser Ansicht.")
             else:
                 self.grid.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
+
         self.grid.viewport().update()
         self.grid.update()
         self.update()
@@ -623,6 +631,9 @@ class PreviewWindow(QMainWindow):
 
         self.reload_timer.stop()
         self._is_reloading = True
+        self.grid.show_loading_message("Lädt Preview…")
+        self.status_bar.showMessage("Lädt Preview…")
+        QApplication.processEvents()
 
         try:
             statuses = self.selected_statuses()
@@ -653,6 +664,7 @@ class PreviewWindow(QMainWindow):
             total = len(filtered)
 
             self.grid.set_posts(posts)
+            self._has_loaded_once = True
 
             status_text = self.status_filter_description(statuses)
             category_text = self.category_filter.currentText()
