@@ -7,7 +7,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QStringListModel
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QStringListModel, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -85,9 +85,10 @@ class FetchWorker(QObject):
 class TagQueryLineEdit(QLineEdit):
     """Line edit with Danbooru-tag completion for the current token.
 
-    Qt can autocomplete a whole line easily. Autocompleting only the current
-    tag takes a tiny custom widget, because apparently even text boxes need a
-    personality disorder now.
+    Tags are separated by whitespace. A leading '-' belongs to the current
+    token and is preserved when a completion is inserted. Qt's normal QLineEdit
+    completion only understands the whole line, because naturally the useful
+    case is the one it does not do by itself.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -95,50 +96,72 @@ class TagQueryLineEdit(QLineEdit):
         self._all_tags: list[str] = []
         self._model = QStringListModel(self)
         self._completer = QCompleter(self._model, self)
+        self._completer.setWidget(self)
         self._completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self._completer.setCompletionMode(QCompleter.PopupCompletion)
         self._completer.setFilterMode(Qt.MatchContains)
         self._completer.activated.connect(self.insert_completion)
-        self.setCompleter(self._completer)
-        self.textEdited.connect(self.update_completion_prefix)
+        self.textEdited.connect(self.schedule_completion_update)
 
     def set_tag_suggestions(self, tags: list[str]) -> None:
-        self._all_tags = sorted(set(tags), key=str.lower)
-        self._model.setStringList(self._all_tags)
+        self._all_tags = sorted({tag for tag in tags if tag}, key=str.lower)
+        self.update_completion_popup()
 
-    def current_token(self) -> str:
+    def keyPressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().keyPressEvent(event)
+        QTimer.singleShot(0, self.update_completion_popup)
+
+    def focusOutEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        self._completer.popup().hide()
+        super().focusOutEvent(event)
+
+    def schedule_completion_update(self, *_args: Any) -> None:
+        QTimer.singleShot(0, self.update_completion_popup)
+
+    def current_token_bounds(self) -> tuple[int, int, str, str]:
         text = self.text()
         cursor = self.cursorPosition()
         left = text[:cursor]
         match = re.search(r"([^\s()]+)$", left)
         if not match:
-            return ""
-        token = match.group(1)
-        return token[1:] if token.startswith("-") else token
+            return cursor, cursor, "", ""
 
-    def update_completion_prefix(self, *_args: Any) -> None:
+        start = match.start(1)
+        token = match.group(1)
+        prefix = "-" if token.startswith("-") else ""
+        clean_token = token[1:] if prefix else token
+        return start, cursor, prefix, clean_token
+
+    def current_token(self) -> str:
+        _start, _end, _prefix, token = self.current_token_bounds()
+        return token
+
+    def update_completion_popup(self) -> None:
         token = self.current_token()
-        self._completer.setCompletionPrefix(token)
-        if len(token) >= 2:
-            self._completer.complete()
+        if len(token) < 2 or not self.hasFocus():
+            self._completer.popup().hide()
+            return
+
+        token_lower = token.lower()
+        matches = [tag for tag in self._all_tags if token_lower in tag.lower()]
+        matches = matches[:150]
+
+        if not matches:
+            self._completer.popup().hide()
+            return
+
+        self._model.setStringList(matches)
+        self._completer.setCompletionPrefix("")
+        self._completer.complete(self.cursorRect())
 
     @Slot(str)
     def insert_completion(self, completion: str) -> None:
         text = self.text()
-        cursor = self.cursorPosition()
-        left = text[:cursor]
-        right = text[cursor:]
-        match = re.search(r"([^\s()]+)$", left)
-        if not match:
-            insert = completion + " "
-            self.insert(insert)
-            return
-
-        start = match.start(1)
-        old_token = match.group(1)
-        prefix = "-" if old_token.startswith("-") else ""
-        new_left = left[:start] + prefix + completion + " "
-        self.setText(new_left + right)
-        self.setCursorPosition(len(new_left))
+        start, end, prefix, _token = self.current_token_bounds()
+        new_text = text[:start] + prefix + completion + " " + text[end:]
+        self.setText(new_text)
+        self.setCursorPosition(start + len(prefix) + len(completion) + 1)
+        self._completer.popup().hide()
 
 
 class RatingTriStateBox(QCheckBox):
@@ -170,10 +193,8 @@ class RatingTriStateBox(QCheckBox):
         self.update_label()
 
     def update_label(self, *_args: Any) -> None:
-        state = self.rating_state()
-        marker = {RATING_STATE_INCLUDE: "✓", RATING_STATE_EXCLUDE: "−", RATING_STATE_IGNORE: " "}[state]
-        self.setText(f"[{marker}] {self.base_label}")
-        self.setToolTip("Klickfolge: ignorieren → einschließen → ausschließen. Ja, drei Zustände, weil zwei natürlich zu einfach wären.")
+        self.setText(self.base_label)
+        self.setToolTip("Klickfolge: leer = ignorieren, Haken = einschließen, Strich = ausschließen.")
 
 
 class FetchTab(QWidget):
