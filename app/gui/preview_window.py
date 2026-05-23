@@ -139,6 +139,7 @@ class PreviewWindow(QMainWindow):
         self._syncing_status_checkboxes = False
         self._fetch_running = False
         self._has_loaded_once = False
+        self._filters_dirty = True
 
         self.status_checkboxes: dict[str, QCheckBox] = {}
         self.category_rule_cache: list[dict[str, Any]] = []
@@ -426,10 +427,39 @@ class PreviewWindow(QMainWindow):
         self.grid.update()
         self.update()
 
+    def preview_needs_reload(self) -> bool:
+        if self._is_reloading or self._reload_pending:
+            return True
+        if self._filters_dirty or not self._has_loaded_once:
+            return True
+        if not self.grid.items and not self.grid.current_posts:
+            return True
+        return False
+
+    def show_preview_grid_without_reload(self) -> None:
+        self.content_stack.setCurrentWidget(self.grid)
+        self.grid.setVisible(True)
+        self.grid.viewport().setVisible(True)
+        self.grid.container.setVisible(True)
+        self.grid.update_columns()
+        if self.grid.items:
+            self.grid.relayout()
+        self.grid.viewport().update()
+        self.grid.container.update()
+        self.grid.update()
+        self.content_stack.update()
+        self.main_widget.update()
+        self.update()
+
     def on_tab_activated(self) -> None:
-        # Beim Tabwechsel sofort eine deckende Ladefläche zeigen und den echten
-        # Reload erst im nächsten Event starten. Direktes Laden im Tabwechsel lässt
-        # Qt gern den alten Fetch-Tab weiterzeichnen. Sehr erwachsen.
+        # Nicht mehr bei jedem Tabwechsel stumpf neu laden. Wenn schon gültige
+        # Thumbnails da sind, werden sie nur wieder eingeblendet. Reload nur bei
+        # erstem Öffnen oder geänderten Filtern. Revolutionär: nicht unnötig arbeiten.
+        if not self.preview_needs_reload():
+            self.show_preview_grid_without_reload()
+            self.status_bar.showMessage("Preview bereit.", 3000)
+            return
+
         self.show_preview_loading("Lädt Preview…")
         self.content_stack.setCurrentWidget(self.loading_panel)
         self.loading_panel.raise_()
@@ -707,6 +737,7 @@ class PreviewWindow(QMainWindow):
     # -------------------------------------------------------------------------
 
     def on_passive_filter_changed(self, *_args) -> None:
+        self._filters_dirty = True
         self.status_bar.showMessage("Filter geändert. Klicke auf Neu laden oder drücke Enter im Such-/Limit-Feld.", 4000)
 
     def schedule_reload(self, *_args) -> None:
@@ -778,6 +809,7 @@ class PreviewWindow(QMainWindow):
 
             self.grid.set_posts(posts)
             self._has_loaded_once = True
+            self._filters_dirty = False
 
             status_text = self.status_filter_description(statuses)
             category_text = self.category_filter.currentText()

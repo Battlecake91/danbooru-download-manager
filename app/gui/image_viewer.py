@@ -645,9 +645,12 @@ class ImageViewerWindow(QMainWindow):
         self.refresh_image()
 
     def populate_tag_lists(self, post_id: int) -> None:
+        typed_tags = typed_tags_for_post(self.db, post_id)
+        all_tags = [tag for tags in typed_tags.values() for tag in tags]
         self.tags_widget.set_typed_tags(
-            typed_tags_for_post(self.db, post_id),
+            typed_tags,
             filename_excluded_tags=self.db.filename_excluded_tag_set(),
+            tag_metadata=self.db.fetch_tag_metadata(all_tags),
         )
 
 

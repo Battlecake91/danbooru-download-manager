@@ -4,7 +4,7 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget
 
 TAG_TYPE_LABELS = {
     "artist": "Artist",
@@ -121,6 +121,7 @@ class TypedTagListWidget(QWidget):
         self.group_widgets: dict[str, QWidget] = {}
         self._typed_tags: dict[str, list[str]] = {"artist": [], "character": [], "copyright": [], "meta": [], "general": []}
         self._filename_excluded_tags: set[str] = set()
+        self._tag_metadata: dict[str, dict[str, Any]] = {}
 
         self.identity_group = QWidget()
         self.identity_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -204,7 +205,12 @@ class TypedTagListWidget(QWidget):
         )
         return list_widget
 
-    def set_typed_tags(self, typed_tags: dict[str, list[str]], filename_excluded_tags: set[str] | None = None) -> None:
+    def set_typed_tags(
+        self,
+        typed_tags: dict[str, list[str]],
+        filename_excluded_tags: set[str] | None = None,
+        tag_metadata: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         self._typed_tags = {
             "artist": list(typed_tags.get("artist", [])),
             "character": list(typed_tags.get("character", [])),
@@ -213,6 +219,7 @@ class TypedTagListWidget(QWidget):
             "general": list(typed_tags.get("general", [])),
         }
         self._filename_excluded_tags = set(filename_excluded_tags or set())
+        self._tag_metadata = dict(tag_metadata or {})
         self._refresh_all_lists()
 
     def _visible_tags_for_type(self, tag_type: str) -> list[str]:
@@ -230,11 +237,110 @@ class TypedTagListWidget(QWidget):
         list_widget = self.lists[tag_type]
         list_widget.clear()
         for tag in tags:
-            item = QListWidgetItem(tag)
+            display_text = tag
+            tooltip = tag
+
+            # Artist / Serie / Character bleiben absichtlich kompakt. Dort würde
+            # Zusatzmetadaten-Kleinkram die gerade mühsam gezähmte Aufteilung
+            # wieder sprengen. General und Meta dürfen die Details tragen.
+            meta_item_widget = None
+            if tag_type in {"general", "meta"}:
+                meta = self._tag_metadata.get(tag, {})
+                score_text = self._format_score(meta.get("score"))
+                excluded = bool(meta.get("filename_excluded", tag in self._filename_excluded_tags))
+                excluded_text = "ja" if excluded else "nein"
+                average_text = self._format_average_rating(meta.get("average_rating"))
+                display_text = tag
+                tooltip = (
+                    f"Tag: {tag}\n"
+                    f"Score: {score_text}\n"
+                    f"Filename-Exclude: {excluded_text}\n"
+                    f"Durchschnittliche Sterne: {average_text}"
+                )
+                meta_item_widget = self._create_detail_row_widget(
+                    tag_type=tag_type,
+                    tag=tag,
+                    score_text=score_text,
+                    excluded_text=excluded_text,
+                    average_text=average_text,
+                )
+
+            item = QListWidgetItem(display_text)
             item.setData(Qt.UserRole, tag)
             item.setData(Qt.UserRole + 1, tag_type)
+            item.setToolTip(tooltip)
             item.setForeground(QColor(TAG_TYPE_COLORS[tag_type]))
+            if meta_item_widget is not None:
+                item.setSizeHint(meta_item_widget.sizeHint())
             list_widget.addItem(item)
+            if meta_item_widget is not None:
+                list_widget.setItemWidget(item, meta_item_widget)
+
+
+    def _create_detail_row_widget(
+        self,
+        tag_type: str,
+        tag: str,
+        score_text: str,
+        excluded_text: str,
+        average_text: str,
+    ) -> QWidget:
+        """Create a compact row: tag left, metadata columns right.
+
+        QListWidget's plain item text is not great for aligned columns with a
+        proportional UI font. So General/Meta rows use a small embedded widget:
+        tag name gets the free space, the three detail columns stay fixed on
+        the right. Because apparently even text needs a layout manager now.
+        """
+        row = QWidget()
+        row.setAutoFillBackground(False)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(4, 0, 4, 0)
+        row_layout.setSpacing(6)
+
+        tag_label = QLabel(tag)
+        tag_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        tag_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        tag_label.setStyleSheet(f"color: {TAG_TYPE_COLORS[tag_type]};")
+        row_layout.addWidget(tag_label, stretch=1)
+
+        columns = (
+            ("S:", score_text, 58, "Score"),
+            ("✖:", excluded_text, 64, "Filename-Exclude"),
+            ("⌀☆:", average_text, 72, "Durchschnittliche Sterne"),
+        )
+        for prefix, value, width, tooltip in columns:
+            label = QLabel(f"{prefix} {value}")
+            label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            label.setFixedWidth(width)
+            label.setToolTip(tooltip)
+            label.setStyleSheet("color: #dddddd;")
+            row_layout.addWidget(label)
+
+        row.setStyleSheet("background: transparent;")
+        return row
+
+    @staticmethod
+    def _format_score(value: Any) -> str:
+        if value in {None, "", "None"}:
+            return "0"
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if number.is_integer():
+            return str(int(number))
+        return f"{number:.2f}"
+
+    @staticmethod
+    def _format_average_rating(value: Any) -> str:
+        if value in {None, "", "None"}:
+            return "-"
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        return f"{number:.1f}"
 
     def _autosize_lists(self) -> None:
         identity_types = ("artist", "copyright", "character")

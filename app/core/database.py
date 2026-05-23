@@ -1081,6 +1081,46 @@ class Database:
             ).fetchall()
         )
 
+
+    def fetch_tag_metadata(self, tags: Iterable[str]) -> dict[str, dict[str, Any]]:
+        clean_tags = sorted({str(tag).strip() for tag in tags if str(tag).strip()})
+        if not clean_tags:
+            return {}
+
+        placeholders = ", ".join("?" for _ in clean_tags)
+        rows = self.execute(
+            f"""
+            SELECT
+                pt.tag AS tag,
+                COALESCE(ts.manual_score, ts.computed_score, 0) AS score,
+                ts.manual_score AS manual_score,
+                COALESCE(ts.computed_score, 0) AS computed_score,
+                CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
+                COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
+                COUNT(pr.stars) AS rating_count
+            FROM post_tags pt
+            LEFT JOIN tag_scores ts ON ts.tag = pt.tag
+            LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+            LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
+            WHERE pt.tag IN ({placeholders})
+            GROUP BY pt.tag
+            """,
+            clean_tags,
+        ).fetchall()
+
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            tag = str(row["tag"] or "")
+            result[tag] = {
+                "score": row["score"],
+                "manual_score": row["manual_score"],
+                "computed_score": row["computed_score"],
+                "filename_excluded": bool(row["filename_excluded"]),
+                "average_rating": row["average_rating"],
+                "rating_count": int(row["rating_count"] or 0),
+            }
+        return result
+
     def add_filename_excluded_tag(self, tag: str, reason: str = "manual") -> None:
         clean_tag = tag.strip()
         if not clean_tag:

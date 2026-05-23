@@ -82,6 +82,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "tags_count": 8,
         "hash_length": 8,
         "excluded_tags": [],
+        "sort_tags_by_average_rating": False,
     },
     "llm": {
         "enabled": False,
