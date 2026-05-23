@@ -119,13 +119,18 @@ class ThumbnailGrid(QScrollArea):
 
         self.setWidget(self.container)
 
-        # Wichtig, wenn der Preview-Tab leer ist: Qt malt sonst je nach Plattform
-        # gerne noch den vorherigen Tab-Inhalt durch. Transparentes Nichts, aber
-        # mit maximaler Verwirrung.
+        # Deckend malen. Sonst recycelt Qt beim Tabwechsel gerne den vorherigen
+        # Inhalt als Geisterbild. Natürlich nur, wenn man gerade hinsieht.
         self.setAutoFillBackground(True)
         self.viewport().setAutoFillBackground(True)
         self.container.setAutoFillBackground(True)
-        self.setStyleSheet("QScrollArea { background: #151515; border: none; } QWidget { background: #151515; }")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.viewport().setAttribute(Qt.WA_StyledBackground, True)
+        self.container.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(
+            "QScrollArea { background: #151515; border: none; } "
+            "QScrollArea > QWidget > QWidget { background: #151515; }"
+        )
         self.empty_label: QLabel | None = None
         self.loading_widget: QFrame | None = None
         self.loading_label: QLabel | None = None
@@ -354,6 +359,11 @@ class ThumbnailGrid(QScrollArea):
 
         self.update_columns()
         self.refresh_selection_styles()
+        self.container.adjustSize()
+        self.container.updateGeometry()
+        self.viewport().update()
+        self.updateGeometry()
+        self.update()
         self.build_finished.emit(len(self.items))
 
     def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:

@@ -8,16 +8,20 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QFrame,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QStatusBar,
     QToolBar,
     QVBoxLayout,
     QWidget,
+    QStackedWidget,
 )
 
 from app.core.database import Database
@@ -148,6 +152,8 @@ class PreviewWindow(QMainWindow):
 
         self.setWindowTitle("Danbooru Manager - Preview")
         self.setWindowIcon(ensure_app_icon(config))
+        self.setAutoFillBackground(True)
+        self.setStyleSheet("QMainWindow { background: #151515; }")
 
         self.toolbar = QToolBar("Preview")
         self.toolbar.setMovable(False)
@@ -259,11 +265,20 @@ class PreviewWindow(QMainWindow):
         self.toolbar.addWidget(self.thumbnail_size_spin)
 
         self.main_widget = QWidget()
+        self.main_widget.setAutoFillBackground(True)
+        self.main_widget.setStyleSheet("QWidget { background: #151515; }")
         self.main_layout = QVBoxLayout(self.main_widget)
 
         self.info_label = QLabel("")
         self.info_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.info_label.setStyleSheet("QLabel { color: #dddddd; }")
         self.main_layout.addWidget(self.info_label)
+
+        self.content_stack = QStackedWidget()
+        self.content_stack.setAutoFillBackground(True)
+        self.content_stack.setStyleSheet("QStackedWidget { background: #151515; }")
+
+        self.loading_panel = self.create_loading_panel()
 
         self.grid = ThumbnailGrid(self.db, self.config)
         self.grid.status_changed.connect(self.on_status_changed)
@@ -274,7 +289,11 @@ class PreviewWindow(QMainWindow):
         self.grid.build_started.connect(self.on_grid_build_started)
         self.grid.build_progress.connect(self.on_grid_build_progress)
         self.grid.build_finished.connect(self.on_grid_build_finished)
-        self.main_layout.addWidget(self.grid)
+
+        self.content_stack.addWidget(self.loading_panel)
+        self.content_stack.addWidget(self.grid)
+        self.content_stack.setCurrentWidget(self.loading_panel)
+        self.main_layout.addWidget(self.content_stack, stretch=1)
 
         self.setCentralWidget(self.main_widget)
 
@@ -288,6 +307,65 @@ class PreviewWindow(QMainWindow):
 
 
 
+    def create_loading_panel(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("previewMainLoadingPanel")
+        panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        panel.setStyleSheet(
+            "QFrame#previewMainLoadingPanel { background: #151515; }"
+        )
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(16)
+        layout.addStretch(1)
+
+        self.loading_label = QLabel("Lädt Preview…")
+        self.loading_label.setAlignment(Qt.AlignCenter)
+        self.loading_label.setStyleSheet(
+            "QLabel { color: #eeeeee; font-size: 20px; font-weight: bold; }"
+        )
+        layout.addWidget(self.loading_label)
+
+        self.loading_bar = QProgressBar()
+        self.loading_bar.setRange(0, 0)
+        self.loading_bar.setTextVisible(False)
+        self.loading_bar.setMinimumHeight(20)
+        self.loading_bar.setMaximumWidth(520)
+        layout.addWidget(self.loading_bar, alignment=Qt.AlignHCenter)
+
+        layout.addStretch(1)
+        return panel
+
+    def show_preview_loading(self, message: str = "Lädt Preview…") -> None:
+        self.loading_label.setText(message)
+        self.loading_bar.setRange(0, 0)
+        self.content_stack.setCurrentWidget(self.loading_panel)
+        self.loading_panel.show()
+        self.loading_panel.raise_()
+        self.content_stack.update()
+        self.main_widget.update()
+        self.update()
+        QApplication.processEvents()
+
+    def hide_preview_loading(self) -> None:
+        self.content_stack.setCurrentWidget(self.grid)
+        self.grid.setVisible(True)
+        self.grid.update_columns()
+        if self.grid.items:
+            self.grid.relayout()
+        self.grid.viewport().update()
+        self.grid.container.updateGeometry()
+        self.grid.container.update()
+        self.grid.updateGeometry()
+        self.grid.update()
+        self.content_stack.update()
+        self.main_widget.update()
+        self.update()
+        QApplication.processEvents()
+
+
+
     def reload_tag_suggestions(self) -> None:
         try:
             self.search_edit.set_tag_suggestions(self.db.suggest_tags(limit=2500))
@@ -296,13 +374,17 @@ class PreviewWindow(QMainWindow):
 
     def on_grid_build_started(self, total: int) -> None:
         if total > 0:
+            self.show_preview_loading(f"Lädt Thumbnails… 0/{total}")
             self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{total}")
 
     def on_grid_build_progress(self, current: int, total: int) -> None:
         if total > 0:
+            self.loading_label.setText(f"Lädt Thumbnails… {current}/{total}")
             self.status_bar.showMessage(f"Lädt Preview-Karten… {current}/{total}")
+            QApplication.processEvents()
 
     def on_grid_build_finished(self, total: int) -> None:
+        self.hide_preview_loading()
         self.status_bar.showMessage(f"Preview geladen: {total} Thumbnail(s)", 5000)
 
     @staticmethod
@@ -325,22 +407,17 @@ class PreviewWindow(QMainWindow):
         self.update()
 
     def on_tab_activated(self) -> None:
-        # Wenn der Preview-Tab erstmals sichtbar wird, muss sofort etwas Deckendes
-        # gemalt werden. Sonst zeigt Qt je nach Timing noch den vorherigen Tab-Inhalt,
-        # während im Hintergrund DB-Abfragen und Thumbnail-Aufbau laufen. Natürlich.
+        # Beim Tabwechsel immer sofort die eigene Preview-Ladefläche zeigen.
+        # Ohne diesen harten Stack-Wechsel recycelt Qt gerne den zuletzt sichtbaren
+        # Fetch-Inhalt als Geisterbild, bis der nächste echte Repaint passiert.
         if self._is_reloading or self.grid._pending_rows:
-            self.grid.show_loading_message("Lädt Preview…")
-        elif not self._has_loaded_once:
-            self.grid.show_loading_message("Lädt Preview…")
-            self.schedule_reload()
-        elif not self.grid.has_visible_content():
-            if self._fetch_running:
-                self.grid.show_empty_message("Fetch läuft… Noch keine Posts in dieser Ansicht.")
-            else:
-                self.grid.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
+            self.show_preview_loading("Lädt Preview…")
+        else:
+            self.show_preview_loading("Lädt Preview…")
+            QTimer.singleShot(0, self.reload_posts)
 
-        self.grid.viewport().update()
-        self.grid.update()
+        self.content_stack.update()
+        self.main_widget.update()
         self.update()
 
     # -------------------------------------------------------------------------
@@ -645,7 +722,7 @@ class PreviewWindow(QMainWindow):
 
         self.reload_timer.stop()
         self._is_reloading = True
-        self.grid.show_loading_message("Lädt Preview…")
+        self.show_preview_loading("Lädt Preview…")
         self.status_bar.showMessage("Lädt Preview…")
         QApplication.processEvents()
 
@@ -693,6 +770,7 @@ class PreviewWindow(QMainWindow):
             if posts:
                 self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{len(posts)}")
             else:
+                self.hide_preview_loading()
                 self.status_bar.showMessage("Preview geladen: keine Treffer", 5000)
 
         finally:

@@ -101,6 +101,7 @@ class TagQueryLineEdit(QLineEdit):
         self._completer.setCompletionMode(QCompleter.PopupCompletion)
         self._completer.setFilterMode(Qt.MatchContains)
         self._completer.activated.connect(self.insert_completion)
+        self._completer.popup().setMinimumWidth(420)
         self.textEdited.connect(self.schedule_completion_update)
 
     def set_tag_suggestions(self, tags: list[str]) -> None:
@@ -152,7 +153,13 @@ class TagQueryLineEdit(QLineEdit):
 
         self._model.setStringList(matches)
         self._completer.setCompletionPrefix("")
-        self._completer.complete(self.cursorRect())
+
+        popup = self._completer.popup()
+        popup.setMinimumWidth(max(420, self.width()))
+
+        rect = self.cursorRect()
+        rect.setWidth(max(420, self.width()))
+        self._completer.complete(rect)
 
     @Slot(str)
     def insert_completion(self, completion: str) -> None:

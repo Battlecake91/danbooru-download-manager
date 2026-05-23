@@ -56,19 +56,40 @@ STATUS_COLORS: dict[str, str] = {
 }
 
 
+class StatusChip(QLabel):
+    clicked = Signal(str)
+
+    def __init__(self, status: str, text: str) -> None:
+        super().__init__(text)
+        self.status = status
+        self.setAlignment(Qt.AlignCenter)
+        self.setFixedHeight(30)
+        self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Status setzen. Aktiven Status erneut anklicken setzt auf Neu zurück.")
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.status)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
 class StatusChipBar(QWidget):
+    status_clicked = Signal(str)
+
     def __init__(self) -> None:
         super().__init__()
-        self._labels: dict[str, QLabel] = {}
+        self._labels: dict[str, StatusChip] = {}
+        self.active_status = "new"
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
         for status in ("new", "potential", "rejected", "saved"):
-            label = QLabel(STATUS_LABELS.get(status, status))
-            label.setAlignment(Qt.AlignCenter)
-            label.setFixedHeight(30)
-            label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+            label = StatusChip(status, STATUS_LABELS.get(status, status))
+            label.clicked.connect(self.status_clicked.emit)
             self._labels[status] = label
             layout.addWidget(label)
 
@@ -78,10 +99,10 @@ class StatusChipBar(QWidget):
         self.set_status("new")
 
     def set_status(self, active_status: str | None) -> None:
-        active = active_status or "new"
+        self.active_status = active_status or "new"
         for status, label in self._labels.items():
             color = STATUS_COLORS.get(status, "#888888")
-            if status == active:
+            if status == self.active_status:
                 label.setStyleSheet(
                     f"QLabel {{ background: {color}; color: #000000; border: 2px solid {color}; "
                     "border-radius: 5px; padding: 2px 8px; font-weight: bold; }}"
@@ -368,6 +389,7 @@ class ImageViewerWindow(QMainWindow):
         self.side_layout.addWidget(self.score_label)
 
         self.status_chips = StatusChipBar()
+        self.status_chips.status_clicked.connect(self.on_status_chip_clicked)
         self.side_layout.addWidget(self.status_chips)
 
         self.related_warning_label = QPushButton()
@@ -906,6 +928,17 @@ class ImageViewerWindow(QMainWindow):
         if self.current_index < len(self.post_ids) - 1:
             self.current_index += 1
             self.load_current_post()
+
+    def on_status_chip_clicked(self, status: str) -> None:
+        if self.current_post_id is None:
+            return
+
+        current = self.status_chips.active_status or "new"
+        # Es gibt weiterhin genau einen Status. Ein Klick auf den aktiven Status
+        # entfernt die Markierung im praktischen Sinne, also zurück auf "Neu".
+        # Ein komplett leerer Status wäre nur ein weiterer Sonderfall aus der Qt-Hölle.
+        target = "new" if status == current and current != "new" else status
+        self.set_status(target)
 
     def set_status(self, status: str) -> None:
         if self.current_post_id is None:
