@@ -458,8 +458,8 @@ class ImageViewerWindow(QMainWindow):
 
         self.hint_label = QLabel(
             "Hotkeys: ←/→ blättern | 1-5 oder Sternklick persönliches Rating | "
-            "H High Potential | F final speichern | Entf ablehnen | N neu | O Originalpost | "
-            "Tags markieren + Rechtsklick für Tag-Aktionen | "
+            "H High Potential | F final speichern | Entf ablehnen oder markierte Tags ausschließen | "
+            "N neu | O Originalpost | Tags markieren + Rechtsklick für Tag-Aktionen | "
             "Parent/Child: Doppelklick lokal öffnen, Rechtsklick für Lokal/Remote"
         )
         self.hint_label.setWordWrap(True)
@@ -486,7 +486,7 @@ class ImageViewerWindow(QMainWindow):
             ("5", lambda: self.set_personal_rating(5.0)),
             ("H", lambda: self.set_status("potential")),
             ("F", self.final_save_current_post),
-            ("Delete", lambda: self.set_status("rejected")),
+            ("Delete", self.handle_delete_shortcut),
             ("N", lambda: self.set_status("new")),
             ("O", self.open_original_post),
         ]
@@ -504,6 +504,18 @@ class ImageViewerWindow(QMainWindow):
     def focusInEvent(self, event) -> None:  # noqa: ANN001
         super().focusInEvent(event)
         self.update_final_path_preview()
+
+    def handle_delete_shortcut(self) -> None:
+        selected_tags = self.tags_widget.selected_tags()
+        if selected_tags and self.tags_widget.is_filename_filter_active():
+            self.add_tags_to_filename_exclude(selected_tags, show_message=False)
+            self.statusBar().showMessage(
+                f"{len(selected_tags)} Tag(s) vom Dateinamen ausgeschlossen.",
+                3500,
+            )
+            return
+
+        self.set_status("rejected")
 
     def calculate_max_score_in_view(self) -> int | None:
         max_score: int | None = None
@@ -1217,15 +1229,16 @@ class ImageViewerWindow(QMainWindow):
             return "all"
         return "mixed"
 
-    def add_tags_to_filename_exclude(self, tags: list[str]) -> None:
+    def add_tags_to_filename_exclude(self, tags: list[str], show_message: bool = True) -> None:
         for tag in tags:
             self.db.add_filename_excluded_tag(tag, "viewer-manual")
 
-        QMessageBox.information(
-            self,
-            "Filename-Exclude",
-            f"{len(tags)} Tag(s) vom Dateinamen ausgeschlossen.",
-        )
+        if show_message:
+            QMessageBox.information(
+                self,
+                "Filename-Exclude",
+                f"{len(tags)} Tag(s) vom Dateinamen ausgeschlossen.",
+            )
         self.update_final_path_preview()
         if self.current_post_id is not None:
             self.populate_tag_lists(self.current_post_id)

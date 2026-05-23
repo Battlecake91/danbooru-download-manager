@@ -285,3 +285,6 @@ class TypedTagListWidget(QWidget):
                     result.append(tag)
                     seen.add(tag)
         return result
+
+    def is_filename_filter_active(self) -> bool:
+        return self.filename_filter_checkbox.isChecked()

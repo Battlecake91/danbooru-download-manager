@@ -81,6 +81,9 @@ class ThumbnailGrid(QScrollArea):
     open_viewer_requested = Signal(int)
     final_save_requested = Signal(list)
     category_assign_requested = Signal(list, str)
+    build_started = Signal(int)
+    build_progress = Signal(int, int)
+    build_finished = Signal(int)
 
     def __init__(self, db: Database, config: dict[str, Any]) -> None:
         super().__init__()
@@ -122,6 +125,7 @@ class ThumbnailGrid(QScrollArea):
         self.setAutoFillBackground(True)
         self.viewport().setAutoFillBackground(True)
         self.container.setAutoFillBackground(True)
+        self.setStyleSheet("QScrollArea { background: #151515; border: none; } QWidget { background: #151515; }")
         self.empty_label: QLabel | None = None
         self.loading_widget: QFrame | None = None
         self.loading_label: QLabel | None = None
@@ -225,7 +229,10 @@ class ThumbnailGrid(QScrollArea):
         new_columns = max(1, width // card_width)
         if new_columns != self.columns:
             self.columns = new_columns
-            if self.empty_label is not None and not self.items:
+            if self.loading_widget is not None and not self.items:
+                self.layout.removeWidget(self.loading_widget)
+                self.layout.addWidget(self.loading_widget, 0, 0, 1, max(1, self.columns))
+            elif self.empty_label is not None and not self.items:
                 self.layout.removeWidget(self.empty_label)
                 self.layout.addWidget(self.empty_label, 0, 0, 1, max(1, self.columns))
             else:
@@ -282,33 +289,46 @@ class ThumbnailGrid(QScrollArea):
         self._build_generation += 1
         generation = self._build_generation
 
-        self.setUpdatesEnabled(False)
-        self.append_cards_batch(generation)
+        total = len(self._pending_rows)
+        self.show_loading_message("Lädt Preview…")
+        self.build_started.emit(total)
+        QTimer.singleShot(0, lambda gen=generation: self.append_cards_batch(gen))
 
     def append_cards_batch(self, generation: int) -> None:
         if generation != self._build_generation:
             return
 
         self.hide_empty_message()
-        start_index = len(self.items)
         batch_size = max(1, int(self.batch_size))
         batch = self._pending_rows[:batch_size]
         self._pending_rows = self._pending_rows[batch_size:]
 
-        for row in batch:
-            card = ThumbnailCard(self.db, self.config, row, self.thumbnail_size)
-            card.status_changed.connect(self.status_changed.emit)
-            card.request_reload.connect(self.request_reload.emit)
-            card.clicked.connect(self.on_card_clicked)
-            card.double_clicked.connect(self.open_viewer_requested.emit)
-            card.final_save_requested.connect(lambda post_id: self.final_save_requested.emit([int(post_id)]))
-            card.category_assign_requested.connect(self.on_card_category_assign_requested)
-            self.items.append(card)
+        if batch:
+            # Nur den einzelnen Batch kurz einfrieren. Früher blieb UpdatesEnabled
+            # ueber mehrere QTimer-Batches aus, wodurch der Preview schwarz wirkte,
+            # obwohl die Karten schon gebaut wurden. Sehr hilfreich, danke Qt.
+            was_updates_enabled = self.updatesEnabled()
+            self.setUpdatesEnabled(False)
+            try:
+                if self.loading_widget is not None:
+                    self.hide_loading_message()
 
-            index = len(self.items) - 1
-            row_index = index // self.columns
-            column_index = index % self.columns
-            self.layout.addWidget(card, row_index, column_index)
+                for row in batch:
+                    card = ThumbnailCard(self.db, self.config, row, self.thumbnail_size)
+                    card.status_changed.connect(self.status_changed.emit)
+                    card.request_reload.connect(self.request_reload.emit)
+                    card.clicked.connect(self.on_card_clicked)
+                    card.double_clicked.connect(self.open_viewer_requested.emit)
+                    card.final_save_requested.connect(lambda post_id: self.final_save_requested.emit([int(post_id)]))
+                    card.category_assign_requested.connect(self.on_card_category_assign_requested)
+                    self.items.append(card)
+
+                    index = len(self.items) - 1
+                    row_index = index // self.columns
+                    column_index = index % self.columns
+                    self.layout.addWidget(card, row_index, column_index)
+            finally:
+                self.setUpdatesEnabled(was_updates_enabled)
 
         if self._restore_selected_ids:
             self.selected_ids = {card.post_id for card in self.items if card.post_id in self._restore_selected_ids}
@@ -324,14 +344,17 @@ class ThumbnailGrid(QScrollArea):
             self.anchor_index = 0
 
         self.refresh_selection_styles()
+        self.build_progress.emit(len(self.items), len(self.current_posts))
+        self.viewport().update()
+        self.update()
 
         if self._pending_rows:
             QTimer.singleShot(0, lambda gen=generation: self.append_cards_batch(gen))
             return
 
-        self.setUpdatesEnabled(True)
         self.update_columns()
         self.refresh_selection_styles()
+        self.build_finished.emit(len(self.items))
 
     def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:
         if post_id in self.selected_ids and len(self.selected_ids) > 1:

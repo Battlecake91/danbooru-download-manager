@@ -271,6 +271,9 @@ class PreviewWindow(QMainWindow):
         self.grid.open_viewer_requested.connect(self.open_viewer)
         self.grid.final_save_requested.connect(self.final_save_posts)
         self.grid.category_assign_requested.connect(self.assign_category_to_posts)
+        self.grid.build_started.connect(self.on_grid_build_started)
+        self.grid.build_progress.connect(self.on_grid_build_progress)
+        self.grid.build_finished.connect(self.on_grid_build_finished)
         self.main_layout.addWidget(self.grid)
 
         self.setCentralWidget(self.main_widget)
@@ -290,6 +293,17 @@ class PreviewWindow(QMainWindow):
             self.search_edit.set_tag_suggestions(self.db.suggest_tags(limit=2500))
         except Exception:
             self.search_edit.set_tag_suggestions([])
+
+    def on_grid_build_started(self, total: int) -> None:
+        if total > 0:
+            self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{total}")
+
+    def on_grid_build_progress(self, current: int, total: int) -> None:
+        if total > 0:
+            self.status_bar.showMessage(f"Lädt Preview-Karten… {current}/{total}")
+
+    def on_grid_build_finished(self, total: int) -> None:
+        self.status_bar.showMessage(f"Preview geladen: {total} Thumbnail(s)", 5000)
 
     @staticmethod
     def is_path_like_search_term(term: str) -> bool:
@@ -676,7 +690,10 @@ class PreviewWindow(QMainWindow):
                 f"Sortierung: {self.sort_combo.currentText()} | "
                 f"Thumbnail: {self.grid.thumbnail_size}px"
             )
-            self.status_bar.showMessage("Preview geladen")
+            if posts:
+                self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{len(posts)}")
+            else:
+                self.status_bar.showMessage("Preview geladen: keine Treffer", 5000)
 
         finally:
             self._is_reloading = False
