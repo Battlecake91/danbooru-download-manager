@@ -4,37 +4,3 @@ downloaded_ids.txt
 .env
 danbooru_manager_data/
 danbooru_saved
-# OS files
-.DS_Store
-Thumbs.db
-
-# Environment / secrets
-.env
-.env.*
-!.env.example
-
-# Logs
-*.log
-
-# Python bytecode / cache
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Python packaging / build
-build/
-dist/
-*.egg-info/
-.eggs/
-*.egg
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
-
-# Type checker / linter cache
-.mypy_cache/
-.pyright/
-.ruff_cache/
-

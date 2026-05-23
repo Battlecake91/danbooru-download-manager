@@ -564,6 +564,20 @@ class ConfigTab(QWidget):
             ).fetchall()
         ]
 
+        fetch_presets = []
+        for row in self.db.list_fetch_presets():
+            try:
+                payload = json.loads(str(row["payload"] or "{}"))
+            except Exception:
+                payload = {}
+            fetch_presets.append(
+                {
+                    "name": row["name"],
+                    "payload": payload,
+                    "updated_at": row["updated_at"],
+                }
+            )
+
         return {
             "format": "danbooru_downloader_config_export",
             "version": 1,
@@ -573,6 +587,7 @@ class ConfigTab(QWidget):
             "filename_excluded_tags": filename_excluded_tags,
             "tag_aliases": tag_aliases,
             "tag_scores": tag_scores,
+            "fetch_presets": fetch_presets,
         }
 
     def export_configuration(self) -> None:
@@ -654,6 +669,12 @@ class ConfigTab(QWidget):
             for item in payload.get("tag_scores", []) or []:
                 if isinstance(item, dict) and item.get("tag"):
                     self.db.set_tag_manual_score(str(item["tag"]), item.get("manual_score"))
+
+            for item in payload.get("fetch_presets", []) or []:
+                if isinstance(item, dict) and item.get("name"):
+                    preset_payload = item.get("payload") or {}
+                    if isinstance(preset_payload, dict):
+                        self.db.save_fetch_preset(str(item["name"]), preset_payload)
 
             self.db.commit()
             self.reload_from_sql()

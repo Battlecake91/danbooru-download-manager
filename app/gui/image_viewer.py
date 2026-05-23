@@ -94,6 +94,8 @@ class StatusChipBar(QWidget):
 
 
 RATING_LABELS: dict[str, tuple[str, str]] = {
+    "g": ("general", "#64b5f6"),
+    "general": ("general", "#64b5f6"),
     "s": ("safe", "#38d36a"),
     "safe": ("safe", "#38d36a"),
     "q": ("questionable", "#ffd166"),

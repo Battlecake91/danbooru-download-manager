@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shlex
 import shutil
 import sqlite3
@@ -86,6 +87,12 @@ class Database:
         CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,
             value TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS fetch_presets (
+            name TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -1136,6 +1143,99 @@ class Database:
             (clean_tag, score),
         )
         self.commit()
+
+
+    # ------------------------------------------------------------------
+    # App settings / Fetch presets / Tag suggestions
+    # ------------------------------------------------------------------
+
+    def get_app_setting(self, key: str, default: str | None = None) -> str | None:
+        row = self.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        if row is None:
+            return default
+        value = row["value"]
+        return str(value) if value is not None else default
+
+    def set_app_setting(self, key: str, value: str | None) -> None:
+        self.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (key, value),
+        )
+        self.commit()
+
+    def save_fetch_preset(self, name: str, payload: dict[str, Any]) -> None:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Preset-Name darf nicht leer sein")
+        self.execute(
+            """
+            INSERT INTO fetch_presets (name, payload, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(name) DO UPDATE SET
+                payload = excluded.payload,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (clean_name, json.dumps(payload, ensure_ascii=False, sort_keys=True)),
+        )
+        self.commit()
+
+    def list_fetch_presets(self) -> list[sqlite3.Row]:
+        return list(
+            self.execute(
+                """
+                SELECT name, payload, updated_at
+                FROM fetch_presets
+                ORDER BY name COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        )
+
+    def get_fetch_preset(self, name: str) -> dict[str, Any] | None:
+        row = self.execute("SELECT payload FROM fetch_presets WHERE name = ?", (name.strip(),)).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(str(row["payload"] or "{}"))
+        except json.JSONDecodeError:
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def delete_fetch_preset(self, name: str) -> None:
+        self.execute("DELETE FROM fetch_presets WHERE name = ?", (name.strip(),))
+        self.commit()
+
+    def suggest_tags(self, prefix: str = "", limit: int = 300) -> list[str]:
+        clean = prefix.strip()
+        if clean:
+            rows = self.execute(
+                """
+                SELECT pt.tag, COUNT(*) AS post_count
+                FROM post_tags pt
+                WHERE pt.tag LIKE ?
+                GROUP BY pt.tag
+                ORDER BY post_count DESC, pt.tag ASC
+                LIMIT ?
+                """,
+                (f"{clean}%", int(limit)),
+            ).fetchall()
+        else:
+            rows = self.execute(
+                """
+                SELECT pt.tag, COUNT(*) AS post_count
+                FROM post_tags pt
+                GROUP BY pt.tag
+                ORDER BY post_count DESC, pt.tag ASC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        return [str(row["tag"]) for row in rows]
 
 
 def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
