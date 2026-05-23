@@ -1282,6 +1282,132 @@ class Database:
         )
 
 
+    def search_tags_by_pattern(
+        self,
+        pattern: str,
+        tag_type: str | None = None,
+        limit: int = 1000,
+    ) -> list[sqlite3.Row]:
+        """Search tags with shell-style wildcards.
+
+        Supported wildcards:
+        - ``*`` matches any number of characters
+        - ``?`` matches one character
+
+        SQL LIKE treats ``_`` as a wildcard, which is adorable until your tag
+        database is made almost entirely of underscores. Escape first, then add
+        our own wildcards.
+        """
+        clean_pattern = str(pattern or "").strip()
+        if not clean_pattern:
+            return []
+
+        like_pattern = (
+            clean_pattern
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+            .replace("*", "%")
+            .replace("?", "_")
+        )
+
+        where_parts = ["pt.tag LIKE ? ESCAPE '\\'"]
+        parameters: list[Any] = [like_pattern]
+
+        if tag_type and tag_type != "all":
+            where_parts.append("pt.tag_type = ?")
+            parameters.append(tag_type)
+
+        parameters.append(limit)
+
+        return list(
+            self.execute(
+                f"""
+                SELECT
+                    pt.tag AS tag,
+                    MIN(pt.tag_type) AS tag_type,
+                    COUNT(DISTINCT pt.post_id) AS post_count,
+                    ta.alias_tag AS alias_tag,
+                    CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded
+                FROM post_tags pt
+                LEFT JOIN tag_aliases ta ON ta.original_tag = pt.tag
+                LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+                WHERE {" AND ".join(where_parts)}
+                GROUP BY pt.tag
+                ORDER BY post_count DESC, pt.tag ASC
+                LIMIT ?
+                """,
+                parameters,
+            ).fetchall()
+        )
+
+
+    def fetch_category_tag_hits(self, tags: Iterable[str]) -> list[sqlite3.Row]:
+        """Return category/tag co-occurrences with normalization data.
+
+        The category influence engine must not simply reward raw hit counts.
+        Otherwise a broad tag such as ``1girl`` makes the largest category win
+        forever, which is less "suggestion" and more "database astrology".
+        The extra totals allow the caller to score distinctive tags by lift and
+        per-category coverage instead of absolute popularity.
+        """
+        clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+        if not clean_tags:
+            return []
+
+        placeholders = ", ".join("?" for _ in clean_tags)
+        parameters = [*clean_tags, *clean_tags]
+        return list(
+            self.execute(
+                f"""
+                WITH
+                category_totals AS (
+                    SELECT
+                        category_id,
+                        COUNT(DISTINCT post_id) AS category_post_count
+                    FROM post_categories
+                    GROUP BY category_id
+                ),
+                global_total AS (
+                    SELECT COUNT(DISTINCT post_id) AS categorized_post_count
+                    FROM post_categories
+                ),
+                tag_totals AS (
+                    SELECT
+                        pt.tag AS tag,
+                        COUNT(DISTINCT pc.post_id) AS tag_total_hits
+                    FROM post_categories pc
+                    JOIN post_tags pt ON pt.post_id = pc.post_id
+                    WHERE pt.tag IN ({placeholders})
+                    GROUP BY pt.tag
+                )
+                SELECT
+                    c.id AS category_id,
+                    c.name AS category_name,
+                    pt.tag AS tag,
+                    COUNT(DISTINCT pt.post_id) AS hit_count,
+                    SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_hits,
+                    AVG(pr.stars) AS avg_stars,
+                    COALESCE(ct.category_post_count, 0) AS category_post_count,
+                    COALESCE(tt.tag_total_hits, 0) AS tag_total_hits,
+                    COALESCE(gt.categorized_post_count, 0) AS categorized_post_count
+                FROM post_categories pc
+                JOIN categories c ON c.id = pc.category_id
+                JOIN post_tags pt ON pt.post_id = pc.post_id
+                JOIN posts p ON p.id = pc.post_id
+                LEFT JOIN post_reviews pr ON pr.post_id = pc.post_id AND pr.stars IS NOT NULL
+                LEFT JOIN category_totals ct ON ct.category_id = pc.category_id
+                LEFT JOIN tag_totals tt ON tt.tag = pt.tag
+                CROSS JOIN global_total gt
+                WHERE pt.tag IN ({placeholders})
+                GROUP BY c.id, pt.tag
+                ORDER BY c.sort_order ASC, c.name ASC, hit_count DESC, pt.tag ASC
+                """,
+                parameters,
+            ).fetchall()
+        )
+
+
     def fetch_tag_metadata(self, tags: Iterable[str]) -> dict[str, dict[str, Any]]:
         clean_tags = sorted({str(tag).strip() for tag in tags if str(tag).strip()})
         if not clean_tags:

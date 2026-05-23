@@ -11,11 +11,17 @@ from typing import Any, Callable
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
     QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -60,6 +66,164 @@ class SortableTableWidgetItem(QTableWidgetItem):
                 return str(left).casefold() < str(right).casefold()
 
         return self.text().casefold() < other.text().casefold()
+
+
+class SimilarTagsBulkActionDialog(QDialog):
+    """Bulk action dialog for tags found by a wildcard pattern.
+
+    The old dialog only knew aliases. Naturally that was too narrow, because
+    apparently tags now need a small administrative office. This dialog keeps
+    the useful checkable result list, but lets the selected matches receive all
+    configured bulk operations in one pass.
+    """
+
+    FILENAME_NO_CHANGE = "none"
+    FILENAME_ADD = "add"
+    FILENAME_REMOVE = "remove"
+    CATEGORY_NO_CHANGE = ""
+
+    def __init__(self, parent: QWidget, rows: list[Any], category_names: list[str], suggested_alias: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Ähnliche Tags bearbeiten")
+        self.resize(820, 640)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "Wähle die Tags aus und trage unten nur die Aktionen ein, die wirklich übernommen werden sollen. "
+            "Leere Felder bleiben unverändert. So schwer ist Zurückhaltung, ich weiß."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(QListWidget.ExtendedSelection)
+        for row in rows:
+            tag = str(row["tag"] or "")
+            alias = str(row["alias_tag"] or "")
+            post_count = int(row["post_count"] or 0)
+            tag_type = str(row["tag_type"] or "")
+            filename_excluded = bool(int(row["filename_excluded"] or 0))
+
+            suffix = f" | {tag_type} | {post_count} Posts"
+            if alias:
+                suffix += f" | Alias: {alias}"
+            if filename_excluded:
+                suffix += " | Filename-Exclude"
+
+            item = QListWidgetItem(f"{tag}{suffix}")
+            item.setData(Qt.UserRole, tag)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.list_widget.addItem(item)
+
+        layout.addWidget(self.list_widget, stretch=1)
+
+        select_buttons = QHBoxLayout()
+        select_all = QPushButton("Alle auswählen")
+        select_none = QPushButton("Alle abwählen")
+        select_all.clicked.connect(lambda: self.set_all_checked(True))
+        select_none.clicked.connect(lambda: self.set_all_checked(False))
+        select_buttons.addWidget(select_all)
+        select_buttons.addWidget(select_none)
+        select_buttons.addStretch(1)
+        layout.addLayout(select_buttons)
+
+        layout.addWidget(QLabel("Aktionen für alle ausgewählten Tags:"))
+
+        alias_row = QHBoxLayout()
+        alias_row.addWidget(QLabel("Alias setzen:"))
+        self.alias_edit = QLineEdit("")
+        self.alias_edit.setPlaceholderText(suggested_alias or "leer = nicht ändern")
+        alias_row.addWidget(self.alias_edit, stretch=1)
+        layout.addLayout(alias_row)
+
+        filename_row = QHBoxLayout()
+        filename_row.addWidget(QLabel("Filename-Ausschluss:"))
+        self.filename_combo = QComboBox()
+        self.filename_combo.addItem("nicht ändern", self.FILENAME_NO_CHANGE)
+        self.filename_combo.addItem("in Filename-Ausschluss aufnehmen", self.FILENAME_ADD)
+        self.filename_combo.addItem("aus Filename-Ausschluss entfernen", self.FILENAME_REMOVE)
+        filename_row.addWidget(self.filename_combo, stretch=1)
+        layout.addLayout(filename_row)
+
+        score_row = QHBoxLayout()
+        self.score_checkbox = QCheckBox("Manuellen Score setzen")
+        self.score_spin = QDoubleSpinBox()
+        self.score_spin.setRange(-10.0, 10.0)
+        self.score_spin.setDecimals(3)
+        self.score_spin.setSingleStep(0.25)
+        self.score_spin.setEnabled(False)
+        self.score_checkbox.toggled.connect(self.score_spin.setEnabled)
+        score_row.addWidget(self.score_checkbox)
+        score_row.addWidget(self.score_spin)
+        score_row.addStretch(1)
+        layout.addLayout(score_row)
+
+        category_row = QHBoxLayout()
+        category_row.addWidget(QLabel("Kategorie-Regel:"))
+        self.category_combo = QComboBox()
+        self.category_combo.addItem("nicht ändern", self.CATEGORY_NO_CHANGE)
+        for category_name in category_names:
+            self.category_combo.addItem(category_name, category_name)
+        self.category_rule_combo = QComboBox()
+        self.category_rule_combo.addItem("include", "include")
+        self.category_rule_combo.addItem("exclude", "exclude")
+        category_row.addWidget(self.category_combo, stretch=1)
+        category_row.addWidget(self.category_rule_combo)
+        layout.addLayout(category_row)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.button(QDialogButtonBox.Ok).setText("Übernehmen")
+        button_box.button(QDialogButtonBox.Cancel).setText("Abbrechen")
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def set_all_checked(self, checked: bool) -> None:
+        state = Qt.Checked if checked else Qt.Unchecked
+        for index in range(self.list_widget.count()):
+            self.list_widget.item(index).setCheckState(state)
+
+    def selected_tags(self) -> list[str]:
+        tags: list[str] = []
+        for index in range(self.list_widget.count()):
+            item = self.list_widget.item(index)
+            if item.checkState() != Qt.Checked:
+                continue
+            tag = item.data(Qt.UserRole)
+            if tag:
+                tags.append(str(tag))
+        return tags
+
+    def alias_to_set(self) -> str | None:
+        alias = self.alias_edit.text().strip()
+        return alias if alias else None
+
+    def filename_action(self) -> str:
+        return str(self.filename_combo.currentData() or self.FILENAME_NO_CHANGE)
+
+    def manual_score(self) -> float | None:
+        if not self.score_checkbox.isChecked():
+            return None
+        return float(self.score_spin.value())
+
+    def category_action(self) -> tuple[str | None, str | None]:
+        category_name = str(self.category_combo.currentData() or "")
+        if not category_name:
+            return None, None
+        return category_name, str(self.category_rule_combo.currentData() or "include")
+
+    def has_any_action(self) -> bool:
+        category_name, _ = self.category_action()
+        return any(
+            [
+                self.alias_to_set() is not None,
+                self.filename_action() != self.FILENAME_NO_CHANGE,
+                self.manual_score() is not None,
+                category_name is not None,
+            ]
+        )
 
 
 class TagTab(QWidget):
@@ -614,14 +778,45 @@ class TagTab(QWidget):
 
         menu.addSeparator()
 
-        alias_action = QAction("Alias bearbeiten", menu)
-        alias_action.triggered.connect(
-            lambda checked=False, tag=frozen_tags[0]: self.schedule_safe(
-                lambda: self.edit_alias(tag),
-                "Alias bearbeiten",
+        if len(frozen_tags) == 1:
+            alias_action = QAction("Alias bearbeiten", menu)
+            alias_action.triggered.connect(
+                lambda checked=False, tag=frozen_tags[0]: self.schedule_safe(
+                    lambda: self.edit_alias(tag),
+                    "Alias bearbeiten",
+                )
+            )
+            menu.addAction(alias_action)
+        else:
+            alias_action = QAction(f"Alias für Auswahl setzen… ({len(frozen_tags)})", menu)
+            alias_action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                    lambda: self.bulk_set_alias(t),
+                    "Alias für Auswahl setzen",
+                )
+            )
+            menu.addAction(alias_action)
+
+        remove_alias_action = QAction(
+            "Alias entfernen" if len(frozen_tags) == 1 else f"Alias für Auswahl entfernen… ({len(frozen_tags)})",
+            menu,
+        )
+        remove_alias_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.bulk_remove_alias(t),
+                "Alias für Auswahl entfernen",
             )
         )
-        menu.addAction(alias_action)
+        menu.addAction(remove_alias_action)
+
+        similar_action = QAction("Ähnliche Tags suchen/bearbeiten…", menu)
+        similar_action.triggered.connect(
+            lambda checked=False, tag=frozen_tags[0]: self.schedule_safe(
+                lambda: self.find_similar_tags_for_bulk_actions(tag),
+                "Ähnliche Tags suchen/bearbeiten",
+            )
+        )
+        menu.addAction(similar_action)
 
         score_action = QAction("Manuellen Score bearbeiten", menu)
         score_action.triggered.connect(
@@ -736,6 +931,259 @@ class TagTab(QWidget):
 
         self.update_alias_in_visible_rows(tag, alias)
         self.log_message(f"Alias lokal aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+
+    def current_alias_for_tag(self, tag: str) -> str:
+        for row in self.current_rows:
+            try:
+                if str(row["tag"]) == tag:
+                    return str(row["alias_tag"] or "")
+            except Exception:
+                continue
+        return ""
+
+    def format_tag_list_preview(self, tags: list[str], max_items: int = 30) -> str:
+        visible = tags[:max_items]
+        lines = [f"- {tag}" for tag in visible]
+        remaining = len(tags) - len(visible)
+        if remaining > 0:
+            lines.append(f"… und {remaining} weitere")
+        return "\n".join(lines)
+
+    def confirm_bulk_alias_change(self, title: str, message: str, tags: list[str]) -> bool:
+        preview = self.format_tag_list_preview(tags)
+        result = QMessageBox.question(
+            self,
+            title,
+            f"{message}\n\nBetroffene Tags ({len(tags)}):\n{preview}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return result == QMessageBox.Yes
+
+    def update_aliases_in_visible_rows(self, tags: list[str], alias: str) -> None:
+        tag_set = set(tags)
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row_index in range(self.table.rowCount()):
+                tag_item = self.table.item(row_index, 0)
+                tag = self.tag_from_item(tag_item)
+                if tag not in tag_set:
+                    continue
+
+                self.update_current_row_value_for_tag(str(tag), "alias_tag", alias)
+                self.set_table_cell_text(row_index, 6, str(tag), alias)
+        finally:
+            self.table.setUpdatesEnabled(True)
+
+    def apply_alias_to_tags(self, tags: list[str], alias: str) -> None:
+        clean_tags = [tag for tag in dict.fromkeys(tags) if str(tag).strip()]
+        if not clean_tags:
+            return
+
+        for tag in clean_tags:
+            self.log_message(f"db.set_tag_alias: begin tag={tag!r}")
+            self.db.set_tag_alias(tag, alias)
+            self.log_message(f"db.set_tag_alias: end tag={tag!r}")
+
+        self.update_aliases_in_visible_rows(clean_tags, alias.strip())
+        self.log_message(
+            f"Alias lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload."
+        )
+
+    def bulk_set_alias(self, tags: list[str]) -> None:
+        clean_tags = [tag for tag in dict.fromkeys(tags) if str(tag).strip()]
+        if not clean_tags:
+            return
+
+        current_aliases = sorted({self.current_alias_for_tag(tag) for tag in clean_tags if self.current_alias_for_tag(tag)})
+        default_alias = current_aliases[0] if len(current_aliases) == 1 else ""
+
+        text, ok = QInputDialog.getText(
+            self,
+            "Alias für Auswahl setzen",
+            f"Alias für {len(clean_tags)} ausgewählte Tags:\nLeer lassen entfernt den Alias.",
+            QLineEdit.Normal,
+            default_alias,
+        )
+        if not ok:
+            return
+
+        alias = text.strip()
+        action_text = "entfernt" if not alias else f"auf '{alias}' gesetzt"
+        if not self.confirm_bulk_alias_change(
+            "Alias für Auswahl setzen",
+            f"Der Alias wird {action_text}.",
+            clean_tags,
+        ):
+            return
+
+        self.apply_alias_to_tags(clean_tags, alias)
+
+    def bulk_remove_alias(self, tags: list[str]) -> None:
+        clean_tags = [tag for tag in dict.fromkeys(tags) if str(tag).strip()]
+        if not clean_tags:
+            return
+
+        if not self.confirm_bulk_alias_change(
+            "Alias entfernen",
+            "Der Alias wird für diese Tags entfernt.",
+            clean_tags,
+        ):
+            return
+
+        self.apply_alias_to_tags(clean_tags, "")
+
+    def suggest_alias_from_tag(self, tag: str) -> str:
+        parts = [part for part in tag.split("_") if part]
+        if len(parts) >= 2:
+            return parts[-1]
+        return tag
+
+    def suggest_pattern_from_tag(self, tag: str) -> str:
+        parts = [part for part in tag.split("_") if part]
+        if len(parts) >= 2:
+            return f"*_{parts[-1]}"
+        return f"*{tag}*"
+
+    def describe_bulk_tag_actions(
+        self,
+        alias: str | None,
+        filename_action: str,
+        manual_score: float | None,
+        category_name: str | None,
+        category_rule_type: str | None,
+    ) -> list[str]:
+        lines: list[str] = []
+        if alias is not None:
+            lines.append(f"Alias setzen auf: {alias}")
+        if filename_action == SimilarTagsBulkActionDialog.FILENAME_ADD:
+            lines.append("Filename-Ausschluss: aufnehmen")
+        elif filename_action == SimilarTagsBulkActionDialog.FILENAME_REMOVE:
+            lines.append("Filename-Ausschluss: entfernen")
+        if manual_score is not None:
+            lines.append(f"Manueller Score setzen auf: {manual_score:.3f}".rstrip("0").rstrip("."))
+        if category_name and category_rule_type:
+            lines.append(f"Kategorie-Regel hinzufügen: {category_name} / {category_rule_type}")
+        return lines
+
+    def confirm_bulk_tag_actions(self, title: str, action_lines: list[str], tags: list[str]) -> bool:
+        preview = self.format_tag_list_preview(tags)
+        action_text = "\n".join(f"- {line}" for line in action_lines)
+        result = QMessageBox.question(
+            self,
+            title,
+            f"Diese Aktionen werden übernommen:\n{action_text}\n\nBetroffene Tags ({len(tags)}):\n{preview}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return result == QMessageBox.Yes
+
+    def apply_bulk_tag_actions(
+        self,
+        tags: list[str],
+        alias: str | None = None,
+        filename_action: str = SimilarTagsBulkActionDialog.FILENAME_NO_CHANGE,
+        manual_score: float | None = None,
+        category_name: str | None = None,
+        category_rule_type: str | None = None,
+    ) -> None:
+        clean_tags = [tag for tag in dict.fromkeys(tags) if str(tag).strip()]
+        if not clean_tags:
+            return
+
+        if alias is not None:
+            self.apply_alias_to_tags(clean_tags, alias)
+
+        if filename_action == SimilarTagsBulkActionDialog.FILENAME_ADD:
+            self.add_tags_to_filename_exclude(clean_tags)
+        elif filename_action == SimilarTagsBulkActionDialog.FILENAME_REMOVE:
+            self.remove_tags_from_filename_exclude(clean_tags)
+
+        if manual_score is not None:
+            for tag in clean_tags:
+                self.log_message(f"db.set_tag_manual_score: begin tag={tag!r}")
+                self.db.set_tag_manual_score(tag, manual_score)
+                self.log_message(f"db.set_tag_manual_score: end tag={tag!r}")
+                self.update_manual_score_in_visible_rows(tag, manual_score)
+            self.log_message(f"Manueller Score lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload.")
+
+        if category_name and category_rule_type:
+            self.add_tags_to_category(clean_tags, category_name, category_rule_type)
+
+    def find_similar_tags_for_bulk_actions(self, base_tag: str) -> None:
+        default_pattern = self.suggest_pattern_from_tag(base_tag)
+        pattern, ok = QInputDialog.getText(
+            self,
+            "Ähnliche Tags suchen",
+            "Suchmuster (* und ? erlaubt):",
+            QLineEdit.Normal,
+            default_pattern,
+        )
+        if not ok:
+            return
+
+        pattern = pattern.strip()
+        if not pattern:
+            return
+
+        self.log_message(f"db.search_tags_by_pattern: begin pattern={pattern!r}")
+        rows = self.db.search_tags_by_pattern(
+            pattern,
+            tag_type=self.selected_tag_type(),
+            limit=1000,
+        )
+        self.log_message(f"db.search_tags_by_pattern: end rows={len(rows)}")
+
+        if not rows:
+            QMessageBox.information(self, "Ähnliche Tags suchen", "Keine passenden Tags gefunden.")
+            return
+
+        suggested_alias = self.current_alias_for_tag(base_tag) or self.suggest_alias_from_tag(base_tag)
+        dialog = SimilarTagsBulkActionDialog(
+            self,
+            rows,
+            category_names=self.db.list_category_names(),
+            suggested_alias=suggested_alias,
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        selected = dialog.selected_tags()
+        if not selected:
+            QMessageBox.information(self, "Ähnliche Tags bearbeiten", "Keine Tags ausgewählt.")
+            return
+
+        if not dialog.has_any_action():
+            QMessageBox.information(self, "Ähnliche Tags bearbeiten", "Keine Aktion eingetragen.")
+            return
+
+        category_name, category_rule_type = dialog.category_action()
+        alias = dialog.alias_to_set()
+        filename_action = dialog.filename_action()
+        manual_score = dialog.manual_score()
+        action_lines = self.describe_bulk_tag_actions(
+            alias,
+            filename_action,
+            manual_score,
+            category_name,
+            category_rule_type,
+        )
+
+        if not self.confirm_bulk_tag_actions("Ähnliche Tags bearbeiten", action_lines, selected):
+            return
+
+        self.apply_bulk_tag_actions(
+            selected,
+            alias=alias,
+            filename_action=filename_action,
+            manual_score=manual_score,
+            category_name=category_name,
+            category_rule_type=category_rule_type,
+        )
+
+    def find_similar_tags_for_alias(self, base_tag: str) -> None:
+        # Backwards-compatible wrapper for older signal connections or muscle memory.
+        self.find_similar_tags_for_bulk_actions(base_tag)
 
     def edit_manual_score(self, tag: str) -> None:
         current_value = 0.0

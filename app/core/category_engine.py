@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import math
 
 from app.core.database import Database
+from app.core.tag_privacy import canonicalize_tag, normalize_tag_token
 
 
 @dataclass(frozen=True)
@@ -14,6 +16,18 @@ class CategoryMatch:
     folder_name: str
     output_path: str | None
     matched: bool
+    reason: str
+
+
+
+
+@dataclass(frozen=True)
+class CategoryInfluence:
+    category_id: int
+    name: str
+    score: float
+    matched_tags: int
+    examples: int
     reason: str
 
 
@@ -232,6 +246,137 @@ class CategoryEngine:
         ).fetchall()
         return {str(row["tag"]) for row in rows}
 
+    def category_influence_for_post(self, post_id: int) -> list[CategoryInfluence]:
+        """Return soft category hints based on already sorted examples.
+
+        This does not replace hard category rules. It is a preparation layer for
+        later LLM/category weighting: aliases are resolved, personal tag scores
+        dampen or boost tag contributions, and previous category assignments form
+        the example base.
+        """
+        return self.category_influence_for_tags(self.get_post_tags(post_id))
+
+    def category_influence_for_tags(self, tags: set[str]) -> list[CategoryInfluence]:
+        clean_tags = {normalize_tag_token(tag) for tag in tags if normalize_tag_token(tag)}
+        if not clean_tags:
+            return []
+
+        aliases = self.db.list_tag_alias_map()
+        canonical_tags = {canonicalize_tag(tag, aliases) for tag in clean_tags}
+        canonical_tags.discard("")
+        if not canonical_tags:
+            return []
+
+        # Expand current canonical tags back to known original aliases so
+        # red_hairband -> hairband can match older blue_hairband examples.
+        candidate_original_tags = set(clean_tags)
+        for original, alias in aliases.items():
+            if canonicalize_tag(original, aliases) in canonical_tags or canonicalize_tag(alias, aliases) in canonical_tags:
+                candidate_original_tags.add(original)
+                candidate_original_tags.add(alias)
+
+        rows = self.db.fetch_category_tag_hits(candidate_original_tags)
+        if not rows:
+            return []
+
+        tag_metadata = self.db.fetch_tag_metadata(candidate_original_tags)
+        category_scores: dict[int, dict[str, Any]] = {}
+        canonical_seen_by_category: dict[int, set[str]] = {}
+
+        for row in rows:
+            category_id = int(row["category_id"])
+            original_tag = normalize_tag_token(str(row["tag"] or ""))
+            canonical_tag = canonicalize_tag(original_tag, aliases)
+            if canonical_tag not in canonical_tags:
+                continue
+
+            hit_count = int(row["hit_count"] or 0)
+            saved_hits = int(row["saved_hits"] or 0)
+            avg_stars = row["avg_stars"]
+            category_post_count = max(1, int(row["category_post_count"] or 0))
+            tag_total_hits = max(1, int(row["tag_total_hits"] or 0))
+            categorized_post_count = max(1, int(row["categorized_post_count"] or 0))
+
+            metadata = tag_metadata.get(original_tag, {})
+            try:
+                tag_score = float(metadata.get("score", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                tag_score = 0.0
+
+            try:
+                star_bonus = (float(avg_stars) - 5.0) / 12.0 if avg_stars is not None else 0.0
+            except (TypeError, ValueError):
+                star_bonus = 0.0
+
+            # Use lift instead of raw frequency. Raw frequency made broad tags
+            # such as "1girl" always point to the largest category. Lift asks:
+            # is this tag more typical for this category than for all saved
+            # category examples? That is the actual hint we need. Imagine that.
+            category_ratio = hit_count / category_post_count
+            global_ratio = tag_total_hits / categorized_post_count
+            lift = category_ratio / max(global_ratio, 0.0001)
+
+            # Tags that appear almost everywhere are bad evidence. They still get
+            # a tiny vote, but not enough to drown distinctive tags.
+            ubiquity = tag_total_hits / categorized_post_count
+            distinctiveness = max(0.05, 1.0 - ubiquity)
+
+            # Saturate repeated hits. Seeing the same tag 500 times in one large
+            # category should not be 500 times more convincing.
+            support = math.log1p(hit_count)
+            lift_weight = max(0.0, math.log2(max(lift, 0.01)))
+            saved_weight = min(saved_hits / category_post_count, 1.0) * 0.25
+            score_weight = max(-0.5, min(0.5, tag_score / 10.0))
+            contribution = support * lift_weight * distinctiveness * (1.0 + score_weight + star_bonus + saved_weight)
+            if contribution <= 0:
+                continue
+
+            bucket = category_scores.setdefault(
+                category_id,
+                {
+                    "category_id": category_id,
+                    "name": str(row["category_name"]),
+                    "score": 0.0,
+                    "examples": 0,
+                    "tags": {},
+                },
+            )
+            bucket["score"] += contribution
+            bucket["examples"] += hit_count
+            tag_bucket = bucket["tags"].setdefault(
+                canonical_tag,
+                {"display": canonical_tag, "hits": 0, "score": 0.0},
+            )
+            tag_bucket["hits"] += hit_count
+            tag_bucket["score"] += contribution
+            canonical_seen_by_category.setdefault(category_id, set()).add(canonical_tag)
+
+        influences: list[CategoryInfluence] = []
+        for category_id, bucket in category_scores.items():
+            tags_sorted = sorted(
+                bucket["tags"].values(),
+                key=lambda item: (-float(item["score"]), str(item["display"]).casefold()),
+            )
+            reason_parts = [f"{item['display']} ({item['hits']}x)" for item in tags_sorted[:8]]
+            if len(tags_sorted) > 8:
+                reason_parts.append(f"+{len(tags_sorted) - 8} weitere")
+            score = round(float(bucket["score"]), 2)
+            if score <= 0:
+                continue
+            influences.append(
+                CategoryInfluence(
+                    category_id=category_id,
+                    name=str(bucket["name"]),
+                    score=score,
+                    matched_tags=len(canonical_seen_by_category.get(category_id, set())),
+                    examples=int(bucket["examples"]),
+                    reason=", ".join(reason_parts) if reason_parts else "keine verwertbaren Treffer",
+                )
+            )
+
+        influences.sort(key=lambda item: (-item.score, item.name.casefold()))
+        return influences
+
     def build_category_decision_report_for_post(
         self,
         post_id: int,
@@ -292,9 +437,19 @@ class CategoryEngine:
                 }
             )
 
+        influences = self.category_influence_for_tags(tags)
+        influence_by_name = {entry.name: entry for entry in influences}
+        top_influence = influences[0] if influences else None
+
         automatic_name = winner_name or "_unmatched"
         lines: list[str] = [title]
         lines.append(f"Automatik: {automatic_name}")
+        if top_influence is not None:
+            lines.append(f"Tag-Einfluss: {top_influence.name} (+{top_influence.score:g})")
+            if automatic_name != "_unmatched" and top_influence.name != automatic_name:
+                lines.append("Hinweis: Harte Kategorie-Regeln haben Vorrang vor dem Tag-Einfluss.")
+            elif automatic_name == "_unmatched":
+                lines.append("Hinweis: Tag-Einfluss ist aktuell nur ein Hinweis und ersetzt noch keine Regel.")
         if selected_category_name:
             lines.append(f"Aktuell gewählt: {selected_category_name}")
             if selected_category_name != automatic_name:
@@ -310,7 +465,23 @@ class CategoryEngine:
                 lines.append(f"Weitere passende Kategorien nach dem Gewinner: {', '.join(matched_names[1:])}")
         else:
             lines.append("Passt: keine Kategorie, daher Fallback _unmatched")
+        if influences:
+            preview = "; ".join(
+                f"{entry.name} +{entry.score:g}" for entry in influences[:5]
+            )
+            lines.append(f"Tag-Einfluss Top: {preview}")
+        else:
+            lines.append("Tag-Einfluss: keine verwertbaren früheren Kategorie-Beispiele")
         lines.append("")
+
+        if influences:
+            lines.append("Tag-Einfluss, Details")
+            for entry in influences[:5]:
+                lines.append(
+                    f"[{entry.name}] +{entry.score:g} | Tags: {entry.matched_tags} | Beispiele: {entry.examples}"
+                )
+                lines.append(f"  Treffer: {entry.reason}")
+            lines.append("")
 
         important_names: list[str] = []
         if winner_name:

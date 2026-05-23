@@ -273,6 +273,7 @@ class ImageViewerWindow(QMainWindow):
         self.current_post_id: int | None = None
         self.shortcuts: list[QShortcut] = []
         self.suggested_category_name: str | None = None
+        self.category_influence_by_name: dict[str, float] = {}
         self.last_saved_path: Path | None = None
         self._tag_context_menu: QMenu | None = None
         self._related_context_menu: QMenu | None = None
@@ -847,12 +848,18 @@ class ImageViewerWindow(QMainWindow):
         self.category_combo.blockSignals(True)
         self.category_combo.clear()
 
+        influences = self.final_save_service.category_engine.category_influence_for_post(post_id)
+        self.category_influence_by_name = {entry.name: entry.score for entry in influences}
+        top_influence_name = influences[0].name if influences else None
+
         categories = self.final_save_service.list_categories()
         for category in categories:
             label = category.name
             suffixes: list[str] = []
             if category.name == suggested.name:
                 suffixes.append("Vorschlag")
+            if category.name == top_influence_name:
+                suffixes.append("Tag-Hinweis")
             if assigned_name and category.name == assigned_name:
                 suffixes.append("gesetzt")
             if suffixes:
@@ -869,7 +876,10 @@ class ImageViewerWindow(QMainWindow):
         if assigned_name:
             self.category_label.setText(f"Kategorie: gesetzt ({assigned_source})")
         else:
-            self.category_label.setText(f"Kategorie: Vorschlag {suggested.name}")
+            influence_text = ""
+            if top_influence_name and top_influence_name != suggested.name:
+                influence_text = f" | Tag-Hinweis: {top_influence_name}"
+            self.category_label.setText(f"Kategorie: Vorschlag {suggested.name}{influence_text}")
         self.update_final_path_preview()
 
     def selected_category(self) -> CategoryMatch | None:
