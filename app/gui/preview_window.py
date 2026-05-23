@@ -127,7 +127,7 @@ class PreviewWindow(QMainWindow):
         self.config = config
         self.db = db
         self.final_save_service = FinalSaveService(config, db)
-        self.current_limit = 500
+        self.current_limit = int((config.get("gui", {}) or {}).get("preview_limit", 100))
         self.current_offset = 0
 
         self.viewer_windows_by_post_id: dict[int, ImageViewerWindow] = {}
@@ -207,7 +207,8 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar.addWidget(QLabel("Kategorie: "))
         self.category_filter = QComboBox()
-        self.category_filter.currentIndexChanged.connect(self.schedule_reload)
+        # Kategorie ist ein Filter: Änderung erst mit "Neu laden" anwenden.
+        self.category_filter.currentIndexChanged.connect(self.on_passive_filter_changed)
         self.toolbar.addWidget(self.category_filter)
 
         self.toolbar.addSeparator()
@@ -217,7 +218,8 @@ class PreviewWindow(QMainWindow):
         for sort_key, sort_label in SORT_LABELS.items():
             self.sort_combo.addItem(sort_label, sort_key)
         self.sort_combo.setCurrentIndex(self.sort_combo.findData("id_desc"))
-        self.sort_combo.currentIndexChanged.connect(self.schedule_reload)
+        # Sortierung ebenfalls passiv, damit Filtersetzen nicht sofort neu rendert.
+        self.sort_combo.currentIndexChanged.connect(self.on_passive_filter_changed)
         self.toolbar.addWidget(self.sort_combo)
 
         self.toolbar.addSeparator()
@@ -245,8 +247,8 @@ class PreviewWindow(QMainWindow):
         self.limit_spin.setSingleStep(50)
         self.limit_spin.setValue(self.current_limit)
         self.limit_spin.setKeyboardTracking(False)
-        self.limit_spin.valueChanged.connect(self.schedule_reload)
-        self.limit_spin.editingFinished.connect(self.schedule_reload)
+        self.limit_spin.lineEdit().returnPressed.connect(self.reload_posts)
+        self.limit_spin.valueChanged.connect(self.on_passive_filter_changed)
         self.toolbar.addWidget(self.limit_spin)
 
         self.toolbar.addSeparator()
@@ -303,7 +305,7 @@ class PreviewWindow(QMainWindow):
         self.sync_all_checkbox_from_statuses()
         self.reload_category_filter()
         self.reload_tag_suggestions()
-        self.reload_posts()
+        self.show_preview_loading("Preview bereit. Öffne den Tab oder klicke auf Neu laden.")
 
 
 
@@ -351,18 +353,36 @@ class PreviewWindow(QMainWindow):
     def hide_preview_loading(self) -> None:
         self.content_stack.setCurrentWidget(self.grid)
         self.grid.setVisible(True)
+        self.grid.viewport().setVisible(True)
+        self.grid.container.setVisible(True)
+        self.grid.setUpdatesEnabled(True)
+        self.grid.viewport().setUpdatesEnabled(True)
+        self.grid.container.setUpdatesEnabled(True)
+        self.grid.update_columns()
+        if self.grid.items:
+            self.grid.relayout()
+        self.grid.container.adjustSize()
+        self.grid.container.updateGeometry()
+        self.grid.viewport().update()
+        self.grid.updateGeometry()
+        self.grid.update()
+        self.content_stack.updateGeometry()
+        self.content_stack.update()
+        self.main_widget.updateGeometry()
+        self.main_widget.update()
+        self.update()
+        QTimer.singleShot(0, self._force_preview_grid_repaint)
+
+    def _force_preview_grid_repaint(self) -> None:
+        if self.content_stack.currentWidget() is not self.grid:
+            self.content_stack.setCurrentWidget(self.grid)
         self.grid.update_columns()
         if self.grid.items:
             self.grid.relayout()
         self.grid.viewport().update()
-        self.grid.container.updateGeometry()
         self.grid.container.update()
-        self.grid.updateGeometry()
         self.grid.update()
         self.content_stack.update()
-        self.main_widget.update()
-        self.update()
-        QApplication.processEvents()
 
 
 
@@ -384,8 +404,8 @@ class PreviewWindow(QMainWindow):
             QApplication.processEvents()
 
     def on_grid_build_finished(self, total: int) -> None:
-        self.hide_preview_loading()
         self.status_bar.showMessage(f"Preview geladen: {total} Thumbnail(s)", 5000)
+        QTimer.singleShot(0, self.hide_preview_loading)
 
     @staticmethod
     def is_path_like_search_term(term: str) -> bool:
@@ -407,18 +427,17 @@ class PreviewWindow(QMainWindow):
         self.update()
 
     def on_tab_activated(self) -> None:
-        # Beim Tabwechsel immer sofort die eigene Preview-Ladefläche zeigen.
-        # Ohne diesen harten Stack-Wechsel recycelt Qt gerne den zuletzt sichtbaren
-        # Fetch-Inhalt als Geisterbild, bis der nächste echte Repaint passiert.
-        if self._is_reloading or self.grid._pending_rows:
-            self.show_preview_loading("Lädt Preview…")
-        else:
-            self.show_preview_loading("Lädt Preview…")
-            QTimer.singleShot(0, self.reload_posts)
+        # Beim Tabwechsel sofort eine deckende Ladefläche zeigen und den echten
+        # Reload erst im nächsten Event starten. Direktes Laden im Tabwechsel lässt
+        # Qt gern den alten Fetch-Tab weiterzeichnen. Sehr erwachsen.
+        self.show_preview_loading("Lädt Preview…")
+        self.content_stack.setCurrentWidget(self.loading_panel)
+        self.loading_panel.raise_()
+        self.content_stack.repaint()
+        self.main_widget.repaint()
+        self.repaint()
+        QTimer.singleShot(80, self.reload_posts)
 
-        self.content_stack.update()
-        self.main_widget.update()
-        self.update()
 
     # -------------------------------------------------------------------------
     # Kategorie-Filter / Kategorie-Vorschlag
@@ -636,7 +655,7 @@ class PreviewWindow(QMainWindow):
             self._syncing_status_checkboxes = False
         self._fetch_running = False
 
-        self.schedule_reload()
+        self.on_passive_filter_changed()
 
     def on_status_checkbox_changed(self, *_args) -> None:
         if self._syncing_status_checkboxes:
@@ -653,7 +672,7 @@ class PreviewWindow(QMainWindow):
                 finally:
                     self.view_mode.blockSignals(False)
 
-        self.schedule_reload()
+        self.on_passive_filter_changed()
 
     def sync_all_checkbox_from_statuses(self) -> None:
         all_checked = all(checkbox.isChecked() for checkbox in self.status_checkboxes.values())
@@ -686,6 +705,9 @@ class PreviewWindow(QMainWindow):
     # -------------------------------------------------------------------------
     # Reload / Filter
     # -------------------------------------------------------------------------
+
+    def on_passive_filter_changed(self, *_args) -> None:
+        self.status_bar.showMessage("Filter geändert. Klicke auf Neu laden oder drücke Enter im Such-/Limit-Feld.", 4000)
 
     def schedule_reload(self, *_args) -> None:
         if self._applying_viewer_query:
