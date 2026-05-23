@@ -196,7 +196,7 @@ class TypedTagListWidget(QWidget):
                 background: #1f1f1f;
                 color: #eeeeee;
             }}
-            QListWidget::item {{ padding: 1px 4px; }}
+            QListWidget::item {{ padding: 1px 4px; font-weight: normal; }}
             QListWidget::item:selected {{
                 background: {TAG_TYPE_COLORS[tag_type]};
                 color: #000000;
@@ -248,7 +248,7 @@ class TypedTagListWidget(QWidget):
                 meta = self._tag_metadata.get(tag, {})
                 score_text = self._format_score(meta.get("score"))
                 excluded = bool(meta.get("filename_excluded", tag in self._filename_excluded_tags))
-                excluded_text = "✓" if excluded else "–"
+                excluded_text = "J" if excluded else "N"
                 scoring_excluded = bool(meta.get("scoring_excluded", False))
                 average_text = "aus" if scoring_excluded else self._format_average_rating(meta.get("average_rating"))
                 display_text = tag
@@ -303,12 +303,12 @@ class TypedTagListWidget(QWidget):
         tag_label = QLabel(tag)
         tag_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         tag_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        tag_label.setStyleSheet(f"color: {TAG_TYPE_COLORS[tag_type]};")
+        tag_label.setStyleSheet(f"color: {TAG_TYPE_COLORS[tag_type]}; font-weight: normal;")
         row_layout.addWidget(tag_label, stretch=1)
 
         columns = (
             ("S:", score_text, 58, "Score"),
-            ("✖:", excluded_text, 50, "Filename-Exclude"),
+            ("✖:", excluded_text, 48, "Filename-Exclude: J = ja, N = nein"),
             ("⌀☆:", average_text, 76, "Durchschnittliche Sterne / aus = aus Scoring ausgeschlossen"),
         )
         for prefix, value, width, tooltip in columns:
@@ -316,7 +316,7 @@ class TypedTagListWidget(QWidget):
             label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             label.setFixedWidth(width)
             label.setToolTip(tooltip)
-            label.setStyleSheet("color: #dddddd; font-family: Consolas, 'DejaVu Sans Mono', monospace;")
+            label.setStyleSheet("color: #dddddd; font-family: Consolas, 'DejaVu Sans Mono', monospace; font-weight: normal;")
             row_layout.addWidget(label)
 
         row.setStyleSheet("background: transparent;")
