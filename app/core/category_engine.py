@@ -17,6 +17,56 @@ class CategoryMatch:
     reason: str
 
 
+def build_category_match_groups(rules: list[Any]) -> list[tuple[set[str], set[str]]]:
+    """Return intuitive OR groups: (required_tags, forbidden_tags).
+
+    New rule types are group_N_include/group_N_exclude. Legacy rules are kept
+    compatible: include tags are OR branches, include_group_N are AND branches,
+    and legacy exclude tags are copied into each branch.
+    """
+    import re
+
+    new_groups: dict[int, tuple[set[str], set[str]]] = {}
+    legacy_groups: dict[str, set[str]] = {}
+    legacy_includes: set[str] = set()
+    legacy_excludes: set[str] = set()
+
+    include_re = re.compile(r"^group_(\d+)_include$")
+    exclude_re = re.compile(r"^group_(\d+)_exclude$")
+
+    for rule in rules:
+        rule_type = str(rule["rule_type"])
+        tag = str(rule["tag"])
+
+        include_match = include_re.match(rule_type)
+        exclude_match = exclude_re.match(rule_type)
+
+        if include_match:
+            index = int(include_match.group(1))
+            includes, excludes = new_groups.setdefault(index, (set(), set()))
+            includes.add(tag)
+        elif exclude_match:
+            index = int(exclude_match.group(1))
+            includes, excludes = new_groups.setdefault(index, (set(), set()))
+            excludes.add(tag)
+        elif rule_type == "include":
+            legacy_includes.add(tag)
+        elif rule_type == "exclude":
+            legacy_excludes.add(tag)
+        elif rule_type.startswith("include_group_"):
+            legacy_groups.setdefault(rule_type, set()).add(tag)
+
+    if new_groups:
+        return [new_groups[index] for index in sorted(new_groups)]
+
+    result: list[tuple[set[str], set[str]]] = []
+    for group_tags in legacy_groups.values():
+        result.append((set(group_tags), set(legacy_excludes)))
+    for tag in sorted(legacy_includes):
+        result.append(({tag}, set(legacy_excludes)))
+    return result
+
+
 class CategoryEngine:
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         self.config = config
@@ -80,31 +130,21 @@ class CategoryEngine:
             category_id = int(category["id"])
             rules = rules_by_category.get(category_id, [])
 
-            include = {str(rule["tag"]) for rule in rules if str(rule["rule_type"]) == "include"}
-            exclude = {str(rule["tag"]) for rule in rules if str(rule["rule_type"]) == "exclude"}
-
-            if exclude.intersection(tags):
-                continue
-
-            include_groups: dict[str, set[str]] = {}
-            for rule in rules:
-                rule_type = str(rule["rule_type"])
-                if rule_type.startswith("include_group_"):
-                    include_groups.setdefault(rule_type, set()).add(str(rule["tag"]))
-
-            if include and not include.intersection(tags):
-                continue
-
-            if include_groups:
+            groups = build_category_match_groups(rules)
+            if groups:
                 group_match = False
-                for group_tags in include_groups.values():
-                    if group_tags and group_tags.issubset(tags):
+                for required_tags, forbidden_tags in groups:
+                    if forbidden_tags.intersection(tags):
+                        continue
+                    if required_tags and required_tags.issubset(tags):
                         group_match = True
                         break
+                    if not required_tags and forbidden_tags:
+                        # Pure exclude groups are intentionally not positive matches.
+                        continue
                 if not group_match:
                     continue
 
-            if include or include_groups:
                 return CategoryMatch(
                     id=category_id,
                     name=str(category["name"]),

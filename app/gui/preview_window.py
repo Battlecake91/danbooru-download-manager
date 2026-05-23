@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.core.category_engine import build_category_match_groups
 from app.gui.image_viewer import ImageViewerWindow
 from app.gui.icon_utils import ensure_app_icon
 from app.gui.fetch_tab import TagQueryLineEdit
@@ -527,20 +528,15 @@ class PreviewWindow(QMainWindow):
                 "groups": {},
             }
 
+        rules_by_category: dict[int, list[Any]] = {}
         for rule in rules:
             category_id = int(rule["category_id"])
             if category_id not in by_category:
                 continue
+            rules_by_category.setdefault(category_id, []).append(rule)
 
-            rule_type = str(rule["rule_type"])
-            tag = str(rule["tag"])
-
-            if rule_type == "include":
-                by_category[category_id]["include"].add(tag)
-            elif rule_type == "exclude":
-                by_category[category_id]["exclude"].add(tag)
-            elif rule_type.startswith("include_group_"):
-                by_category[category_id]["groups"].setdefault(rule_type, set()).add(tag)
+        for category_id, category_rules in rules_by_category.items():
+            by_category[category_id]["match_groups"] = build_category_match_groups(category_rules)
 
         self.category_rule_cache = sorted(
             by_category.values(),
@@ -553,26 +549,15 @@ class PreviewWindow(QMainWindow):
         for category in self.category_rule_cache:
             name = category["name"]
 
-            if category["exclude"].intersection(tags):
+            match_groups = category.get("match_groups", [])
+            if not match_groups:
                 continue
 
-            include = category["include"]
-            groups = category["groups"]
-
-            if include and not include.intersection(tags):
-                continue
-
-            if groups:
-                group_match = False
-                for group_tags in groups.values():
-                    if group_tags and group_tags.issubset(tags):
-                        group_match = True
-                        break
-                if not group_match:
+            for required_tags, forbidden_tags in match_groups:
+                if forbidden_tags.intersection(tags):
                     continue
-
-            if include or groups:
-                return name
+                if required_tags and required_tags.issubset(tags):
+                    return name
 
         return "_unmatched"
 

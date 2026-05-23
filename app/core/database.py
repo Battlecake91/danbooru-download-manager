@@ -616,6 +616,99 @@ class Database:
         self.execute("DELETE FROM category_rules WHERE id = ?", (rule_id,))
         self.commit()
 
+    def delete_category_rules_for_category(self, category_id: int) -> None:
+        self.execute("DELETE FROM category_rules WHERE category_id = ?", (category_id,))
+        self.commit()
+
+    @staticmethod
+    def parse_category_group_expression(expression: str) -> tuple[list[str], list[str]]:
+        import re
+
+        includes: list[str] = []
+        excludes: list[str] = []
+        for token in [part.strip() for part in re.split(r"[\s,;]+", expression.strip()) if part.strip()]:
+            if token == "-":
+                continue
+            if token.startswith("-") and len(token) > 1:
+                tag = token[1:].strip()
+                if tag and tag not in excludes:
+                    excludes.append(tag)
+            elif token not in includes:
+                includes.append(token)
+        return includes, excludes
+
+    def replace_category_rule_groups(self, category_id: int, group_expressions: list[str]) -> None:
+        """Replace all rules of a category with intuitive OR groups.
+
+        Each expression is one OR branch. Tokens without '-' are required tags,
+        tokens with '-' are excluded tags inside that branch.
+        """
+        self.execute("DELETE FROM category_rules WHERE category_id = ?", (category_id,))
+
+        for group_index, expression in enumerate(group_expressions):
+            includes, excludes = self.parse_category_group_expression(expression)
+            if not includes and not excludes:
+                continue
+
+            for tag in includes:
+                self.execute(
+                    """
+                    INSERT OR IGNORE INTO category_rules (category_id, rule_type, tag)
+                    VALUES (?, ?, ?)
+                    """,
+                    (category_id, f"group_{group_index}_include", tag),
+                )
+            for tag in excludes:
+                self.execute(
+                    """
+                    INSERT OR IGNORE INTO category_rules (category_id, rule_type, tag)
+                    VALUES (?, ?, ?)
+                    """,
+                    (category_id, f"group_{group_index}_exclude", tag),
+                )
+        self.commit()
+
+    def normalize_category_sort_order(self) -> None:
+        """Write dense 1-based priority values in the current effective order."""
+        rows = self.list_categories_full()
+        for index, row in enumerate(rows, start=1):
+            if int(row["sort_order"] or 0) != index:
+                self.execute(
+                    "UPDATE categories SET sort_order = ? WHERE id = ?",
+                    (index, int(row["id"])),
+                )
+        self.commit()
+
+    def set_category_priority_order(self, ordered_category_ids: list[int]) -> None:
+        """Persist the visible category order. The first row has highest priority."""
+        if not ordered_category_ids:
+            return
+
+        known_ids = {int(row["id"]) for row in self.list_categories_full()}
+        for index, category_id in enumerate(ordered_category_ids, start=1):
+            if int(category_id) not in known_ids:
+                continue
+            self.execute(
+                "UPDATE categories SET sort_order = ? WHERE id = ?",
+                (index, int(category_id)),
+            )
+        self.commit()
+
+    def move_category_sort_order(self, category_id: int, direction: int) -> None:
+        """Move a category up/down in priority order. direction -1 = up, +1 = down."""
+        rows = self.list_categories_full()
+        ids = [int(row["id"]) for row in rows]
+        if category_id not in ids:
+            return
+
+        index = ids.index(category_id)
+        target = index + (-1 if direction < 0 else 1)
+        if target < 0 or target >= len(ids):
+            return
+
+        ids[index], ids[target] = ids[target], ids[index]
+        self.set_category_priority_order(ids)
+
     def fetch_preview_posts(
         self,
         view_mode: str = "worklist",
