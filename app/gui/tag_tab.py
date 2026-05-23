@@ -11,6 +11,7 @@ from typing import Any, Callable
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -81,6 +82,9 @@ class SimilarTagsBulkActionDialog(QDialog):
     FILENAME_ADD = "add"
     FILENAME_REMOVE = "remove"
     CATEGORY_NO_CHANGE = ""
+    FLAG_NO_CHANGE = "none"
+    FLAG_IGNORE = "ignore"
+    FLAG_USE = "use"
 
     def __init__(self, parent: QWidget, rows: list[Any], category_names: list[str], suggested_alias: str = "") -> None:
         super().__init__(parent)
@@ -104,12 +108,24 @@ class SimilarTagsBulkActionDialog(QDialog):
             post_count = int(row["post_count"] or 0)
             tag_type = str(row["tag_type"] or "")
             filename_excluded = bool(int(row["filename_excluded"] or 0))
+            ignore_category_influence = bool(int(row["ignore_category_influence"] or 0))
+            ignore_recommendation_score = bool(int(row["ignore_recommendation_score"] or 0))
+            ignore_llm_input = bool(int(row["ignore_llm_input"] or 0))
 
             suffix = f" | {tag_type} | {post_count} Posts"
             if alias:
                 suffix += f" | Alias: {alias}"
             if filename_excluded:
                 suffix += " | Filename-Exclude"
+            flag_labels: list[str] = []
+            if ignore_category_influence:
+                flag_labels.append("Kat.-Hinweis ignoriert")
+            if ignore_recommendation_score:
+                flag_labels.append("Vorauswahl ignoriert")
+            if ignore_llm_input:
+                flag_labels.append("LLM ignoriert")
+            if flag_labels:
+                suffix += " | " + ", ".join(flag_labels)
 
             item = QListWidgetItem(f"{tag}{suffix}")
             item.setData(Qt.UserRole, tag)
@@ -146,6 +162,25 @@ class SimilarTagsBulkActionDialog(QDialog):
         self.filename_combo.addItem("aus Filename-Ausschluss entfernen", self.FILENAME_REMOVE)
         filename_row.addWidget(self.filename_combo, stretch=1)
         layout.addLayout(filename_row)
+
+        scoring_row = QHBoxLayout()
+        scoring_row.addWidget(QLabel("Scoring-/Nutzungsflags:"))
+        self.category_influence_combo = QComboBox()
+        self.category_influence_combo.addItem("Kategorie-Hinweis nicht ändern", self.FLAG_NO_CHANGE)
+        self.category_influence_combo.addItem("Kategorie-Hinweis ignorieren", self.FLAG_IGNORE)
+        self.category_influence_combo.addItem("Kategorie-Hinweis wieder nutzen", self.FLAG_USE)
+        self.recommendation_combo = QComboBox()
+        self.recommendation_combo.addItem("Vorauswahl nicht ändern", self.FLAG_NO_CHANGE)
+        self.recommendation_combo.addItem("Vorauswahl ignorieren", self.FLAG_IGNORE)
+        self.recommendation_combo.addItem("Vorauswahl wieder nutzen", self.FLAG_USE)
+        self.llm_input_combo = QComboBox()
+        self.llm_input_combo.addItem("LLM-Eingabe nicht ändern", self.FLAG_NO_CHANGE)
+        self.llm_input_combo.addItem("LLM-Eingabe ignorieren", self.FLAG_IGNORE)
+        self.llm_input_combo.addItem("LLM-Eingabe wieder nutzen", self.FLAG_USE)
+        scoring_row.addWidget(self.category_influence_combo, stretch=1)
+        scoring_row.addWidget(self.recommendation_combo, stretch=1)
+        scoring_row.addWidget(self.llm_input_combo, stretch=1)
+        layout.addLayout(scoring_row)
 
         score_row = QHBoxLayout()
         self.score_checkbox = QCheckBox("Manuellen Score setzen")
@@ -208,6 +243,21 @@ class SimilarTagsBulkActionDialog(QDialog):
             return None
         return float(self.score_spin.value())
 
+    def scoring_flag_actions(self) -> dict[str, bool | None]:
+        def combo_to_value(combo: QComboBox) -> bool | None:
+            value = str(combo.currentData() or self.FLAG_NO_CHANGE)
+            if value == self.FLAG_IGNORE:
+                return True
+            if value == self.FLAG_USE:
+                return False
+            return None
+
+        return {
+            "ignore_category_influence": combo_to_value(self.category_influence_combo),
+            "ignore_recommendation_score": combo_to_value(self.recommendation_combo),
+            "ignore_llm_input": combo_to_value(self.llm_input_combo),
+        }
+
     def category_action(self) -> tuple[str | None, str | None]:
         category_name = str(self.category_combo.currentData() or "")
         if not category_name:
@@ -221,6 +271,7 @@ class SimilarTagsBulkActionDialog(QDialog):
                 self.alias_to_set() is not None,
                 self.filename_action() != self.FILENAME_NO_CHANGE,
                 self.manual_score() is not None,
+                any(value is not None for value in self.scoring_flag_actions().values()),
                 category_name is not None,
             ]
         )
@@ -245,6 +296,7 @@ class TagTab(QWidget):
         self._reload_pending = False
         self._sort_column: int | None = None
         self._sort_order = Qt.DescendingOrder
+        self._suppress_item_changed = False
 
         work_dir = Path(str(config.get("work_dir", ".")))
         self.log_dir = work_dir / "logs"
@@ -279,7 +331,7 @@ class TagTab(QWidget):
         self.main_layout.addLayout(self.toolbar_layout)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(11)
+        self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels(
             [
                 "Tag",
@@ -290,6 +342,9 @@ class TagTab(QWidget):
                 "Abgelehnt",
                 "Alias",
                 "Filename-Exclude",
+                "Kat.-Scoring ignoriert",
+                "Vorauswahl ignoriert",
+                "LLM ignoriert",
                 "Manueller Score",
                 "Berechneter Score",
                 "Ø Sterne",
@@ -297,18 +352,26 @@ class TagTab(QWidget):
         )
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.ExtendedSelection)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setEditTriggers(
+            QAbstractItemView.DoubleClicked
+            | QAbstractItemView.SelectedClicked
+            | QAbstractItemView.EditKeyPressed
+            | QAbstractItemView.AnyKeyPressed
+        )
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(
             lambda pos: self.safe(lambda: self.open_context_menu(pos), "Kontextmenü öffnen")
         )
-        self.table.itemDoubleClicked.connect(
-            lambda item: self.safe(lambda: self.edit_alias_for_item(item), "Alias per Doppelklick bearbeiten")
+        self.table.itemClicked.connect(
+            lambda item: self.safe(lambda: self.handle_option_cell_click(item), "Tag-Option per Klick ändern")
+        )
+        self.table.itemChanged.connect(
+            lambda item: self.safe(lambda: self.handle_editable_cell_changed(item), "Tag-Zelle direkt bearbeiten")
         )
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col in range(1, 11):
+        for col in range(1, 14):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
@@ -317,8 +380,9 @@ class TagTab(QWidget):
         self.main_layout.addWidget(self.table)
 
         self.hint_label = QLabel(
-            f"Rechtsklick auf Tags: zu Kategorie hinzufügen, Filename-Exclude setzen, Alias/Score bearbeiten. "
-            f"Doppelklick: Alias bearbeiten. Fehlerlog: {self.tag_log_path}"
+            f"Klick in Filename-/Scoring-Spalten: Option direkt umschalten. "
+            f"Alias und manueller Score sind direkt in der Tabelle editierbar. Rechtsklick: Kategorie, Scoring/Nutzung, Bulk-Alias, Suche. "
+            f"Fehlerlog: {self.tag_log_path}"
         )
         self.hint_label.setWordWrap(True)
         self.main_layout.addWidget(self.hint_label)
@@ -434,7 +498,7 @@ class TagTab(QWidget):
             )
         else:
             self._sort_column = column
-            self._sort_order = Qt.AscendingOrder if column in {0, 1, 6, 7} else Qt.DescendingOrder
+            self._sort_order = Qt.AscendingOrder if column in {0, 1, 6, 7, 8, 9, 10} else Qt.DescendingOrder
 
         self.apply_current_sort()
 
@@ -489,6 +553,9 @@ class TagTab(QWidget):
                 computed_score = row["computed_score"]
                 average_rating = row["average_rating"]
                 filename_excluded = bool(int(row["filename_excluded"] or 0))
+                ignore_category_influence = bool(int(row["ignore_category_influence"] or 0))
+                ignore_recommendation_score = bool(int(row["ignore_recommendation_score"] or 0))
+                ignore_llm_input = bool(int(row["ignore_llm_input"] or 0))
 
                 values: list[tuple[Any, Any, bool]] = [
                     (tag, tag, False),
@@ -499,17 +566,27 @@ class TagTab(QWidget):
                     (row["rejected_count"], row["rejected_count"], True),
                     (row["alias_tag"] or "", row["alias_tag"] or "", False),
                     ("ja" if filename_excluded else "", 1 if filename_excluded else 0, False),
+                    ("ja" if ignore_category_influence else "", 1 if ignore_category_influence else 0, False),
+                    ("ja" if ignore_recommendation_score else "", 1 if ignore_recommendation_score else 0, False),
+                    ("ja" if ignore_llm_input else "", 1 if ignore_llm_input else 0, False),
                     (self.format_number_cell(manual_score, decimals=2), manual_score if manual_score not in {"", None} else -999999, True),
                     (self.format_number_cell(computed_score, decimals=2, empty="0"), computed_score, True),
                     (self.format_number_cell(average_rating, decimals=1), average_rating if average_rating is not None else -1, True),
                 ]
 
                 for column, (display_value, sort_value, align_right) in enumerate(values):
-                    self.table.setItem(
-                        row_index,
-                        column,
-                        self.make_table_item(tag, display_value, sort_value=sort_value, align_right=align_right),
+                    table_item = self.make_table_item(
+                        tag,
+                        display_value,
+                        sort_value=sort_value,
+                        align_right=align_right,
                     )
+                    if column in {6, 11}:
+                        table_item.setFlags(table_item.flags() | Qt.ItemIsEditable)
+                    else:
+                        table_item.setFlags(table_item.flags() & ~Qt.ItemIsEditable)
+
+                    self.table.setItem(row_index, column, table_item)
 
             self.apply_current_sort()
         finally:
@@ -560,6 +637,155 @@ class TagTab(QWidget):
         tag = item.data(Qt.UserRole)
         return str(tag) if tag else None
 
+    FLAG_OPTION_COLUMNS = {
+        7: "filename_excluded",
+        8: "ignore_category_influence",
+        9: "ignore_recommendation_score",
+        10: "ignore_llm_input",
+    }
+
+    def is_yes_cell(self, row_index: int, column: int) -> bool:
+        item = self.table.item(row_index, column)
+        if item is None:
+            return False
+        return item.text().strip().lower() in {"ja", "yes", "true", "1", "x"}
+
+    def handle_option_cell_click(self, item: QTableWidgetItem) -> None:
+        if item is None:
+            return
+
+        column = item.column()
+        if column not in self.FLAG_OPTION_COLUMNS:
+            return
+
+        tag = self.tag_from_item(item)
+        if not tag:
+            return
+
+        new_value = not self.is_yes_cell(item.row(), column)
+        selected = self.selected_tags()
+        tags = selected if tag in selected and len(selected) > 1 else [tag]
+
+        if column == 7:
+            if new_value:
+                self.add_tags_to_filename_exclude(tags)
+            else:
+                self.remove_tags_from_filename_exclude(tags)
+            return
+
+        kwargs = {
+            "ignore_category_influence": None,
+            "ignore_recommendation_score": None,
+            "ignore_llm_input": None,
+        }
+        key = self.FLAG_OPTION_COLUMNS[column]
+        kwargs[key] = new_value
+        self.set_scoring_flags_for_tags(tags, **kwargs)
+
+    def current_manual_score_for_tag(self, tag: str) -> float | None:
+        for row in self.current_rows:
+            try:
+                if str(row["tag"]) != tag:
+                    continue
+                value = row["manual_score"]
+            except Exception:
+                continue
+
+            if value is None or str(value).strip() in {"", "None"}:
+                return None
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def format_manual_score_for_cell(self, score: float | None) -> str:
+        if score is None:
+            return ""
+        return f"{float(score):.3f}".rstrip("0").rstrip(".")
+
+    def restore_manual_score_cell(self, item: QTableWidgetItem, tag: str) -> None:
+        score = self.current_manual_score_for_tag(tag)
+        self._suppress_item_changed = True
+        self.table.blockSignals(True)
+        try:
+            item.setText(self.format_manual_score_for_cell(score))
+            item.setData(SortableTableWidgetItem.SORT_ROLE, score if score is not None else -999999)
+        finally:
+            self.table.blockSignals(False)
+            self._suppress_item_changed = False
+
+    def handle_editable_cell_changed(self, item: QTableWidgetItem) -> None:
+        if self._suppress_item_changed or item is None:
+            return
+
+        column = item.column()
+        if column not in {6, 11}:
+            return
+
+        tag = self.tag_from_item(item)
+        if not tag:
+            return
+
+        if column == 6:
+            alias = item.text().strip()
+            self.log_message(f"db.set_tag_alias: begin tag={tag!r}")
+            self.db.set_tag_alias(tag, alias)
+            self.log_message(f"db.set_tag_alias: end tag={tag!r}")
+
+            self.update_current_row_value_for_tag(tag, "alias_tag", alias)
+            self._suppress_item_changed = True
+            self.table.blockSignals(True)
+            try:
+                item.setText(alias)
+                item.setData(SortableTableWidgetItem.SORT_ROLE, alias)
+            finally:
+                self.table.blockSignals(False)
+                self._suppress_item_changed = False
+            self.log_message(f"Alias direkt aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+            return
+
+        raw_text = item.text().strip().replace(",", ".")
+        score: float | None
+        if raw_text == "":
+            score = None
+        else:
+            try:
+                score = float(raw_text)
+            except ValueError:
+                QMessageBox.warning(
+                    self,
+                    "Ungültiger Score",
+                    "Der manuelle Score muss leer sein oder eine Zahl zwischen -10 und +10. "
+                    "Ja, leider kann auch diese Tabelle nicht Gedanken lesen.",
+                )
+                self.restore_manual_score_cell(item, tag)
+                return
+
+            if score < -10.0 or score > 10.0:
+                QMessageBox.warning(
+                    self,
+                    "Ungültiger Score",
+                    "Der manuelle Score muss zwischen -10 und +10 liegen.",
+                )
+                self.restore_manual_score_cell(item, tag)
+                return
+
+        self.log_message(f"db.set_tag_manual_score: begin tag={tag!r}")
+        self.db.set_tag_manual_score(tag, score)
+        self.log_message(f"db.set_tag_manual_score: end tag={tag!r}")
+
+        self.update_current_row_value_for_tag(tag, "manual_score", score if score is not None else "")
+        self._suppress_item_changed = True
+        self.table.blockSignals(True)
+        try:
+            item.setText(self.format_manual_score_for_cell(score))
+            item.setData(SortableTableWidgetItem.SORT_ROLE, score if score is not None else -999999)
+        finally:
+            self.table.blockSignals(False)
+            self._suppress_item_changed = False
+        self.log_message(f"Manueller Score direkt aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+
     def update_filename_exclude_cells(self, tags: list[str], excluded: bool) -> None:
         tag_set = set(tags)
         value = "ja" if excluded else ""
@@ -579,6 +805,8 @@ class TagTab(QWidget):
                     self.table.setItem(row_index, 7, item)
                 item.setData(Qt.UserRole, tag)
                 item.setText(value)
+                item.setData(SortableTableWidgetItem.SORT_ROLE, 1 if excluded else 0)
+                self.update_current_row_value_for_tag(str(tag), "filename_excluded", 1 if excluded else 0)
 
             # sqlite3.Row is immutable. The visible table state is therefore the
             # authoritative state until the next manual reload. Yes, GUI state as
@@ -644,7 +872,15 @@ class TagTab(QWidget):
             self.update_current_row_value(row_index, key, value)
             return
 
-    def set_table_cell_text(self, row_index: int, column: int, tag: str, text: str, align_right: bool = False) -> None:
+    def set_table_cell_text(
+        self,
+        row_index: int,
+        column: int,
+        tag: str,
+        text: str,
+        align_right: bool = False,
+        sort_value: Any | None = None,
+    ) -> None:
         item = self.table.item(row_index, column)
         if item is None:
             item = SortableTableWidgetItem()
@@ -652,13 +888,19 @@ class TagTab(QWidget):
 
         item.setData(Qt.UserRole, tag)
         item.setText(text)
-        item.setData(SortableTableWidgetItem.SORT_ROLE, text)
+        item.setData(SortableTableWidgetItem.SORT_ROLE, text if sort_value is None else sort_value)
+        if column in {6, 11}:
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
+        else:
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         if align_right:
             item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
     def update_alias_in_visible_rows(self, tag: str, alias: str) -> None:
         """Update alias column locally without rebuilding the 5000-row table."""
         self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        self._suppress_item_changed = True
         try:
             for row_index in range(self.table.rowCount()):
                 tag_item = self.table.item(row_index, 0)
@@ -669,27 +911,97 @@ class TagTab(QWidget):
                 self.set_table_cell_text(row_index, 6, tag, alias)
                 return
         finally:
+            self._suppress_item_changed = False
+            self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)
 
-    def update_manual_score_in_visible_rows(self, tag: str, score: float) -> None:
+    def update_manual_score_in_visible_rows(self, tag: str, score: float | None) -> None:
         """Update manual-score column locally without rebuilding the 5000-row table."""
-        score_text = f"{score:.3f}".rstrip("0").rstrip(".")
+        score_text = self.format_manual_score_for_cell(score)
+        sort_value = score if score is not None else -999999
 
         self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        self._suppress_item_changed = True
         try:
             for row_index in range(self.table.rowCount()):
                 tag_item = self.table.item(row_index, 0)
                 if self.tag_from_item(tag_item) != tag:
                     continue
 
-                self.update_current_row_value_for_tag(tag, "manual_score", score)
-                self.set_table_cell_text(row_index, 8, tag, score_text, align_right=True)
-                item = self.table.item(row_index, 8)
-                if item is not None:
-                    item.setData(SortableTableWidgetItem.SORT_ROLE, score)
+                self.update_current_row_value_for_tag(tag, "manual_score", score if score is not None else "")
+                self.set_table_cell_text(row_index, 11, tag, score_text, align_right=True, sort_value=sort_value)
                 return
         finally:
+            self._suppress_item_changed = False
+            self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)
+
+    def update_scoring_flag_cells(
+        self,
+        tags: list[str],
+        *,
+        ignore_category_influence: bool | None = None,
+        ignore_recommendation_score: bool | None = None,
+        ignore_llm_input: bool | None = None,
+    ) -> None:
+        tag_set = set(tags)
+        flag_columns = {
+            "ignore_category_influence": (8, ignore_category_influence),
+            "ignore_recommendation_score": (9, ignore_recommendation_score),
+            "ignore_llm_input": (10, ignore_llm_input),
+        }
+
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row_index in range(self.table.rowCount()):
+                tag_item = self.table.item(row_index, 0)
+                tag = self.tag_from_item(tag_item)
+                if tag not in tag_set:
+                    continue
+
+                for key, (column, value) in flag_columns.items():
+                    if value is None:
+                        continue
+                    self.update_current_row_value_for_tag(str(tag), key, 1 if value else 0)
+                    self.set_table_cell_text(row_index, column, str(tag), "ja" if value else "")
+                    item = self.table.item(row_index, column)
+                    if item is not None:
+                        item.setData(SortableTableWidgetItem.SORT_ROLE, 1 if value else 0)
+        finally:
+            self.table.setUpdatesEnabled(True)
+
+    def set_scoring_flags_for_tags(
+        self,
+        tags: list[str],
+        *,
+        ignore_category_influence: bool | None = None,
+        ignore_recommendation_score: bool | None = None,
+        ignore_llm_input: bool | None = None,
+    ) -> None:
+        clean_tags = [tag for tag in dict.fromkeys(tags) if str(tag).strip()]
+        if not clean_tags:
+            return
+        if all(value is None for value in (ignore_category_influence, ignore_recommendation_score, ignore_llm_input)):
+            return
+
+        for tag in clean_tags:
+            self.log_message(f"db.set_tag_scoring_flags: begin tag={tag!r}")
+            self.db.set_tag_scoring_flags(
+                tag,
+                ignore_category_influence=ignore_category_influence,
+                ignore_recommendation_score=ignore_recommendation_score,
+                ignore_llm_input=ignore_llm_input,
+            )
+            self.log_message(f"db.set_tag_scoring_flags: end tag={tag!r}")
+
+        self.update_scoring_flag_cells(
+            clean_tags,
+            ignore_category_influence=ignore_category_influence,
+            ignore_recommendation_score=ignore_recommendation_score,
+            ignore_llm_input=ignore_llm_input,
+        )
+        self.log_message(f"Scoring-Flags lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload.")
 
     # ------------------------------------------------------------------
     # Context menu
@@ -778,16 +1090,100 @@ class TagTab(QWidget):
 
         menu.addSeparator()
 
-        if len(frozen_tags) == 1:
-            alias_action = QAction("Alias bearbeiten", menu)
-            alias_action.triggered.connect(
-                lambda checked=False, tag=frozen_tags[0]: self.schedule_safe(
-                    lambda: self.edit_alias(tag),
-                    "Alias bearbeiten",
-                )
+        scoring_menu = QMenu("Scoring / Nutzung", menu)
+
+        category_ignore_action = QAction("Kategorie-Hinweis ignorieren", menu)
+        category_ignore_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(t, ignore_category_influence=True),
+                "Kategorie-Hinweis fuer Tags ignorieren",
             )
-            menu.addAction(alias_action)
-        else:
+        )
+        scoring_menu.addAction(category_ignore_action)
+
+        category_use_action = QAction("Kategorie-Hinweis wieder nutzen", menu)
+        category_use_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(t, ignore_category_influence=False),
+                "Kategorie-Hinweis fuer Tags wieder nutzen",
+            )
+        )
+        scoring_menu.addAction(category_use_action)
+
+        scoring_menu.addSeparator()
+
+        recommendation_ignore_action = QAction("Vorauswahl ignorieren", menu)
+        recommendation_ignore_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(t, ignore_recommendation_score=True),
+                "Vorauswahl fuer Tags ignorieren",
+            )
+        )
+        scoring_menu.addAction(recommendation_ignore_action)
+
+        recommendation_use_action = QAction("Vorauswahl wieder nutzen", menu)
+        recommendation_use_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(t, ignore_recommendation_score=False),
+                "Vorauswahl fuer Tags wieder nutzen",
+            )
+        )
+        scoring_menu.addAction(recommendation_use_action)
+
+        scoring_menu.addSeparator()
+
+        llm_ignore_action = QAction("LLM-Eingabe ignorieren", menu)
+        llm_ignore_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(t, ignore_llm_input=True),
+                "LLM-Eingabe fuer Tags ignorieren",
+            )
+        )
+        scoring_menu.addAction(llm_ignore_action)
+
+        llm_use_action = QAction("LLM-Eingabe wieder nutzen", menu)
+        llm_use_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(t, ignore_llm_input=False),
+                "LLM-Eingabe fuer Tags wieder nutzen",
+            )
+        )
+        scoring_menu.addAction(llm_use_action)
+
+        scoring_menu.addSeparator()
+
+        all_ignore_action = QAction("Alle automatischen Bewertungen ignorieren", menu)
+        all_ignore_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(
+                    t,
+                    ignore_category_influence=True,
+                    ignore_recommendation_score=True,
+                    ignore_llm_input=True,
+                ),
+                "Alle automatischen Bewertungen fuer Tags ignorieren",
+            )
+        )
+        scoring_menu.addAction(all_ignore_action)
+
+        all_use_action = QAction("Alle automatischen Bewertungen wieder nutzen", menu)
+        all_use_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                lambda: self.set_scoring_flags_for_tags(
+                    t,
+                    ignore_category_influence=False,
+                    ignore_recommendation_score=False,
+                    ignore_llm_input=False,
+                ),
+                "Alle automatischen Bewertungen fuer Tags wieder nutzen",
+            )
+        )
+        scoring_menu.addAction(all_use_action)
+
+        menu.addMenu(scoring_menu)
+        menu.addSeparator()
+
+        if len(frozen_tags) > 1:
             alias_action = QAction(f"Alias für Auswahl setzen… ({len(frozen_tags)})", menu)
             alias_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
@@ -797,17 +1193,14 @@ class TagTab(QWidget):
             )
             menu.addAction(alias_action)
 
-        remove_alias_action = QAction(
-            "Alias entfernen" if len(frozen_tags) == 1 else f"Alias für Auswahl entfernen… ({len(frozen_tags)})",
-            menu,
-        )
-        remove_alias_action.triggered.connect(
-            lambda checked=False, t=list(frozen_tags): self.schedule_safe(
-                lambda: self.bulk_remove_alias(t),
-                "Alias für Auswahl entfernen",
+            remove_alias_action = QAction(f"Alias für Auswahl entfernen… ({len(frozen_tags)})", menu)
+            remove_alias_action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                    lambda: self.bulk_remove_alias(t),
+                    "Alias für Auswahl entfernen",
+                )
             )
-        )
-        menu.addAction(remove_alias_action)
+            menu.addAction(remove_alias_action)
 
         similar_action = QAction("Ähnliche Tags suchen/bearbeiten…", menu)
         similar_action.triggered.connect(
@@ -818,14 +1211,9 @@ class TagTab(QWidget):
         )
         menu.addAction(similar_action)
 
-        score_action = QAction("Manuellen Score bearbeiten", menu)
-        score_action.triggered.connect(
-            lambda checked=False, tag=frozen_tags[0]: self.schedule_safe(
-                lambda: self.edit_manual_score(tag),
-                "Manuellen Score bearbeiten",
-            )
-        )
-        menu.addAction(score_action)
+        # Alias und manueller Score werden direkt in der Tabelle editiert.
+        # Scoring-/Nutzungsflags bleiben direkt per Zellklick umschaltbar,
+        # sind aber zusätzlich als Bulk-Aktion im Kontextmenü erreichbar.
 
         menu.addSeparator()
 
@@ -901,6 +1289,8 @@ class TagTab(QWidget):
         self.safe(lambda: self.remove_tags_from_filename_exclude(self.selected_tags()), "Ausgewählte Tags aus Ausschluss entfernen")
 
     def edit_alias_for_item(self, item: QTableWidgetItem) -> None:
+        if item is None or item.column() != 6:
+            return
         tag = self.tag_from_item(item)
         if tag:
             self.edit_alias(tag)
@@ -963,6 +1353,8 @@ class TagTab(QWidget):
     def update_aliases_in_visible_rows(self, tags: list[str], alias: str) -> None:
         tag_set = set(tags)
         self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        self._suppress_item_changed = True
         try:
             for row_index in range(self.table.rowCount()):
                 tag_item = self.table.item(row_index, 0)
@@ -973,6 +1365,8 @@ class TagTab(QWidget):
                 self.update_current_row_value_for_tag(str(tag), "alias_tag", alias)
                 self.set_table_cell_text(row_index, 6, str(tag), alias)
         finally:
+            self._suppress_item_changed = False
+            self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)
 
     def apply_alias_to_tags(self, tags: list[str], alias: str) -> None:
@@ -1050,6 +1444,7 @@ class TagTab(QWidget):
         alias: str | None,
         filename_action: str,
         manual_score: float | None,
+        scoring_flag_actions: dict[str, bool | None] | None,
         category_name: str | None,
         category_rule_type: str | None,
     ) -> list[str]:
@@ -1062,6 +1457,16 @@ class TagTab(QWidget):
             lines.append("Filename-Ausschluss: entfernen")
         if manual_score is not None:
             lines.append(f"Manueller Score setzen auf: {manual_score:.3f}".rstrip("0").rstrip("."))
+        flag_labels = {
+            "ignore_category_influence": "Kategorie-Hinweis",
+            "ignore_recommendation_score": "Vorauswahl",
+            "ignore_llm_input": "LLM-Eingabe",
+        }
+        for key, value in (scoring_flag_actions or {}).items():
+            if value is None:
+                continue
+            label = flag_labels.get(key, key)
+            lines.append(f"{label}: {'ignorieren' if value else 'wieder nutzen'}")
         if category_name and category_rule_type:
             lines.append(f"Kategorie-Regel hinzufügen: {category_name} / {category_rule_type}")
         return lines
@@ -1084,6 +1489,7 @@ class TagTab(QWidget):
         alias: str | None = None,
         filename_action: str = SimilarTagsBulkActionDialog.FILENAME_NO_CHANGE,
         manual_score: float | None = None,
+        scoring_flag_actions: dict[str, bool | None] | None = None,
         category_name: str | None = None,
         category_rule_type: str | None = None,
     ) -> None:
@@ -1106,6 +1512,14 @@ class TagTab(QWidget):
                 self.log_message(f"db.set_tag_manual_score: end tag={tag!r}")
                 self.update_manual_score_in_visible_rows(tag, manual_score)
             self.log_message(f"Manueller Score lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload.")
+
+        if scoring_flag_actions:
+            self.set_scoring_flags_for_tags(
+                clean_tags,
+                ignore_category_influence=scoring_flag_actions.get("ignore_category_influence"),
+                ignore_recommendation_score=scoring_flag_actions.get("ignore_recommendation_score"),
+                ignore_llm_input=scoring_flag_actions.get("ignore_llm_input"),
+            )
 
         if category_name and category_rule_type:
             self.add_tags_to_category(clean_tags, category_name, category_rule_type)
@@ -1161,10 +1575,12 @@ class TagTab(QWidget):
         alias = dialog.alias_to_set()
         filename_action = dialog.filename_action()
         manual_score = dialog.manual_score()
+        scoring_flag_actions = dialog.scoring_flag_actions()
         action_lines = self.describe_bulk_tag_actions(
             alias,
             filename_action,
             manual_score,
+            scoring_flag_actions,
             category_name,
             category_rule_type,
         )
@@ -1177,6 +1593,7 @@ class TagTab(QWidget):
             alias=alias,
             filename_action=filename_action,
             manual_score=manual_score,
+            scoring_flag_actions=scoring_flag_actions,
             category_name=category_name,
             category_rule_type=category_rule_type,
         )

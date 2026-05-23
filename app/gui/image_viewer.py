@@ -1242,26 +1242,68 @@ class ImageViewerWindow(QMainWindow):
             )
             menu.addAction(remove_exclude_action)
 
-        scoring_state = self.scoring_exclude_state(frozen_tags)
-        if scoring_state in {"none", "mixed"}:
-            add_scoring_exclude_action = QAction("Vom Tag-Scoring ausschließen", menu)
-            add_scoring_exclude_action.triggered.connect(
-                lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+        scoring_menu = QMenu("Scoring / Nutzung", menu)
+        scoring_actions = [
+            (
+                "Kategorie-Hinweis ignorieren",
+                "ignore_category_influence",
+                True,
+            ),
+            (
+                "Kategorie-Hinweis wieder nutzen",
+                "ignore_category_influence",
+                False,
+            ),
+            (
+                "Vorauswahl ignorieren",
+                "ignore_recommendation_score",
+                True,
+            ),
+            (
+                "Vorauswahl wieder nutzen",
+                "ignore_recommendation_score",
+                False,
+            ),
+            (
+                "LLM-Eingabe ignorieren",
+                "ignore_llm_input",
+                True,
+            ),
+            (
+                "LLM-Eingabe wieder nutzen",
+                "ignore_llm_input",
+                False,
+            ),
+        ]
+        for label, flag_name, flag_value in scoring_actions:
+            action = QAction(label, menu)
+            action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags), name=flag_name, value=flag_value: QTimer.singleShot(
                     0,
-                    lambda: self.safe_tag_action(lambda: self.set_tags_scoring_excluded(t, True)),
+                    lambda: self.safe_tag_action(lambda: self.set_tag_scoring_flag(t, name, value)),
                 )
             )
-            menu.addAction(add_scoring_exclude_action)
+            scoring_menu.addAction(action)
 
-        if scoring_state in {"all", "mixed"}:
-            remove_scoring_exclude_action = QAction("Scoring-Ausschluss entfernen", menu)
-            remove_scoring_exclude_action.triggered.connect(
-                lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
-                    0,
-                    lambda: self.safe_tag_action(lambda: self.set_tags_scoring_excluded(t, False)),
-                )
+        scoring_menu.addSeparator()
+        ignore_all_action = QAction("Für alle automatischen Bewertungen ignorieren", menu)
+        ignore_all_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+                0,
+                lambda: self.safe_tag_action(lambda: self.set_all_tag_scoring_flags(t, True)),
             )
-            menu.addAction(remove_scoring_exclude_action)
+        )
+        scoring_menu.addAction(ignore_all_action)
+
+        use_all_action = QAction("Für alle automatischen Bewertungen wieder nutzen", menu)
+        use_all_action.triggered.connect(
+            lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+                0,
+                lambda: self.safe_tag_action(lambda: self.set_all_tag_scoring_flags(t, False)),
+            )
+        )
+        scoring_menu.addAction(use_all_action)
+        menu.addMenu(scoring_menu)
 
         menu.addSeparator()
 
@@ -1343,22 +1385,40 @@ class ImageViewerWindow(QMainWindow):
             return "all"
         return "mixed"
 
-    def scoring_exclude_state(self, tags: list[str]) -> str:
-        excluded = self.db.scoring_excluded_tag_set()
-        count = sum(1 for tag in tags if tag in excluded)
+    def set_tag_scoring_flag(self, tags: list[str], flag_name: str, value: bool) -> None:
+        allowed = {
+            "ignore_category_influence",
+            "ignore_recommendation_score",
+            "ignore_llm_input",
+        }
+        if flag_name not in allowed:
+            raise ValueError(f"Unbekanntes Scoring-Flag: {flag_name}")
 
-        if count == 0:
-            return "none"
-        if count == len(tags):
-            return "all"
-        return "mixed"
-
-    def set_tags_scoring_excluded(self, tags: list[str], excluded: bool) -> None:
+        kwargs = {
+            "ignore_category_influence": None,
+            "ignore_recommendation_score": None,
+            "ignore_llm_input": None,
+        }
+        kwargs[flag_name] = value
         for tag in tags:
-            self.db.set_tag_scoring_excluded(tag, excluded)
+            self.db.set_tag_scoring_flags(tag, **kwargs)
 
         if self.current_post_id is not None:
             self.populate_tag_lists(self.current_post_id)
+            self.update_category_controls(self.current_post_id)
+
+    def set_all_tag_scoring_flags(self, tags: list[str], value: bool) -> None:
+        for tag in tags:
+            self.db.set_tag_scoring_flags(
+                tag,
+                ignore_category_influence=value,
+                ignore_recommendation_score=value,
+                ignore_llm_input=value,
+            )
+
+        if self.current_post_id is not None:
+            self.populate_tag_lists(self.current_post_id)
+            self.update_category_controls(self.current_post_id)
 
     def add_tags_to_filename_exclude(self, tags: list[str], show_message: bool = True) -> None:
         for tag in tags:

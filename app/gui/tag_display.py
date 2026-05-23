@@ -252,6 +252,9 @@ class TypedTagListWidget(QWidget):
                 excluded = bool(meta.get("filename_excluded", tag in self._filename_excluded_tags))
                 excluded_text = "J" if excluded else "N"
                 scoring_excluded = bool(meta.get("scoring_excluded", False))
+                ignore_category_influence = bool(meta.get("ignore_category_influence", False))
+                ignore_recommendation_score = bool(meta.get("ignore_recommendation_score", False))
+                ignore_llm_input = bool(meta.get("ignore_llm_input", False))
                 average_text = "aus" if scoring_excluded else self._format_average_rating(meta.get("average_rating"))
                 display_text = tag
                 saved_count = int(meta.get("saved_count") or 0)
@@ -264,7 +267,10 @@ class TypedTagListWidget(QWidget):
                     f"Score: {score_text}\n"
                     f"Gespeichert/Abgelehnt: {saved_count}/{rejected_count} von {post_count} bekannten Posts\n"
                     f"Filename-Exclude: {'ja' if excluded else 'nein'}\n"
-                    f"Scoring ausgeschlossen: {'ja' if scoring_excluded else 'nein'}\n"
+                    f"Altes Tag-Scoring ausgeschlossen: {'ja' if scoring_excluded else 'nein'}\n"
+                    f"Kategorie-Hinweis ignoriert: {'ja' if ignore_category_influence else 'nein'}\n"
+                    f"Vorauswahl ignoriert: {'ja' if ignore_recommendation_score else 'nein'}\n"
+                    f"LLM-Eingabe ignoriert: {'ja' if ignore_llm_input else 'nein'}\n"
                     f"Durchschnittliche Sterne: {average_text}"
                 )
                 meta_item_widget = self._create_detail_row_widget(

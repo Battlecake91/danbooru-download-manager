@@ -272,7 +272,10 @@ class Database:
             accepted_count INTEGER DEFAULT 0,
             rejected_count INTEGER DEFAULT 0,
             average_rating REAL DEFAULT NULL,
-            scoring_excluded INTEGER DEFAULT 0
+            scoring_excluded INTEGER DEFAULT 0,
+            ignore_category_influence INTEGER DEFAULT 0,
+            ignore_recommendation_score INTEGER DEFAULT 0,
+            ignore_llm_input INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS post_reviews (
@@ -332,6 +335,9 @@ class Database:
         self.add_column_if_missing("posts", "rejected_at", "TEXT")
         self.add_column_if_missing("posts", "already_known_at", "TEXT")
         self.add_column_if_missing("tag_scores", "scoring_excluded", "INTEGER DEFAULT 0")
+        self.add_column_if_missing("tag_scores", "ignore_category_influence", "INTEGER DEFAULT 0")
+        self.add_column_if_missing("tag_scores", "ignore_recommendation_score", "INTEGER DEFAULT 0")
+        self.add_column_if_missing("tag_scores", "ignore_llm_input", "INTEGER DEFAULT 0")
         self.ensure_llm_hash_salt()
         self.migrate_personal_rating_to_0_10()
         self.migrate_legacy_statuses()
@@ -1261,6 +1267,9 @@ class Database:
                     COALESCE(ts.computed_score, 0) AS computed_score,
                     COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
                     COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
+                    COALESCE(ts.ignore_category_influence, 0) AS ignore_category_influence,
+                    COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
+                    COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input,
 
                     ta.alias_tag AS alias_tag,
 
@@ -1328,10 +1337,14 @@ class Database:
                     MIN(pt.tag_type) AS tag_type,
                     COUNT(DISTINCT pt.post_id) AS post_count,
                     ta.alias_tag AS alias_tag,
-                    CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded
+                    CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
+                    COALESCE(ts.ignore_category_influence, 0) AS ignore_category_influence,
+                    COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
+                    COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input
                 FROM post_tags pt
                 LEFT JOIN tag_aliases ta ON ta.original_tag = pt.tag
                 LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+                LEFT JOIN tag_scores ts ON ts.tag = pt.tag
                 WHERE {" AND ".join(where_parts)}
                 GROUP BY pt.tag
                 ORDER BY post_count DESC, pt.tag ASC
@@ -1421,6 +1434,9 @@ class Database:
                 ts.manual_score AS manual_score,
                 COALESCE(ts.computed_score, 0) AS stored_computed_score,
                 COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
+                COALESCE(ts.ignore_category_influence, 0) AS ignore_category_influence,
+                COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
+                COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input,
                 CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
                 COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
                 COUNT(pr.stars) AS rating_count,
@@ -1463,6 +1479,9 @@ class Database:
                 "computed_score": computed_score,
                 "stored_computed_score": row["stored_computed_score"],
                 "scoring_excluded": scoring_excluded,
+                "ignore_category_influence": bool(row["ignore_category_influence"]),
+                "ignore_recommendation_score": bool(row["ignore_recommendation_score"]),
+                "ignore_llm_input": bool(row["ignore_llm_input"]),
                 "filename_excluded": bool(row["filename_excluded"]),
                 "average_rating": row["average_rating"],
                 "rating_count": int(row["rating_count"] or 0),
@@ -1717,6 +1736,79 @@ class Database:
             (clean_tag, score),
         )
         self.commit()
+
+
+    def set_tag_scoring_flags(
+        self,
+        tag: str,
+        *,
+        ignore_category_influence: bool | None = None,
+        ignore_recommendation_score: bool | None = None,
+        ignore_llm_input: bool | None = None,
+    ) -> None:
+        clean_tag = normalize_tag_token(str(tag or ""))
+        if not clean_tag:
+            return
+
+        assignments: list[str] = []
+        parameters: list[Any] = [clean_tag]
+
+        if ignore_category_influence is not None:
+            assignments.append("ignore_category_influence = ?")
+            parameters.append(1 if ignore_category_influence else 0)
+        if ignore_recommendation_score is not None:
+            assignments.append("ignore_recommendation_score = ?")
+            parameters.append(1 if ignore_recommendation_score else 0)
+        if ignore_llm_input is not None:
+            assignments.append("ignore_llm_input = ?")
+            parameters.append(1 if ignore_llm_input else 0)
+
+        if not assignments:
+            return
+
+        insert_columns = ["tag"]
+        insert_values: list[Any] = [clean_tag]
+        update_parts: list[str] = []
+        if ignore_category_influence is not None:
+            insert_columns.append("ignore_category_influence")
+            insert_values.append(1 if ignore_category_influence else 0)
+            update_parts.append("ignore_category_influence = excluded.ignore_category_influence")
+        if ignore_recommendation_score is not None:
+            insert_columns.append("ignore_recommendation_score")
+            insert_values.append(1 if ignore_recommendation_score else 0)
+            update_parts.append("ignore_recommendation_score = excluded.ignore_recommendation_score")
+        if ignore_llm_input is not None:
+            insert_columns.append("ignore_llm_input")
+            insert_values.append(1 if ignore_llm_input else 0)
+            update_parts.append("ignore_llm_input = excluded.ignore_llm_input")
+
+        placeholders = ", ".join("?" for _ in insert_columns)
+        self.execute(
+            f"""
+            INSERT INTO tag_scores ({", ".join(insert_columns)})
+            VALUES ({placeholders})
+            ON CONFLICT(tag) DO UPDATE SET {", ".join(update_parts)}
+            """,
+            insert_values,
+        )
+        self.commit()
+
+    def scoring_flag_tag_set(self, column: str) -> set[str]:
+        allowed_columns = {
+            "ignore_category_influence",
+            "ignore_recommendation_score",
+            "ignore_llm_input",
+            "scoring_excluded",
+        }
+        if column not in allowed_columns:
+            raise ValueError(f"Unbekannte Scoring-Flag-Spalte: {column}")
+        rows = self.execute(
+            f"SELECT tag FROM tag_scores WHERE COALESCE({column}, 0) != 0"
+        ).fetchall()
+        return {str(row["tag"]) for row in rows}
+
+    def category_influence_ignored_tag_set(self) -> set[str]:
+        return self.scoring_flag_tag_set("ignore_category_influence")
 
     def set_tag_scoring_excluded(self, tag: str, excluded: bool = True) -> None:
         clean_tag = tag.strip()

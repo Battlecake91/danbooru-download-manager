@@ -261,15 +261,25 @@ class CategoryEngine:
         if not clean_tags:
             return []
 
+        tag_metadata_for_current = self.db.fetch_tag_metadata(clean_tags)
+        ignored_current_tags = {
+            tag
+            for tag, metadata in tag_metadata_for_current.items()
+            if bool(metadata.get("ignore_category_influence"))
+        }
+        effective_clean_tags = clean_tags.difference(ignored_current_tags)
+        if not effective_clean_tags:
+            return []
+
         aliases = self.db.list_tag_alias_map()
-        canonical_tags = {canonicalize_tag(tag, aliases) for tag in clean_tags}
+        canonical_tags = {canonicalize_tag(tag, aliases) for tag in effective_clean_tags}
         canonical_tags.discard("")
         if not canonical_tags:
             return []
 
         # Expand current canonical tags back to known original aliases so
         # red_hairband -> hairband can match older blue_hairband examples.
-        candidate_original_tags = set(clean_tags)
+        candidate_original_tags = set(effective_clean_tags)
         for original, alias in aliases.items():
             if canonicalize_tag(original, aliases) in canonical_tags or canonicalize_tag(alias, aliases) in canonical_tags:
                 candidate_original_tags.add(original)
@@ -298,6 +308,8 @@ class CategoryEngine:
             categorized_post_count = max(1, int(row["categorized_post_count"] or 0))
 
             metadata = tag_metadata.get(original_tag, {})
+            if bool(metadata.get("ignore_category_influence")):
+                continue
             try:
                 tag_score = float(metadata.get("score", 0.0) or 0.0)
             except (TypeError, ValueError):
@@ -437,6 +449,11 @@ class CategoryEngine:
                 }
             )
 
+        tag_metadata = self.db.fetch_tag_metadata(tags)
+        ignored_influence_tags = sorted(
+            [tag for tag, metadata in tag_metadata.items() if bool(metadata.get("ignore_category_influence"))],
+            key=str.casefold,
+        )
         influences = self.category_influence_for_tags(tags)
         influence_by_name = {entry.name: entry for entry in influences}
         top_influence = influences[0] if influences else None
@@ -455,6 +472,8 @@ class CategoryEngine:
             if selected_category_name != automatic_name:
                 lines.append("Abweichung: manuelle Auswahl überschreibt den automatischen Vorschlag.")
         lines.append(f"Tags im Post: {len(tags)}")
+        if ignored_influence_tags:
+            lines.append(f"Für Kategorie-Hinweis ignoriert: {', '.join(ignored_influence_tags[:20])}" + (f" … +{len(ignored_influence_tags) - 20}" if len(ignored_influence_tags) > 20 else ""))
         lines.append("Reihenfolge: Die erste passende Kategorie gewinnt.")
         lines.append("")
 
