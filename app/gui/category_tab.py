@@ -192,7 +192,7 @@ class CategoryTab(QWidget):
         self.left_layout = QVBoxLayout(self.left_panel)
         self.left_layout.setContentsMargins(0, 0, 6, 0)
         self.left_layout.setSpacing(6)
-        self.left_title = QLabel("Kategorien (oben gewinnt)")
+        self.left_title = QLabel("Kategorien (Priorität: oben gewinnt)")
         self.left_title.setStyleSheet("font-weight: 600;")
         self.left_layout.addWidget(self.left_title)
 
@@ -271,26 +271,34 @@ class CategoryTab(QWidget):
 
         self.right_layout.addWidget(self.details_box)
 
-        self.rules_box = QGroupBox("Kategorie-Regeln")
+        self.rules_box = QGroupBox("Wann passt diese Kategorie?")
         self.rules_layout = QVBoxLayout(self.rules_box)
         self.rules_layout.setSpacing(6)
 
         self.rule_hint = QLabel(
-            "ODER-Gruppen sind alternative Wege, damit eine Kategorie passt. Globale Bedingungen gelten zusätzlich für jede ODER-Gruppe. "
-            "Beispiel: 'tag1 tag2 -tag3' ODER 'tag4 tag5' plus global 'tag6 -tag7'."
+            "Jede Include-Regel ist ein alternativer Trefferweg. Tags ohne '-' müssen vorhanden sein, "
+            "Tags mit '-' schließen aus. Beispiel: 'maid apron -comic' oder 'school_uniform ribbon'."
         )
         self.rule_hint.setWordWrap(True)
         self.rule_hint.setStyleSheet("color: #9aa0a6;")
         self.rules_layout.addWidget(self.rule_hint)
 
         self.group_buttons = QHBoxLayout()
-        self.add_group_button = QPushButton("+ ODER-Gruppe")
+        self.add_group_button = QPushButton("+ Include-Regel")
         self.add_group_button.clicked.connect(lambda: self.safe(self.add_group_row))
         self.group_buttons.addWidget(self.add_group_button)
 
-        self.delete_group_button = QPushButton("Ausgewählte ODER-Gruppe löschen")
+        self.delete_group_button = QPushButton("Include-Regel löschen")
         self.delete_group_button.clicked.connect(lambda: self.safe(self.delete_selected_group_rows))
         self.group_buttons.addWidget(self.delete_group_button)
+
+        self.move_group_up_button = QPushButton("↑ Include-Regel")
+        self.move_group_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.groups_table, -1)))
+        self.group_buttons.addWidget(self.move_group_up_button)
+
+        self.move_group_down_button = QPushButton("↓ Include-Regel")
+        self.move_group_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.groups_table, 1)))
+        self.group_buttons.addWidget(self.move_group_down_button)
 
         self.save_groups_button = QPushButton("Regeln speichern")
         self.save_groups_button.clicked.connect(lambda: self.safe(self.save_rule_groups))
@@ -301,7 +309,7 @@ class CategoryTab(QWidget):
 
         self.new_group_row = QHBoxLayout()
         self.new_group_edit = QLineEdit()
-        self.new_group_edit.setPlaceholderText("Neue ODER-Gruppe, z. B. tag1 tag2 -tag3")
+        self.new_group_edit.setPlaceholderText("Neue Include-Regel, z. B. maid apron -comic")
         self.new_group_edit.returnPressed.connect(lambda: self.safe(self.add_group_from_input))
         self.new_group_row.addWidget(self.new_group_edit, stretch=1)
 
@@ -312,7 +320,7 @@ class CategoryTab(QWidget):
 
         self.groups_table = QTableWidget()
         self.groups_table.setColumnCount(2)
-        self.groups_table.setHorizontalHeaderLabels(["ODER-Gruppe", "Ausdruck"] )
+        self.groups_table.setHorizontalHeaderLabels(["Include-Regel", "Tags (UND, '-' = Ausschluss)"])
         self.groups_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.groups_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.groups_table.setEditTriggers(
@@ -324,8 +332,8 @@ class CategoryTab(QWidget):
         self.rules_layout.addWidget(self.groups_table, stretch=2)
 
         self.global_hint = QLabel(
-            "Globale Bedingungen werden mit jeder ODER-Gruppe kombiniert. "
-            "Positive Tags müssen immer vorhanden sein, negative Tags dürfen nie vorhanden sein."
+            "Globale Bedingungen gelten zusätzlich zu jeder Include-Regel. Nutze sie nur für echte Pflicht- oder Sperr-Tags, "
+            "sonst baust du dir eine Kategorie mit Türsteherkomplex."
         )
         self.global_hint.setWordWrap(True)
         self.global_hint.setStyleSheet("color: #9aa0a6;")
@@ -336,15 +344,24 @@ class CategoryTab(QWidget):
         self.add_global_button.clicked.connect(lambda: self.safe(self.add_global_row))
         self.global_buttons.addWidget(self.add_global_button)
 
-        self.delete_global_button = QPushButton("Ausgewählte globale Bedingung löschen")
+        self.delete_global_button = QPushButton("Bedingung löschen")
         self.delete_global_button.clicked.connect(lambda: self.safe(self.delete_selected_global_rows))
         self.global_buttons.addWidget(self.delete_global_button)
+
+        self.move_global_up_button = QPushButton("↑ Bedingung")
+        self.move_global_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.global_table, -1)))
+        self.global_buttons.addWidget(self.move_global_up_button)
+
+        self.move_global_down_button = QPushButton("↓ Bedingung")
+        self.move_global_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.global_table, 1)))
+        self.global_buttons.addWidget(self.move_global_down_button)
+
         self.global_buttons.addStretch(1)
         self.rules_layout.addLayout(self.global_buttons)
 
         self.new_global_row = QHBoxLayout()
         self.new_global_edit = QLineEdit()
-        self.new_global_edit.setPlaceholderText("Globale Bedingung, z. B. tag6 -tag7")
+        self.new_global_edit.setPlaceholderText("Globale Bedingung, z. B. solo -comic")
         self.new_global_edit.returnPressed.connect(lambda: self.safe(self.add_global_from_input))
         self.new_global_row.addWidget(self.new_global_edit, stretch=1)
 
@@ -355,7 +372,7 @@ class CategoryTab(QWidget):
 
         self.global_table = QTableWidget()
         self.global_table.setColumnCount(2)
-        self.global_table.setHorizontalHeaderLabels(["Globale Bedingung", "Ausdruck"])
+        self.global_table.setHorizontalHeaderLabels(["Globale Bedingung", "Tags (Pflicht / '-' = Sperre)"])
         self.global_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.global_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.global_table.setEditTriggers(
@@ -380,9 +397,9 @@ class CategoryTab(QWidget):
         self.main_layout.addWidget(self.splitter, stretch=1)
 
         self.hint_label = QLabel(
-            "Die Kategorienliste links bestimmt die Reihenfolge: oben gewinnt. "
-            "Mehrere ODER-Gruppen sind Alternativen, Tags in einer Zeile sind UND, '-' bedeutet Ausschluss. "
-            "Globale Bedingungen gelten zusätzlich für jede ODER-Gruppe."
+            "Links bestimmt die Kategorie-Reihenfolge den Gewinner. Rechts gilt: mehrere Include-Regeln sind Alternativen; "
+            "innerhalb einer Zeile müssen alle positiven Tags passen, Tags mit '-' dürfen nicht vorkommen. "
+            "Globale Bedingungen werden zusätzlich auf jede Include-Regel gelegt."
         )
         self.hint_label.setWordWrap(True)
         self.hint_label.setStyleSheet("color: #9aa0a6;")
@@ -464,27 +481,26 @@ class CategoryTab(QWidget):
             self.global_table.setRowCount(len(global_groups))
 
             for row_index, group in enumerate(groups):
-                name_item = QTableWidgetItem(f"Gruppe {row_index + 1}")
+                name_item = QTableWidgetItem(f"Include-Regel {row_index + 1}")
                 name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
                 name_item.setTextAlignment(Qt.AlignCenter)
                 self.groups_table.setItem(row_index, 0, name_item)
 
                 expression_item = QTableWidgetItem(group.expression())
                 expression_item.setToolTip(
-                    "Diese Zeile ist ein ODER-Zweig. Tags ohne '-' müssen vorhanden sein, "
-                    "Tags mit '-' dürfen nicht vorhanden sein."
+                    "Include-Regel: Tags ohne '-' müssen vorhanden sein, Tags mit '-' dürfen nicht vorhanden sein."
                 )
                 self.groups_table.setItem(row_index, 1, expression_item)
 
             for row_index, group in enumerate(global_groups):
-                name_item = QTableWidgetItem(f"Global {row_index + 1}")
+                name_item = QTableWidgetItem(f"Globale Bedingung {row_index + 1}")
                 name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
                 name_item.setTextAlignment(Qt.AlignCenter)
                 self.global_table.setItem(row_index, 0, name_item)
 
                 expression_item = QTableWidgetItem(group.expression())
                 expression_item.setToolTip(
-                    "Diese Bedingung wird zusätzlich mit jeder ODER-Gruppe kombiniert."
+                    "Diese globale Bedingung wird zusätzlich mit jeder Include-Regel kombiniert."
                 )
                 self.global_table.setItem(row_index, 1, expression_item)
         finally:
@@ -589,7 +605,7 @@ class CategoryTab(QWidget):
         result = QMessageBox.question(
             self,
             "Kategorie löschen",
-            "Kategorie wirklich löschen? Zugehörige Regelgruppen werden ebenfalls gelöscht.",
+            "Kategorie wirklich löschen? Zugehörige Regeln werden ebenfalls gelöscht.",
         )
         if result != QMessageBox.Yes:
             return
@@ -663,11 +679,11 @@ class CategoryTab(QWidget):
         return row
 
     def add_group_row(self) -> None:
-        row = self.add_expression_row(self.groups_table, "Gruppe")
+        row = self.add_expression_row(self.groups_table, "Include-Regel")
         self.groups_table.editItem(self.groups_table.item(row, 1))
 
     def add_global_row(self) -> None:
-        row = self.add_expression_row(self.global_table, "Global")
+        row = self.add_expression_row(self.global_table, "Globale Bedingung")
         self.global_table.editItem(self.global_table.item(row, 1))
 
     def add_expression_from_input(self, edit: QLineEdit, table: QTableWidget, label_prefix: str) -> None:
@@ -683,10 +699,35 @@ class CategoryTab(QWidget):
         self.save_rule_groups()
 
     def add_group_from_input(self) -> None:
-        self.add_expression_from_input(self.new_group_edit, self.groups_table, "Gruppe")
+        self.add_expression_from_input(self.new_group_edit, self.groups_table, "Include-Regel")
 
     def add_global_from_input(self) -> None:
-        self.add_expression_from_input(self.new_global_edit, self.global_table, "Global")
+        self.add_expression_from_input(self.new_global_edit, self.global_table, "Globale Bedingung")
+
+
+    def move_selected_rule_rows(self, table: QTableWidget, direction: int) -> None:
+        rows = self.selected_rows(table)
+        if len(rows) != 1:
+            QMessageBox.information(self, "Include-Regel verschieben", "Bitte genau eine Zeile auswählen.")
+            return
+
+        row = rows[0]
+        target = row + direction
+        if target < 0 or target >= table.rowCount():
+            return
+
+        current_text = table.item(row, 1).text() if table.item(row, 1) is not None else ""
+        target_text = table.item(target, 1).text() if table.item(target, 1) is not None else ""
+
+        self._loading_groups = True
+        try:
+            table.item(row, 1).setText(target_text)
+            table.item(target, 1).setText(current_text)
+        finally:
+            self._loading_groups = False
+
+        table.selectRow(target)
+        self.save_rule_groups()
 
     def selected_rows(self, table: QTableWidget) -> list[int]:
         return sorted({item.row() for item in table.selectedItems()})
