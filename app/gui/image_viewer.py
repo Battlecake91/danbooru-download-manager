@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTextEdit,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -219,6 +222,31 @@ class PersonalStarRatingWidget(QWidget):
         self.rating_changed.emit(self._rating)
 
 
+
+
+class CategoryDecisionDialog(QDialog):
+    def __init__(self, report: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Kategorie-Entscheidung")
+        self.resize(820, 620)
+
+        layout = QVBoxLayout(self)
+        hint = QLabel(
+            "Diese Ansicht erklärt, welche Kategorie automatisch gewinnen würde und welche Regeln passen oder blockieren."
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self.report_edit = QTextEdit()
+        self.report_edit.setReadOnly(True)
+        self.report_edit.setPlainText(report)
+        self.report_edit.setLineWrapMode(QTextEdit.NoWrap)
+        layout.addWidget(self.report_edit, stretch=1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
 class ImageViewerWindow(QMainWindow):
     status_changed = Signal(int, str)
     query_requested = Signal(str)
@@ -370,6 +398,11 @@ class ImageViewerWindow(QMainWindow):
         self.category_combo.currentIndexChanged.connect(self.on_category_changed)
         self.category_combo.setMinimumWidth(220)
         self.below_image_controls.addWidget(self.category_combo)
+
+        self.category_reason_button = QPushButton("Warum?")
+        self.category_reason_button.setToolTip("Begründet die automatische Kategorie-Entscheidung für diesen Post.")
+        self.category_reason_button.clicked.connect(self.show_category_decision_reason)
+        self.below_image_controls.addWidget(self.category_reason_button)
 
         self.image_panel_layout.addLayout(self.below_image_controls)
         self.splitter.addWidget(self.image_panel)
@@ -844,6 +877,20 @@ class ImageViewerWindow(QMainWindow):
         if name is None:
             return None
         return self.final_save_service.category_by_name(str(name))
+
+    def show_category_decision_reason(self) -> None:
+        if self.current_post_id is None:
+            QMessageBox.information(self, "Kategorie-Entscheidung", "Kein Post geladen.")
+            return
+
+        category = self.selected_category()
+        selected_name = category.name if category is not None else None
+        report = self.final_save_service.category_engine.build_category_decision_report_for_post(
+            self.current_post_id,
+            selected_category_name=selected_name,
+        )
+        dialog = CategoryDecisionDialog(report, self)
+        dialog.exec()
 
     def on_category_changed(self, *args) -> None:  # noqa: ANN002
         if self.current_post_id is not None:

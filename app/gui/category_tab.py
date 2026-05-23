@@ -31,6 +31,8 @@ from app.core.database import Database
 
 _GROUP_INCLUDE_RE = re.compile(r"^group_(\d+)_include$")
 _GROUP_EXCLUDE_RE = re.compile(r"^group_(\d+)_exclude$")
+_GLOBAL_INCLUDE_RE = re.compile(r"^global_(\d+)_include$")
+_GLOBAL_EXCLUDE_RE = re.compile(r"^global_(\d+)_exclude$")
 _LEGACY_INCLUDE_GROUP_RE = re.compile(r"^include_group_(\d+)$")
 
 
@@ -76,16 +78,24 @@ def expression_from_parts(includes: list[str], excludes: list[str]) -> str:
     return " ".join(parts)
 
 
-def legacy_rules_to_groups(rules: list[Any]) -> list[RuleGroup]:
-    """Convert existing rule styles into the new display model.
+def _sorted_groups(groups: dict[int, RuleGroup]) -> list[RuleGroup]:
+    return [groups[index] for index in sorted(groups)]
 
-    New model: group_N_include/group_N_exclude.
+
+def legacy_rules_to_rule_sets(rules: list[Any]) -> tuple[list[RuleGroup], list[RuleGroup]]:
+    """Convert existing rule styles into include groups and global conditions.
+
+    New model:
+      - group_N_include/group_N_exclude: OR branches for positive category matches.
+      - global_N_include/global_N_exclude: AND conditions applied to every OR branch.
+
     Legacy model:
       - include tags were OR rules, therefore each include becomes its own group.
       - include_group_N were AND groups.
-      - exclude tags were global blockers, therefore they are copied into every legacy group.
+      - exclude tags were global blockers.
     """
-    new_groups: dict[int, RuleGroup] = {}
+    include_groups: dict[int, RuleGroup] = {}
+    global_groups: dict[int, RuleGroup] = {}
     legacy_groups: dict[int, list[str]] = {}
     legacy_includes: list[str] = []
     legacy_excludes: list[str] = []
@@ -96,16 +106,28 @@ def legacy_rules_to_groups(rules: list[Any]) -> list[RuleGroup]:
 
         include_match = _GROUP_INCLUDE_RE.match(rule_type)
         exclude_match = _GROUP_EXCLUDE_RE.match(rule_type)
+        global_include_match = _GLOBAL_INCLUDE_RE.match(rule_type)
+        global_exclude_match = _GLOBAL_EXCLUDE_RE.match(rule_type)
         legacy_group_match = _LEGACY_INCLUDE_GROUP_RE.match(rule_type)
 
         if include_match:
             index = int(include_match.group(1))
-            group = new_groups.setdefault(index, RuleGroup(index=index, includes=[], excludes=[]))
+            group = include_groups.setdefault(index, RuleGroup(index=index, includes=[], excludes=[]))
             if tag not in group.includes:
                 group.includes.append(tag)
         elif exclude_match:
             index = int(exclude_match.group(1))
-            group = new_groups.setdefault(index, RuleGroup(index=index, includes=[], excludes=[]))
+            group = include_groups.setdefault(index, RuleGroup(index=index, includes=[], excludes=[]))
+            if tag not in group.excludes:
+                group.excludes.append(tag)
+        elif global_include_match:
+            index = int(global_include_match.group(1))
+            group = global_groups.setdefault(index, RuleGroup(index=index, includes=[], excludes=[]))
+            if tag not in group.includes:
+                group.includes.append(tag)
+        elif global_exclude_match:
+            index = int(global_exclude_match.group(1))
+            group = global_groups.setdefault(index, RuleGroup(index=index, includes=[], excludes=[]))
             if tag not in group.excludes:
                 group.excludes.append(tag)
         elif legacy_group_match:
@@ -118,35 +140,27 @@ def legacy_rules_to_groups(rules: list[Any]) -> list[RuleGroup]:
             if tag not in legacy_excludes:
                 legacy_excludes.append(tag)
 
-    if new_groups:
-        return [new_groups[index] for index in sorted(new_groups)]
+    if include_groups or global_groups:
+        return _sorted_groups(include_groups), _sorted_groups(global_groups)
 
     result: list[RuleGroup] = []
     next_index = 0
 
     for legacy_index in sorted(legacy_groups):
         includes = list(dict.fromkeys(legacy_groups[legacy_index]))
-        result.append(
-            RuleGroup(
-                index=next_index,
-                includes=includes,
-                excludes=list(legacy_excludes),
-            )
-        )
+        result.append(RuleGroup(index=next_index, includes=includes, excludes=[]))
         next_index += 1
 
     # Legacy include semantics were ANY, so each include becomes a single OR group.
     for tag in legacy_includes:
-        result.append(
-            RuleGroup(
-                index=next_index,
-                includes=[tag],
-                excludes=list(legacy_excludes),
-            )
-        )
+        result.append(RuleGroup(index=next_index, includes=[tag], excludes=[]))
         next_index += 1
 
-    return result
+    global_result: list[RuleGroup] = []
+    if legacy_excludes:
+        global_result.append(RuleGroup(index=0, includes=[], excludes=list(legacy_excludes)))
+
+    return result, global_result
 
 
 class CategoryTab(QWidget):
@@ -169,18 +183,6 @@ class CategoryTab(QWidget):
         self.reload_button.clicked.connect(self.reload_all)
         self.top_buttons.addWidget(self.reload_button)
 
-        self.add_category_button = QPushButton("Kategorie hinzufügen")
-        self.add_category_button.clicked.connect(lambda: self.safe(self.add_category))
-        self.top_buttons.addWidget(self.add_category_button)
-
-        self.save_category_button = QPushButton("Kategorie speichern")
-        self.save_category_button.clicked.connect(lambda: self.safe(self.save_selected_category))
-        self.top_buttons.addWidget(self.save_category_button)
-
-        self.delete_category_button = QPushButton("Kategorie löschen")
-        self.delete_category_button.clicked.connect(lambda: self.safe(self.delete_selected_category))
-        self.top_buttons.addWidget(self.delete_category_button)
-
         self.top_buttons.addStretch(1)
         self.main_layout.addLayout(self.top_buttons)
 
@@ -190,13 +192,13 @@ class CategoryTab(QWidget):
         self.left_layout = QVBoxLayout(self.left_panel)
         self.left_layout.setContentsMargins(0, 0, 6, 0)
         self.left_layout.setSpacing(6)
-        self.left_title = QLabel("Kategorien (Reihenfolge: oben gewinnt)")
+        self.left_title = QLabel("Kategorien (oben gewinnt)")
         self.left_title.setStyleSheet("font-weight: 600;")
         self.left_layout.addWidget(self.left_title)
 
         self.category_table = QTableWidget()
-        self.category_table.setColumnCount(5)
-        self.category_table.setHorizontalHeaderLabels(["ID", "Name", "Ordner", "Hotkey", "Priorität"])
+        self.category_table.setColumnCount(4)
+        self.category_table.setHorizontalHeaderLabels(["ID", "Name", "Ordner", "Hotkey"])
         self.category_table.setColumnHidden(0, True)
         self.category_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.category_table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -206,17 +208,33 @@ class CategoryTab(QWidget):
         self.category_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.category_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.category_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.category_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.left_layout.addWidget(self.category_table, stretch=1)
 
         self.priority_buttons = QHBoxLayout()
-        self.category_up_button = QPushButton("↑ Priorität erhöhen")
+        self.category_up_button = QPushButton("↑ Kategorie hoch")
         self.category_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_category(-1)))
         self.priority_buttons.addWidget(self.category_up_button)
-        self.category_down_button = QPushButton("↓ Priorität senken")
+        self.category_down_button = QPushButton("↓ Kategorie runter")
         self.category_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_category(1)))
         self.priority_buttons.addWidget(self.category_down_button)
         self.left_layout.addLayout(self.priority_buttons)
+
+        self.category_action_buttons = QHBoxLayout()
+        self.category_action_buttons.setSpacing(4)
+
+        self.add_category_button = QPushButton("Kategorie hinzufügen")
+        self.add_category_button.clicked.connect(lambda: self.safe(self.add_category))
+        self.category_action_buttons.addWidget(self.add_category_button)
+
+        self.save_category_button = QPushButton("Kategorie speichern")
+        self.save_category_button.clicked.connect(lambda: self.safe(self.save_selected_category))
+        self.category_action_buttons.addWidget(self.save_category_button)
+
+        self.delete_category_button = QPushButton("Kategorie löschen")
+        self.delete_category_button.clicked.connect(lambda: self.safe(self.delete_selected_category))
+        self.category_action_buttons.addWidget(self.delete_category_button)
+
+        self.left_layout.addLayout(self.category_action_buttons)
 
         self.splitter.addWidget(self.left_panel)
 
@@ -249,33 +267,32 @@ class CategoryTab(QWidget):
         self.sort_order_edit = QLineEdit()
         self.sort_order_edit.setPlaceholderText("wird ueber die Kategorienliste links gesetzt")
         self.sort_order_edit.setReadOnly(True)
-        self.details_layout.addRow("Priorität", self.sort_order_edit)
+        self.details_layout.addRow("Position", self.sort_order_edit)
 
         self.right_layout.addWidget(self.details_box)
 
-        self.rules_box = QGroupBox("Regelgruppen dieser Kategorie")
+        self.rules_box = QGroupBox("Kategorie-Regeln")
         self.rules_layout = QVBoxLayout(self.rules_box)
         self.rules_layout.setSpacing(6)
 
         self.rule_hint = QLabel(
-            "Eine Zeile ist eine UND-Gruppe, mehrere Zeilen sind ODER. "
-            "Die Reihenfolge der Gruppen ist egal; die Kategorien-Prioritaet links entscheidet. "
-            "Beispiel: brown_eyes smile -red_hair"
+            "ODER-Gruppen sind alternative Wege, damit eine Kategorie passt. Globale Bedingungen gelten zusätzlich für jede ODER-Gruppe. "
+            "Beispiel: 'tag1 tag2 -tag3' ODER 'tag4 tag5' plus global 'tag6 -tag7'."
         )
         self.rule_hint.setWordWrap(True)
         self.rule_hint.setStyleSheet("color: #9aa0a6;")
         self.rules_layout.addWidget(self.rule_hint)
 
         self.group_buttons = QHBoxLayout()
-        self.add_group_button = QPushButton("+ Gruppe")
+        self.add_group_button = QPushButton("+ ODER-Gruppe")
         self.add_group_button.clicked.connect(lambda: self.safe(self.add_group_row))
         self.group_buttons.addWidget(self.add_group_button)
 
-        self.delete_group_button = QPushButton("Ausgewählte Gruppe löschen")
+        self.delete_group_button = QPushButton("Ausgewählte ODER-Gruppe löschen")
         self.delete_group_button.clicked.connect(lambda: self.safe(self.delete_selected_group_rows))
         self.group_buttons.addWidget(self.delete_group_button)
 
-        self.save_groups_button = QPushButton("Regelgruppen speichern")
+        self.save_groups_button = QPushButton("Regeln speichern")
         self.save_groups_button.clicked.connect(lambda: self.safe(self.save_rule_groups))
         self.group_buttons.addWidget(self.save_groups_button)
 
@@ -284,7 +301,7 @@ class CategoryTab(QWidget):
 
         self.new_group_row = QHBoxLayout()
         self.new_group_edit = QLineEdit()
-        self.new_group_edit.setPlaceholderText("Neue Gruppe, z. B. tag1 tag2 -tag3")
+        self.new_group_edit.setPlaceholderText("Neue ODER-Gruppe, z. B. tag1 tag2 -tag3")
         self.new_group_edit.returnPressed.connect(lambda: self.safe(self.add_group_from_input))
         self.new_group_row.addWidget(self.new_group_edit, stretch=1)
 
@@ -295,7 +312,7 @@ class CategoryTab(QWidget):
 
         self.groups_table = QTableWidget()
         self.groups_table.setColumnCount(2)
-        self.groups_table.setHorizontalHeaderLabels(["Gruppe", "Ausdruck"])
+        self.groups_table.setHorizontalHeaderLabels(["ODER-Gruppe", "Ausdruck"] )
         self.groups_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.groups_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.groups_table.setEditTriggers(
@@ -304,7 +321,50 @@ class CategoryTab(QWidget):
         self.groups_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.groups_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.groups_table.itemChanged.connect(self.on_group_item_changed)
-        self.rules_layout.addWidget(self.groups_table, stretch=1)
+        self.rules_layout.addWidget(self.groups_table, stretch=2)
+
+        self.global_hint = QLabel(
+            "Globale Bedingungen werden mit jeder ODER-Gruppe kombiniert. "
+            "Positive Tags müssen immer vorhanden sein, negative Tags dürfen nie vorhanden sein."
+        )
+        self.global_hint.setWordWrap(True)
+        self.global_hint.setStyleSheet("color: #9aa0a6;")
+        self.rules_layout.addWidget(self.global_hint)
+
+        self.global_buttons = QHBoxLayout()
+        self.add_global_button = QPushButton("+ Globale Bedingung")
+        self.add_global_button.clicked.connect(lambda: self.safe(self.add_global_row))
+        self.global_buttons.addWidget(self.add_global_button)
+
+        self.delete_global_button = QPushButton("Ausgewählte globale Bedingung löschen")
+        self.delete_global_button.clicked.connect(lambda: self.safe(self.delete_selected_global_rows))
+        self.global_buttons.addWidget(self.delete_global_button)
+        self.global_buttons.addStretch(1)
+        self.rules_layout.addLayout(self.global_buttons)
+
+        self.new_global_row = QHBoxLayout()
+        self.new_global_edit = QLineEdit()
+        self.new_global_edit.setPlaceholderText("Globale Bedingung, z. B. tag6 -tag7")
+        self.new_global_edit.returnPressed.connect(lambda: self.safe(self.add_global_from_input))
+        self.new_global_row.addWidget(self.new_global_edit, stretch=1)
+
+        self.add_global_from_input_button = QPushButton("Hinzufügen")
+        self.add_global_from_input_button.clicked.connect(lambda: self.safe(self.add_global_from_input))
+        self.new_global_row.addWidget(self.add_global_from_input_button)
+        self.rules_layout.addLayout(self.new_global_row)
+
+        self.global_table = QTableWidget()
+        self.global_table.setColumnCount(2)
+        self.global_table.setHorizontalHeaderLabels(["Globale Bedingung", "Ausdruck"])
+        self.global_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.global_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.global_table.setEditTriggers(
+            QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed | QAbstractItemView.SelectedClicked
+        )
+        self.global_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.global_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.global_table.itemChanged.connect(self.on_global_item_changed)
+        self.rules_layout.addWidget(self.global_table, stretch=1)
 
         self.right_layout.addWidget(self.rules_box, stretch=1)
 
@@ -320,9 +380,9 @@ class CategoryTab(QWidget):
         self.main_layout.addWidget(self.splitter, stretch=1)
 
         self.hint_label = QLabel(
-            "Die Kategorienliste links bestimmt die Priorität: oben gewinnt. "
-            "Regelgruppen in einer Kategorie sind ODER-Zweige; innerhalb einer Gruppe gilt UND, '-' bedeutet Ausschluss. "
-            "Die Reihenfolge der Gruppen ist nur Anzeige, nicht entscheidungsrelevant."
+            "Die Kategorienliste links bestimmt die Reihenfolge: oben gewinnt. "
+            "Mehrere ODER-Gruppen sind Alternativen, Tags in einer Zeile sind UND, '-' bedeutet Ausschluss. "
+            "Globale Bedingungen gelten zusätzlich für jede ODER-Gruppe."
         )
         self.hint_label.setWordWrap(True)
         self.hint_label.setStyleSheet("color: #9aa0a6;")
@@ -342,6 +402,7 @@ class CategoryTab(QWidget):
                 f"{exc}\n\nDetails:\n{traceback.format_exc()}",
             )
 
+
     def setup_tag_completer(self) -> None:
         try:
             rows = self.db.fetch_tag_overview(limit=5000)
@@ -350,7 +411,7 @@ class CategoryTab(QWidget):
             tags = []
 
         self._known_tags_model.setStringList(tags)
-        for line_edit in (self.new_group_edit,):
+        for line_edit in (self.new_group_edit, self.new_global_edit):
             completer = QCompleter(self._known_tags_model, self)
             completer.setCaseSensitivity(Qt.CaseInsensitive)
             completer.setFilterMode(Qt.MatchContains)
@@ -377,12 +438,11 @@ class CategoryTab(QWidget):
                 row["name"],
                 row["folder_name"],
                 row["hotkey"] or "",
-                row["sort_order"],
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setData(Qt.UserRole, int(row["id"]))
-                if column in {0, 4}:
+                if column == 0:
                     item.setData(Qt.EditRole, int(value))
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.category_table.setItem(row_index, column, item)
@@ -399,8 +459,9 @@ class CategoryTab(QWidget):
         self._loading_groups = True
         try:
             rules = self.db.list_category_rules(self.current_category_id) if self.current_category_id else []
-            groups = legacy_rules_to_groups(rules)
+            groups, global_groups = legacy_rules_to_rule_sets(rules)
             self.groups_table.setRowCount(len(groups))
+            self.global_table.setRowCount(len(global_groups))
 
             for row_index, group in enumerate(groups):
                 name_item = QTableWidgetItem(f"Gruppe {row_index + 1}")
@@ -410,10 +471,22 @@ class CategoryTab(QWidget):
 
                 expression_item = QTableWidgetItem(group.expression())
                 expression_item.setToolTip(
-                    "UND innerhalb dieser Zeile, ODER zu anderen Zeilen. "
-                    "Negative Tags mit '-' schreiben."
+                    "Diese Zeile ist ein ODER-Zweig. Tags ohne '-' müssen vorhanden sein, "
+                    "Tags mit '-' dürfen nicht vorhanden sein."
                 )
                 self.groups_table.setItem(row_index, 1, expression_item)
+
+            for row_index, group in enumerate(global_groups):
+                name_item = QTableWidgetItem(f"Global {row_index + 1}")
+                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+                name_item.setTextAlignment(Qt.AlignCenter)
+                self.global_table.setItem(row_index, 0, name_item)
+
+                expression_item = QTableWidgetItem(group.expression())
+                expression_item.setToolTip(
+                    "Diese Bedingung wird zusätzlich mit jeder ODER-Gruppe kombiniert."
+                )
+                self.global_table.setItem(row_index, 1, expression_item)
         finally:
             self._loading_groups = False
 
@@ -445,7 +518,7 @@ class CategoryTab(QWidget):
         self.name_edit.setText(self.category_table.item(row, 1).text())
         self.folder_edit.setText(self.category_table.item(row, 2).text())
         self.hotkey_edit.setText(self.category_table.item(row, 3).text())
-        self.sort_order_edit.setText(self.category_table.item(row, 4).text())
+        self.sort_order_edit.setText(str(row + 1))
 
         db_row = None
         name_item = self.category_table.item(row, 1)
@@ -534,10 +607,10 @@ class CategoryTab(QWidget):
         self.current_category_id = category_id
         self.reload_categories()
 
-    def current_group_expressions(self) -> list[str]:
+    def expressions_from_table(self, table: QTableWidget) -> list[str]:
         expressions: list[str] = []
-        for row in range(self.groups_table.rowCount()):
-            item = self.groups_table.item(row, 1)
+        for row in range(table.rowCount()):
+            item = table.item(row, 1)
             text = item.text().strip() if item is not None else ""
             includes, excludes = parse_group_expression(text)
             expression = expression_from_parts(includes, excludes)
@@ -545,84 +618,95 @@ class CategoryTab(QWidget):
                 expressions.append(expression)
         return expressions
 
+    def current_group_expressions(self) -> list[str]:
+        return self.expressions_from_table(self.groups_table)
+
+    def current_global_expressions(self) -> list[str]:
+        return self.expressions_from_table(self.global_table)
+
     def save_rule_groups(self) -> None:
         category_id = self.selected_category_id()
         if category_id is None:
-            QMessageBox.information(self, "Regelgruppen speichern", "Bitte zuerst eine Kategorie auswählen.")
+            QMessageBox.information(self, "Regeln speichern", "Bitte zuerst eine Kategorie auswählen.")
             return
 
-        expressions = self.current_group_expressions()
-        self.db.replace_category_rule_groups(category_id, expressions)
+        self.db.replace_category_rule_groups(
+            category_id,
+            self.current_group_expressions(),
+            self.current_global_expressions(),
+        )
         self.reload_groups()
 
     def on_group_item_changed(self, item: QTableWidgetItem) -> None:
         if self._loading_groups or item.column() != 1:
             return
-        # Direkt editierbar: sobald Qt die Bearbeitung committed, wird gespeichert.
         self.safe(self.save_rule_groups)
 
-    def add_group_row(self) -> None:
-        row = self.groups_table.rowCount()
+    def on_global_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._loading_groups or item.column() != 1:
+            return
+        self.safe(self.save_rule_groups)
+
+    def add_expression_row(self, table: QTableWidget, label_prefix: str, expression: str = "") -> int:
+        row = table.rowCount()
         self._loading_groups = True
         try:
-            self.groups_table.insertRow(row)
-
-            name_item = QTableWidgetItem(f"Gruppe {row + 1}")
+            table.insertRow(row)
+            name_item = QTableWidgetItem(f"{label_prefix} {row + 1}")
             name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
             name_item.setTextAlignment(Qt.AlignCenter)
-            self.groups_table.setItem(row, 0, name_item)
-            self.groups_table.setItem(row, 1, QTableWidgetItem(""))
+            table.setItem(row, 0, name_item)
+            table.setItem(row, 1, QTableWidgetItem(expression))
         finally:
             self._loading_groups = False
+        table.selectRow(row)
+        return row
 
-        self.groups_table.selectRow(row)
+    def add_group_row(self) -> None:
+        row = self.add_expression_row(self.groups_table, "Gruppe")
         self.groups_table.editItem(self.groups_table.item(row, 1))
 
-    def add_group_from_input(self) -> None:
-        text = self.new_group_edit.text().strip()
+    def add_global_row(self) -> None:
+        row = self.add_expression_row(self.global_table, "Global")
+        self.global_table.editItem(self.global_table.item(row, 1))
+
+    def add_expression_from_input(self, edit: QLineEdit, table: QTableWidget, label_prefix: str) -> None:
+        text = edit.text().strip()
         if not text:
             return
         includes, excludes = parse_group_expression(text)
         expression = expression_from_parts(includes, excludes)
         if not expression:
             return
-
-        row = self.groups_table.rowCount()
-        self._loading_groups = True
-        try:
-            self.groups_table.insertRow(row)
-            name_item = QTableWidgetItem(f"Gruppe {row + 1}")
-            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-            name_item.setTextAlignment(Qt.AlignCenter)
-            self.groups_table.setItem(row, 0, name_item)
-            self.groups_table.setItem(row, 1, QTableWidgetItem(expression))
-        finally:
-            self._loading_groups = False
-
-        self.new_group_edit.clear()
+        self.add_expression_row(table, label_prefix, expression)
+        edit.clear()
         self.save_rule_groups()
 
-    def delete_selected_group_rows(self) -> None:
-        rows = self.selected_group_rows()
+    def add_group_from_input(self) -> None:
+        self.add_expression_from_input(self.new_group_edit, self.groups_table, "Gruppe")
+
+    def add_global_from_input(self) -> None:
+        self.add_expression_from_input(self.new_global_edit, self.global_table, "Global")
+
+    def selected_rows(self, table: QTableWidget) -> list[int]:
+        return sorted({item.row() for item in table.selectedItems()})
+
+    def selected_group_rows(self) -> list[int]:
+        return self.selected_rows(self.groups_table)
+
+    def selected_global_rows(self) -> list[int]:
+        return self.selected_rows(self.global_table)
+
+    def delete_rows_from_table(self, table: QTableWidget) -> None:
+        rows = self.selected_rows(table)
         if not rows:
             return
         for row in reversed(rows):
-            self.groups_table.removeRow(row)
+            table.removeRow(row)
         self.save_rule_groups()
 
-    def move_selected_group(self, direction: int) -> None:
-        rows = self.selected_group_rows()
-        if len(rows) != 1:
-            return
-        row = rows[0]
-        target = row + direction
-        if target < 0 or target >= self.groups_table.rowCount():
-            return
+    def delete_selected_group_rows(self) -> None:
+        self.delete_rows_from_table(self.groups_table)
 
-        expressions = self.current_group_expressions()
-        if row >= len(expressions) or target >= len(expressions):
-            return
-        expressions[row], expressions[target] = expressions[target], expressions[row]
-        self.db.replace_category_rule_groups(self.current_category_id, expressions)  # type: ignore[arg-type]
-        self.reload_groups()
-        self.groups_table.selectRow(target)
+    def delete_selected_global_rows(self) -> None:
+        self.delete_rows_from_table(self.global_table)

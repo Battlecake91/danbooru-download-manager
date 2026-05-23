@@ -637,18 +637,24 @@ class Database:
                 includes.append(token)
         return includes, excludes
 
-    def replace_category_rule_groups(self, category_id: int, group_expressions: list[str]) -> None:
-        """Replace all rules of a category with intuitive OR groups.
+    def replace_category_rule_groups(
+        self,
+        category_id: int,
+        group_expressions: list[str],
+        global_expressions: list[str] | None = None,
+    ) -> None:
+        """Replace category rules with intuitive groups.
 
-        Each expression is one OR branch. Tokens without '-' are required tags,
-        tokens with '-' are excluded tags inside that branch.
+        group_expressions are OR branches. global_expressions are AND conditions
+        applied to every branch. Tokens without '-' are required tags, tokens
+        with '-' are forbidden tags.
         """
         self.execute("DELETE FROM category_rules WHERE category_id = ?", (category_id,))
 
-        for group_index, expression in enumerate(group_expressions):
+        def insert_expression(prefix: str, index: int, expression: str) -> None:
             includes, excludes = self.parse_category_group_expression(expression)
             if not includes and not excludes:
-                continue
+                return
 
             for tag in includes:
                 self.execute(
@@ -656,7 +662,7 @@ class Database:
                     INSERT OR IGNORE INTO category_rules (category_id, rule_type, tag)
                     VALUES (?, ?, ?)
                     """,
-                    (category_id, f"group_{group_index}_include", tag),
+                    (category_id, f"{prefix}_{index}_include", tag),
                 )
             for tag in excludes:
                 self.execute(
@@ -664,8 +670,15 @@ class Database:
                     INSERT OR IGNORE INTO category_rules (category_id, rule_type, tag)
                     VALUES (?, ?, ?)
                     """,
-                    (category_id, f"group_{group_index}_exclude", tag),
+                    (category_id, f"{prefix}_{index}_exclude", tag),
                 )
+
+        for group_index, expression in enumerate(group_expressions):
+            insert_expression("group", group_index, expression)
+
+        for global_index, expression in enumerate(global_expressions or []):
+            insert_expression("global", global_index, expression)
+
         self.commit()
 
     def normalize_category_sort_order(self) -> None:
