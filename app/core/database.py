@@ -51,6 +51,10 @@ def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
     return positive, negative
 
 
+def is_path_like_preview_search_term(term: str) -> bool:
+    return any(marker in term for marker in ("/", "\\", "."))
+
+
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -677,36 +681,51 @@ class Database:
 
             for term in positive_terms:
                 pattern = f"%{term}%"
-                where_parts.append(
-                    """
-                    (
-                        CAST(p.id AS TEXT) LIKE ?
-                        OR p.final_file_path LIKE ?
-                        OR p.final_directory LIKE ?
-                        OR EXISTS (
-                            SELECT 1
-                            FROM post_tags pt
-                            WHERE pt.post_id = p.id
-                            AND (pt.tag = ? OR pt.tag LIKE ?)
+                if is_path_like_preview_search_term(term):
+                    where_parts.append(
+                        """
+                        (
+                            CAST(p.id AS TEXT) LIKE ?
+                            OR p.final_file_path LIKE ?
+                            OR p.final_directory LIKE ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM post_tags pt
+                                WHERE pt.post_id = p.id
+                                  AND pt.tag = ? COLLATE NOCASE
+                            )
                         )
+                        """
                     )
-                    """
-                )
-                parameters.extend([pattern, pattern, pattern, term, pattern])
+                    parameters.extend([pattern, pattern, pattern, term])
+                else:
+                    where_parts.append(
+                        """
+                        (
+                            CAST(p.id AS TEXT) LIKE ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM post_tags pt
+                                WHERE pt.post_id = p.id
+                                  AND pt.tag = ? COLLATE NOCASE
+                            )
+                        )
+                        """
+                    )
+                    parameters.extend([pattern, term])
 
             for term in negative_terms:
-                pattern = f"%{term}%"
                 where_parts.append(
                     """
                     NOT EXISTS (
                         SELECT 1
                         FROM post_tags pt_excl
                         WHERE pt_excl.post_id = p.id
-                        AND (pt_excl.tag = ? OR pt_excl.tag LIKE ?)
+                          AND pt_excl.tag = ? COLLATE NOCASE
                     )
                     """
                 )
-                parameters.extend([term, pattern])
+                parameters.append(term)
 
         where_sql = ""
         if where_parts:

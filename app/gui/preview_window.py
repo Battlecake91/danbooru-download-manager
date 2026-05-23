@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from app.core.database import Database
 from app.gui.image_viewer import ImageViewerWindow
 from app.gui.icon_utils import ensure_app_icon
+from app.gui.fetch_tab import TagQueryLineEdit
 from app.gui.thumbnail_grid import ThumbnailGrid
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 
@@ -214,8 +215,8 @@ class PreviewWindow(QMainWindow):
         self.toolbar.addSeparator()
 
         self.toolbar.addWidget(QLabel("Suche: "))
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("ID, Tag oder Pfad suchen, Ausschluss mit -tag...")
+        self.search_edit = TagQueryLineEdit()
+        self.search_edit.setPlaceholderText("Exakte Tags suchen, z. B. brown_eyes -red_hair")
         self.search_edit.returnPressed.connect(self.reload_posts)
         self.search_edit.setMinimumWidth(260)
         self.toolbar.addWidget(self.search_edit)
@@ -277,8 +278,20 @@ class PreviewWindow(QMainWindow):
 
         self.sync_all_checkbox_from_statuses()
         self.reload_category_filter()
+        self.reload_tag_suggestions()
         self.reload_posts()
 
+
+
+    def reload_tag_suggestions(self) -> None:
+        try:
+            self.search_edit.set_tag_suggestions(self.db.suggest_tags(limit=2500))
+        except Exception:
+            self.search_edit.set_tag_suggestions([])
+
+    @staticmethod
+    def is_path_like_search_term(term: str) -> bool:
+        return any(marker in term for marker in ("/", "\\", "."))
 
     def set_fetch_running(self, running: bool) -> None:
         self._fetch_running = bool(running)
@@ -692,36 +705,51 @@ class PreviewWindow(QMainWindow):
 
             for term in positive_terms:
                 pattern = f"%{term}%"
-                where_parts.append(
-                    """
-                    (
-                        CAST(p.id AS TEXT) LIKE ?
-                        OR p.final_file_path LIKE ?
-                        OR p.final_directory LIKE ?
-                        OR EXISTS (
-                            SELECT 1
-                            FROM post_tags pt
-                            WHERE pt.post_id = p.id
-                            AND (pt.tag = ? OR pt.tag LIKE ?)
+                if self.is_path_like_search_term(term):
+                    where_parts.append(
+                        """
+                        (
+                            CAST(p.id AS TEXT) LIKE ?
+                            OR p.final_file_path LIKE ?
+                            OR p.final_directory LIKE ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM post_tags pt
+                                WHERE pt.post_id = p.id
+                                  AND pt.tag = ? COLLATE NOCASE
+                            )
                         )
+                        """
                     )
-                    """
-                )
-                parameters.extend([pattern, pattern, pattern, term, pattern])
+                    parameters.extend([pattern, pattern, pattern, term])
+                else:
+                    where_parts.append(
+                        """
+                        (
+                            CAST(p.id AS TEXT) LIKE ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM post_tags pt
+                                WHERE pt.post_id = p.id
+                                  AND pt.tag = ? COLLATE NOCASE
+                            )
+                        )
+                        """
+                    )
+                    parameters.extend([pattern, term])
 
             for term in negative_terms:
-                pattern = f"%{term}%"
                 where_parts.append(
                     """
                     NOT EXISTS (
                         SELECT 1
                         FROM post_tags pt_excl
                         WHERE pt_excl.post_id = p.id
-                        AND (pt_excl.tag = ? OR pt_excl.tag LIKE ?)
+                          AND pt_excl.tag = ? COLLATE NOCASE
                     )
                     """
                 )
-                parameters.extend([term, pattern])
+                parameters.append(term)
 
         where_sql = ""
         if where_parts:
