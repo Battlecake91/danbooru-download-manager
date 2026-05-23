@@ -247,6 +247,8 @@ class TypedTagListWidget(QWidget):
             if tag_type in {"general", "meta"}:
                 meta = self._tag_metadata.get(tag, {})
                 score_text = self._format_score(meta.get("score"))
+                canonical_text = str(meta.get("canonical_tag") or tag)
+                llm_token_text = str(meta.get("llm_token") or "")
                 excluded = bool(meta.get("filename_excluded", tag in self._filename_excluded_tags))
                 excluded_text = "J" if excluded else "N"
                 scoring_excluded = bool(meta.get("scoring_excluded", False))
@@ -254,6 +256,8 @@ class TypedTagListWidget(QWidget):
                 display_text = tag
                 tooltip = (
                     f"Tag: {tag}\n"
+                    f"Canonical/Alias: {canonical_text}\n"
+                    f"LLM-Token: {llm_token_text or '-'}\n"
                     f"Score: {score_text}\n"
                     f"Filename-Exclude: {'ja' if excluded else 'nein'}\n"
                     f"Scoring ausgeschlossen: {'ja' if scoring_excluded else 'nein'}\n"

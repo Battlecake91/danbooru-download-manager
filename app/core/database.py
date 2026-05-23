@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import secrets
 import shlex
 import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
+
+from app.core.tag_privacy import build_tag_identity, canonicalize_tag, normalize_tag_token
 
 
 ACTIVE_STATUSES = {"new", "potential"}
@@ -196,6 +199,19 @@ class Database:
             alias_tag TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS tag_identity_cache (
+            original_tag TEXT PRIMARY KEY,
+            canonical_tag TEXT NOT NULL,
+            llm_token TEXT NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tag_identity_canonical
+        ON tag_identity_cache(canonical_tag);
+
+        CREATE INDEX IF NOT EXISTS idx_tag_identity_llm_token
+        ON tag_identity_cache(llm_token);
+
         CREATE TABLE IF NOT EXISTS tag_scores (
             tag TEXT PRIMARY KEY,
             manual_score REAL DEFAULT NULL,
@@ -245,6 +261,7 @@ class Database:
         self.add_column_if_missing("posts", "rejected_at", "TEXT")
         self.add_column_if_missing("posts", "already_known_at", "TEXT")
         self.add_column_if_missing("tag_scores", "scoring_excluded", "INTEGER DEFAULT 0")
+        self.ensure_llm_hash_salt()
         self.migrate_personal_rating_to_0_10()
         self.migrate_legacy_statuses()
 
@@ -1112,10 +1129,15 @@ class Database:
             clean_tags,
         ).fetchall()
 
+        identities = self.build_tag_identities(clean_tags)
+
         result: dict[str, dict[str, Any]] = {}
         for row in rows:
             tag = str(row["tag"] or "")
+            identity = identities.get(normalize_tag_token(tag), {})
             result[tag] = {
+                "canonical_tag": identity.get("canonical_tag", tag),
+                "llm_token": identity.get("llm_token", ""),
                 "score": row["score"],
                 "manual_score": row["manual_score"],
                 "computed_score": row["computed_score"],
@@ -1125,6 +1147,164 @@ class Database:
                 "rating_count": int(row["rating_count"] or 0),
             }
         return result
+
+
+    # ------------------------------------------------------------------
+    # Tag identity / alias privacy layer
+    # ------------------------------------------------------------------
+
+    def ensure_llm_hash_salt(self) -> str:
+        """Return the local salted-hash secret, creating one if missing.
+
+        This salt stays local in SQLite/app_settings. Without it, hashed tags
+        would be a dictionary attack with extra steps, and humanity has already
+        invented enough fake privacy.
+        """
+        row = self.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("llm.hash_salt",),
+        ).fetchone()
+        if row is not None and row["value"]:
+            try:
+                loaded = json.loads(str(row["value"]))
+                if isinstance(loaded, str) and loaded.strip():
+                    return loaded.strip()
+            except Exception:
+                raw = str(row["value"]).strip()
+                if raw:
+                    return raw
+
+        salt = secrets.token_hex(32)
+        self.execute(
+            """
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            ("llm.hash_salt", json.dumps(salt)),
+        )
+        return salt
+
+    def list_tag_alias_map(self) -> dict[str, str]:
+        rows = self.execute(
+            """
+            SELECT original_tag, alias_tag
+            FROM tag_aliases
+            WHERE TRIM(COALESCE(alias_tag, '')) != ''
+            """
+        ).fetchall()
+        result: dict[str, str] = {}
+        for row in rows:
+            original = normalize_tag_token(str(row["original_tag"] or ""))
+            alias = normalize_tag_token(str(row["alias_tag"] or ""))
+            if original and alias:
+                result[original] = alias
+        return result
+
+    def get_llm_tag_export_settings(self) -> dict[str, Any]:
+        def setting(key: str, default: Any) -> Any:
+            row = self.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+            if row is None:
+                return default
+            try:
+                return json.loads(str(row["value"]))
+            except Exception:
+                return row["value"]
+
+        mode = str(setting("llm.tag_export_mode", "hashed_alias") or "hashed_alias").lower()
+        if mode not in {"original", "alias", "hashed_alias"}:
+            mode = "hashed_alias"
+        prefix = str(setting("llm.hash_prefix", "tag_") or "tag_")
+        try:
+            length = int(setting("llm.hash_length", 12))
+        except Exception:
+            length = 12
+        return {
+            "mode": mode,
+            "prefix": prefix,
+            "hash_length": max(4, min(64, length)),
+            "salt": self.ensure_llm_hash_salt(),
+        }
+
+    def build_tag_identities(self, tags: Iterable[str]) -> dict[str, dict[str, str]]:
+        aliases = self.list_tag_alias_map()
+        settings = self.get_llm_tag_export_settings()
+        clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+        result: dict[str, dict[str, str]] = {}
+        cache_rows: list[tuple[str, str, str]] = []
+
+        for tag in clean_tags:
+            identity = build_tag_identity(
+                tag,
+                aliases=aliases,
+                salt=str(settings["salt"]),
+                prefix=str(settings["prefix"]),
+                length=int(settings["hash_length"]),
+            )
+            result[tag] = {
+                "original_tag": identity.original_tag,
+                "canonical_tag": identity.canonical_tag,
+                "llm_token": identity.llm_token,
+            }
+            cache_rows.append((identity.original_tag, identity.canonical_tag, identity.llm_token))
+
+        if cache_rows:
+            self.executemany(
+                """
+                INSERT INTO tag_identity_cache (original_tag, canonical_tag, llm_token, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(original_tag) DO UPDATE SET
+                    canonical_tag = excluded.canonical_tag,
+                    llm_token = excluded.llm_token,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                cache_rows,
+            )
+        return result
+
+    def canonical_tag_for_tag(self, tag: str) -> str:
+        clean_tag = normalize_tag_token(tag)
+        if not clean_tag:
+            return ""
+        aliases = self.list_tag_alias_map()
+        return canonicalize_tag(clean_tag, aliases)
+
+    def llm_export_value_for_tag(self, tag: str, mode: str | None = None) -> str:
+        clean_tag = normalize_tag_token(tag)
+        if not clean_tag:
+            return ""
+        identity = self.build_tag_identities([clean_tag]).get(clean_tag)
+        if not identity:
+            return clean_tag
+        export_mode = (mode or self.get_llm_tag_export_settings()["mode"]).lower()
+        if export_mode == "original":
+            return identity["original_tag"]
+        if export_mode == "alias":
+            return identity["canonical_tag"]
+        return identity["llm_token"]
+
+    def build_llm_tag_export(self, tags: Iterable[str], mode: str | None = None) -> list[str]:
+        clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+        identities = self.build_tag_identities(clean_tags)
+        export_mode = (mode or self.get_llm_tag_export_settings()["mode"]).lower()
+        exported: list[str] = []
+        seen: set[str] = set()
+        for tag in clean_tags:
+            identity = identities.get(tag)
+            if not identity:
+                continue
+            if export_mode == "original":
+                value = identity["original_tag"]
+            elif export_mode == "alias":
+                value = identity["canonical_tag"]
+            else:
+                value = identity["llm_token"]
+            if value and value not in seen:
+                exported.append(value)
+                seen.add(value)
+        return exported
 
     def add_filename_excluded_tag(self, tag: str, reason: str = "manual") -> None:
         clean_tag = tag.strip()
@@ -1180,6 +1360,9 @@ class Database:
         if not clean_tag:
             return
 
+        clean_tag = normalize_tag_token(clean_tag)
+        clean_alias = normalize_tag_token(clean_alias)
+
         if not clean_alias:
             self.execute("DELETE FROM tag_aliases WHERE original_tag = ?", (clean_tag,))
         else:
@@ -1191,6 +1374,9 @@ class Database:
                 """,
                 (clean_tag, clean_alias),
             )
+        # Alias changes can affect chained aliases and grouped LLM tokens, so the
+        # cheap and safe move is to rebuild the cache lazily on next use.
+        self.execute("DELETE FROM tag_identity_cache")
         self.commit()
 
     def set_tag_manual_score(self, tag: str, score: float | None) -> None:

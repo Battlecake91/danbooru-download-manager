@@ -84,10 +84,18 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "excluded_tags": [],
         "sort_tags_by_average_rating": False,
     },
+    "scoring": {
+        "use_aliases_for_scoring": True,
+        "ignore_scoring_excluded_tags": True,
+    },
     "llm": {
         "enabled": False,
         "backend": "none",
         "tag_aliases": {},
+        "tag_export_mode": "hashed_alias",
+        "hash_prefix": "tag_",
+        "hash_length": 12,
+        "include_tag_legend": False,
     },
 }
 
@@ -216,3 +224,11 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("filename.tags_count muss >= 0 sein")
     if int(filename.get("hash_length", 8)) < 1:
         raise ValueError("filename.hash_length muss >= 1 sein")
+
+    llm = config.get("llm", {}) or {}
+    tag_export_mode = str(llm.get("tag_export_mode", "hashed_alias")).lower()
+    if tag_export_mode not in {"original", "alias", "hashed_alias"}:
+        raise ValueError("llm.tag_export_mode muss original, alias oder hashed_alias sein")
+    llm["tag_export_mode"] = tag_export_mode
+    if int(llm.get("hash_length", 12)) < 4:
+        raise ValueError("llm.hash_length muss >= 4 sein")

@@ -202,6 +202,55 @@ class ConfigTab(QWidget):
 
         self.content_layout.addWidget(self.filename_group)
 
+        self.scoring_llm_group = QGroupBox("Scoring / LLM-Tag-Privacy")
+        self.scoring_llm_form = QFormLayout(self.scoring_llm_group)
+
+        scoring_config = config.get("scoring", {}) or {}
+        llm_config = config.get("llm", {}) or {}
+
+        self.scoring_aliases_checkbox = QCheckBox("Aliase fuer Scoring zusammenfassen")
+        self.scoring_aliases_checkbox.setChecked(bool(scoring_config.get("use_aliases_for_scoring", True)))
+
+        self.scoring_ignore_excluded_checkbox = QCheckBox("Scoring-Ausschluesse ignorieren")
+        self.scoring_ignore_excluded_checkbox.setChecked(bool(scoring_config.get("ignore_scoring_excluded_tags", True)))
+
+        self.llm_tag_export_mode_combo = QComboBox()
+        for value, label in [
+            ("original", "Original-Tags (Klartext)"),
+            ("alias", "Alias/Canonical-Tags (Klartext, gruppiert)"),
+            ("hashed_alias", "Gehashte Alias-Tags (Privacy-Modus)"),
+        ]:
+            self.llm_tag_export_mode_combo.addItem(label, value)
+        mode_index = self.llm_tag_export_mode_combo.findData(str(llm_config.get("tag_export_mode", "hashed_alias")))
+        if mode_index >= 0:
+            self.llm_tag_export_mode_combo.setCurrentIndex(mode_index)
+
+        self.llm_hash_prefix_edit = QLineEdit(str(llm_config.get("hash_prefix", "tag_")))
+
+        self.llm_hash_length_spin = QSpinBox()
+        self.llm_hash_length_spin.setRange(4, 64)
+        self.llm_hash_length_spin.setValue(int(llm_config.get("hash_length", 12)))
+        self.llm_hash_length_spin.setKeyboardTracking(False)
+
+        self.llm_include_legend_checkbox = QCheckBox("Tag-Legende an LLM mitsenden (weniger privat)")
+        self.llm_include_legend_checkbox.setChecked(bool(llm_config.get("include_tag_legend", False)))
+
+        llm_help = QLabel(
+            "Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
+            "Der Salt bleibt lokal in app_settings. Hashes sind Pseudonymisierung, kein magischer Tarnumhang."
+        )
+        llm_help.setWordWrap(True)
+
+        self.scoring_llm_form.addRow("Scoring:", self.scoring_aliases_checkbox)
+        self.scoring_llm_form.addRow("", self.scoring_ignore_excluded_checkbox)
+        self.scoring_llm_form.addRow("LLM-Export:", self.llm_tag_export_mode_combo)
+        self.scoring_llm_form.addRow("Hash-Prefix:", self.llm_hash_prefix_edit)
+        self.scoring_llm_form.addRow("Hash-Laenge:", self.llm_hash_length_spin)
+        self.scoring_llm_form.addRow("", self.llm_include_legend_checkbox)
+        self.scoring_llm_form.addRow("", llm_help)
+
+        self.content_layout.addWidget(self.scoring_llm_group)
+
         self.workflow_group = QGroupBox("Workflow")
         self.workflow_form = QFormLayout(self.workflow_group)
 
@@ -409,6 +458,15 @@ class ConfigTab(QWidget):
         self.filename_max_length_spin.setValue(int(self.runtime_value("filename.max_length", 180)))
         self.filename_hash_length_spin.setValue(int(self.runtime_value("filename.hash_length", 8)))
 
+        self.scoring_aliases_checkbox.setChecked(bool(self.runtime_value("scoring.use_aliases_for_scoring", True)))
+        self.scoring_ignore_excluded_checkbox.setChecked(bool(self.runtime_value("scoring.ignore_scoring_excluded_tags", True)))
+        mode_index = self.llm_tag_export_mode_combo.findData(str(self.runtime_value("llm.tag_export_mode", "hashed_alias")))
+        if mode_index >= 0:
+            self.llm_tag_export_mode_combo.setCurrentIndex(mode_index)
+        self.llm_hash_prefix_edit.setText(str(self.runtime_value("llm.hash_prefix", "tag_")))
+        self.llm_hash_length_spin.setValue(int(self.runtime_value("llm.hash_length", 12)))
+        self.llm_include_legend_checkbox.setChecked(bool(self.runtime_value("llm.include_tag_legend", False)))
+
         workflow_statuses = self.runtime_value("workflow.worklist_statuses", ["new", "potential"])
         if isinstance(workflow_statuses, list):
             self.worklist_statuses_edit.setText(", ".join(str(v) for v in workflow_statuses))
@@ -455,6 +513,13 @@ class ConfigTab(QWidget):
             "filename.tags_count": int(self.filename_tags_count_spin.value()),
             "filename.max_length": int(self.filename_max_length_spin.value()),
             "filename.hash_length": int(self.filename_hash_length_spin.value()),
+
+            "scoring.use_aliases_for_scoring": self.scoring_aliases_checkbox.isChecked(),
+            "scoring.ignore_scoring_excluded_tags": self.scoring_ignore_excluded_checkbox.isChecked(),
+            "llm.tag_export_mode": str(self.llm_tag_export_mode_combo.currentData()),
+            "llm.hash_prefix": self.llm_hash_prefix_edit.text().strip() or "tag_",
+            "llm.hash_length": int(self.llm_hash_length_spin.value()),
+            "llm.include_tag_legend": self.llm_include_legend_checkbox.isChecked(),
 
             "workflow.worklist_statuses": statuses,
             "workflow.rejected_thumbnail_retention_days": int(self.rejected_retention_spin.value()),
