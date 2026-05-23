@@ -188,6 +188,13 @@ class ConfigTab(QWidget):
         self.filename_hash_length_spin.setValue(int(filename_config.get("hash_length", 8)))
         self.filename_hash_length_spin.setKeyboardTracking(False)
 
+        self.filename_tag_order_combo = QComboBox()
+        self.filename_tag_order_combo.addItem("Original / bisherige Reihenfolge", False)
+        self.filename_tag_order_combo.addItem("Nach Tag-Scoring priorisieren", True)
+        tag_order_index = self.filename_tag_order_combo.findData(bool(filename_config.get("sort_tags_by_average_rating", False)))
+        if tag_order_index >= 0:
+            self.filename_tag_order_combo.setCurrentIndex(tag_order_index)
+
         filename_help = QLabel(
             "Platzhalter: %artist%/%artists%, %character%/%characters%, "
             "%copyright%/%series%, %general%, %meta%, %tags%, %postid%/%postID%, %hash%, %ext%"
@@ -198,6 +205,7 @@ class ConfigTab(QWidget):
         self.filename_form.addRow("tags_count:", self.filename_tags_count_spin)
         self.filename_form.addRow("max_length:", self.filename_max_length_spin)
         self.filename_form.addRow("hash_length:", self.filename_hash_length_spin)
+        self.filename_form.addRow("Tag-Reihenfolge:", self.filename_tag_order_combo)
         self.filename_form.addRow("", filename_help)
 
         self.content_layout.addWidget(self.filename_group)
@@ -457,6 +465,9 @@ class ConfigTab(QWidget):
         self.filename_tags_count_spin.setValue(int(self.runtime_value("filename.tags_count", 8)))
         self.filename_max_length_spin.setValue(int(self.runtime_value("filename.max_length", 180)))
         self.filename_hash_length_spin.setValue(int(self.runtime_value("filename.hash_length", 8)))
+        tag_order_index = self.filename_tag_order_combo.findData(bool(self.runtime_value("filename.sort_tags_by_average_rating", False)))
+        if tag_order_index >= 0:
+            self.filename_tag_order_combo.setCurrentIndex(tag_order_index)
 
         self.scoring_aliases_checkbox.setChecked(bool(self.runtime_value("scoring.use_aliases_for_scoring", True)))
         self.scoring_ignore_excluded_checkbox.setChecked(bool(self.runtime_value("scoring.ignore_scoring_excluded_tags", True)))
@@ -513,6 +524,7 @@ class ConfigTab(QWidget):
             "filename.tags_count": int(self.filename_tags_count_spin.value()),
             "filename.max_length": int(self.filename_max_length_spin.value()),
             "filename.hash_length": int(self.filename_hash_length_spin.value()),
+            "filename.sort_tags_by_average_rating": bool(self.filename_tag_order_combo.currentData()),
 
             "scoring.use_aliases_for_scoring": self.scoring_aliases_checkbox.isChecked(),
             "scoring.ignore_scoring_excluded_tags": self.scoring_ignore_excluded_checkbox.isChecked(),

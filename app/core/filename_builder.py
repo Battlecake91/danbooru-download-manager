@@ -42,7 +42,8 @@ class FilenameBuilder:
         included_tags: dict[str, list[str]] = {}
         excluded_tags: dict[str, list[str]] = {}
         for tag_type, tags in raw_typed_tags.items():
-            included_tags[tag_type] = [tag for tag in tags if tag not in excluded]
+            included = [tag for tag in tags if tag not in excluded]
+            included_tags[tag_type] = self.prioritized_tags(included)
             excluded_tags[tag_type] = [tag for tag in tags if tag in excluded]
 
         artist_value = self.artist_placeholder_value(included_tags)
@@ -91,6 +92,73 @@ class FilenameBuilder:
     def filename_config(self) -> dict[str, Any]:
         value = self.config.get("filename", {})
         return value if isinstance(value, dict) else {}
+
+    def prioritize_filename_tags(self) -> bool:
+        """Return whether filename tags should be ordered by score.
+
+        The GUI stores this option in SQLite app_settings. The FilenameBuilder
+        can live longer than the Config tab, so relying only on the nested
+        startup config makes the option look enabled while the builder keeps
+        using the old value. Delightful little config gaslighting. Therefore
+        the database value wins whenever it exists.
+        """
+        value: Any = None
+
+        if hasattr(self.db, "get_app_setting"):
+            try:
+                value = self.db.get_app_setting("filename.sort_tags_by_average_rating", None)
+            except Exception:
+                value = None
+
+        if value is None:
+            value = self.filename_config().get("sort_tags_by_average_rating", False)
+
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "ja", "on", "j", "y"}
+        return bool(value)
+
+    def prioritized_tags(self, tags: list[str]) -> list[str]:
+        """Return tags ordered for filename placeholders.
+
+        Filename-Exclude is handled before this method. Scoring-Exclude does
+        not remove a tag from filenames, it only prevents that tag from being
+        promoted by automatic/manual scoring. That way a noisy tag can still be
+        present if the pattern has enough room, but it no longer steals one of
+        the important early filename slots. Tiny mercy for future-you reading
+        folders at 2 a.m.
+        """
+        if not tags or not self.prioritize_filename_tags():
+            return tags
+
+        try:
+            metadata = self.db.fetch_tag_metadata(tags)
+        except Exception:
+            return tags
+
+        indexed_tags = list(enumerate(tags))
+
+        def number(value: Any, default: float = 0.0) -> float:
+            try:
+                if value is None or value == "":
+                    return default
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
+        def sort_key(item: tuple[int, str]) -> tuple[int, float, float, int]:
+            index, tag = item
+            info = metadata.get(tag, {})
+            scoring_excluded = 1 if info.get("scoring_excluded") else 0
+            score = number(info.get("score"), 0.0)
+            average_rating = number(info.get("average_rating"), -1.0)
+            return (
+                scoring_excluded,
+                -score,
+                -average_rating,
+                index,
+            )
+
+        return [tag for _, tag in sorted(indexed_tags, key=sort_key)]
 
     def typed_tags_for_post(self, post_id: int) -> dict[str, list[str]]:
         rows = self.db.execute(
