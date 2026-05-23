@@ -260,21 +260,9 @@ class CategoryEngine:
         for rule in all_rules:
             rules_by_category.setdefault(int(rule["category_id"]), []).append(rule)
 
-        lines: list[str] = []
-        lines.append(title)
-        if selected_category_name:
-            lines.append(f"Aktuell im Viewer gewählt: {selected_category_name}")
-        lines.append(f"Tags: {len(tags)}")
-        if tags:
-            preview = " ".join(sorted(tags, key=str.casefold)[:60])
-            if len(tags) > 60:
-                preview += f" … +{len(tags) - 60}"
-            lines.append(preview)
-        lines.append("")
-
-        winner_name: str | None = None
+        evaluations: list[dict[str, Any]] = []
         matched_names: list[str] = []
-        category_blocks: list[str] = []
+        winner_name: str | None = None
 
         for category_index, category in enumerate(categories, start=1):
             category_id = int(category["id"])
@@ -282,7 +270,7 @@ class CategoryEngine:
             rules = rules_by_category.get(category_id, [])
             rule_set = build_category_rule_set(rules)
 
-            matched, block = self.describe_category_decision(
+            matched, block, summary = self.describe_category_decision(
                 name=name,
                 position=category_index,
                 groups=rule_set.groups,
@@ -294,24 +282,59 @@ class CategoryEngine:
                 matched_names.append(name)
                 if winner_name is None:
                     winner_name = name
-            category_blocks.append(block)
+            evaluations.append(
+                {
+                    "name": name,
+                    "position": category_index,
+                    "matched": matched,
+                    "block": block,
+                    "summary": summary,
+                }
+            )
 
-        if winner_name is None:
-            lines.append("Automatische Gewinner-Kategorie: _unmatched")
-            lines.append("Keine Kategorie-Regel passt.")
-        else:
-            lines.append(f"Automatische Gewinner-Kategorie: {winner_name}")
-            if selected_category_name and selected_category_name != winner_name:
-                lines.append("Hinweis: Die aktuell gewählte Kategorie weicht vom automatischen Vorschlag ab.")
-            if len(matched_names) > 1:
-                also = ", ".join(matched_names[1:])
-                lines.append(f"Weitere passende Kategorien weiter unten: {also}")
-            lines.append("Hinweis: In der Kategorienliste gewinnt immer die erste passende Kategorie.")
-
+        automatic_name = winner_name or "_unmatched"
+        lines: list[str] = [title]
+        lines.append(f"Automatik: {automatic_name}")
+        if selected_category_name:
+            lines.append(f"Aktuell gewählt: {selected_category_name}")
+            if selected_category_name != automatic_name:
+                lines.append("Abweichung: manuelle Auswahl überschreibt den automatischen Vorschlag.")
+        lines.append(f"Tags im Post: {len(tags)}")
+        lines.append("Reihenfolge: Die erste passende Kategorie gewinnt.")
         lines.append("")
-        lines.append("Details:")
-        lines.extend(category_blocks)
-        return "\n".join(lines)
+
+        lines.append("Kurzübersicht")
+        if matched_names:
+            lines.append(f"Passt: {', '.join(matched_names)}")
+            if len(matched_names) > 1:
+                lines.append(f"Weitere passende Kategorien nach dem Gewinner: {', '.join(matched_names[1:])}")
+        else:
+            lines.append("Passt: keine Kategorie, daher Fallback _unmatched")
+        lines.append("")
+
+        important_names: list[str] = []
+        if winner_name:
+            important_names.append(winner_name)
+        if selected_category_name and selected_category_name not in important_names:
+            important_names.append(selected_category_name)
+        for name in matched_names[1:]:
+            if name not in important_names:
+                important_names.append(name)
+
+        important_blocks = [entry for entry in evaluations if entry["name"] in important_names]
+        if important_blocks:
+            lines.append("Relevante Details")
+            for entry in important_blocks:
+                lines.append(str(entry["block"]))
+                lines.append("")
+
+        blocked_entries = [entry for entry in evaluations if not entry["matched"] and entry["name"] not in important_names]
+        if blocked_entries:
+            lines.append("Nicht passende Kategorien, Kurzfassung")
+            for entry in blocked_entries:
+                lines.append(f"[{entry['position']}] {entry['name']}: {entry['summary']}")
+
+        return "\n".join(line for line in lines).rstrip()
 
     def describe_category_decision(
         self,
@@ -322,54 +345,86 @@ class CategoryEngine:
         global_required: set[str],
         global_forbidden: set[str],
         tags: set[str],
-    ) -> tuple[bool, str]:
+    ) -> tuple[bool, str, str]:
         block: list[str] = []
         block.append(f"[{position}] {name}")
 
         if not groups and not global_required:
-            block.append("  – keine positive ODER-Gruppe oder globale Muss-Bedingung")
-            block.append("  Ergebnis: passt nicht")
-            return False, "\n".join(block)
+            summary = "keine positive Gruppe oder globale Muss-Bedingung"
+            block.append(f"  Ergebnis: passt nicht, {summary}")
+            return False, "\n".join(block), summary
 
         global_missing = sorted(global_required.difference(tags), key=str.casefold)
         global_blocked = sorted(global_forbidden.intersection(tags), key=str.casefold)
 
-        if global_required or global_forbidden:
-            block.append("  Globale Bedingungen:")
-            for tag in sorted(global_required, key=str.casefold):
-                block.append(f"    {'✓' if tag in tags else '✗'} {tag}")
-            for tag in sorted(global_forbidden, key=str.casefold):
-                block.append(f"    {'✗ blockiert' if tag in tags else '✓'} -{tag}")
-
         if global_missing or global_blocked:
-            block.append("  Ergebnis: passt nicht, globale Bedingungen verhindern den Treffer")
-            return False, "\n".join(block)
+            reasons: list[str] = []
+            if global_missing:
+                reasons.append("fehlt global: " + ", ".join(global_missing))
+            if global_blocked:
+                reasons.append("blockiert global: " + ", ".join(f"-{tag}" for tag in global_blocked))
+            summary = "; ".join(reasons)
+            block.append(f"  Ergebnis: passt nicht, {summary}")
+            return False, "\n".join(block), summary
+
+        if global_required or global_forbidden:
+            block.append("  Globale Bedingungen: erfüllt")
+            if global_required:
+                block.append("    Muss: " + ", ".join(sorted(global_required, key=str.casefold)))
+            if global_forbidden:
+                block.append("    Ausschluss nicht vorhanden: " + ", ".join(f"-{tag}" for tag in sorted(global_forbidden, key=str.casefold)))
 
         if not groups and global_required:
-            block.append("  Ergebnis: passt, globale Muss-Bedingungen sind erfüllt")
-            return True, "\n".join(block)
+            summary = "globale Muss-Bedingungen erfüllt"
+            block.append(f"  Ergebnis: passt, {summary}")
+            return True, "\n".join(block), summary
 
-        any_match = False
+        matching_groups: list[tuple[int, set[str], set[str]]] = []
+        best_failed: tuple[int, list[str], list[str]] | None = None
+        best_failed_score: int | None = None
+
         for group_index, (required_tags, forbidden_tags) in enumerate(groups, start=1):
             missing = sorted(required_tags.difference(tags), key=str.casefold)
             blocked = sorted(forbidden_tags.intersection(tags), key=str.casefold)
             group_has_positive = bool(required_tags or global_required)
             group_matches = group_has_positive and not missing and not blocked
-            any_match = any_match or group_matches
 
-            state = "PASST" if group_matches else "passt nicht"
-            block.append(f"  ODER-Gruppe {group_index}: {state}")
-            if not required_tags and not forbidden_tags:
-                block.append("    – leer")
-            for tag in sorted(required_tags, key=str.casefold):
-                block.append(f"    {'✓' if tag in tags else '✗'} {tag}")
-            for tag in sorted(forbidden_tags, key=str.casefold):
-                block.append(f"    {'✗ blockiert' if tag in tags else '✓'} -{tag}")
-            if forbidden_tags and not required_tags and not global_required:
-                block.append("    Hinweis: reine Ausschlussgruppen sind keine positive Trefferbedingung")
+            if group_matches:
+                matching_groups.append((group_index, required_tags, forbidden_tags))
+                continue
 
-        block.append(f"  Ergebnis: {'passt' if any_match else 'passt nicht'}")
-        return any_match, "\n".join(block)
+            score = len(missing) + len(blocked)
+            if best_failed_score is None or score < best_failed_score:
+                best_failed_score = score
+                best_failed = (group_index, missing, blocked)
+
+        if matching_groups:
+            for group_index, required_tags, forbidden_tags in matching_groups:
+                block.append(f"  ODER-Gruppe {group_index}: passt")
+                if required_tags:
+                    block.append("    Muss: " + ", ".join(sorted(required_tags, key=str.casefold)))
+                if forbidden_tags:
+                    block.append("    Ausschluss nicht vorhanden: " + ", ".join(f"-{tag}" for tag in sorted(forbidden_tags, key=str.casefold)))
+            summary = f"{len(matching_groups)} Gruppe(n) erfüllt"
+            block.append(f"  Ergebnis: passt, {summary}")
+            return True, "\n".join(block), summary
+
+        failed_reason = "keine ODER-Gruppe erfüllt"
+        block.append(f"  Ergebnis: passt nicht, {failed_reason}")
+        if best_failed is not None:
+            group_index, missing, blocked = best_failed
+            details: list[str] = []
+            if missing:
+                details.append("fehlt: " + ", ".join(missing[:12]))
+            if blocked:
+                details.append("blockiert: " + ", ".join(f"-{tag}" for tag in blocked[:12]))
+            if details:
+                block.append(f"  Nächste Gruppe {group_index}: " + "; ".join(details))
+                failed_reason += f"; Gruppe {group_index}: " + "; ".join(details)
+            else:
+                block.append(f"  Nächste Gruppe {group_index}: reine Ausschlussgruppe oder leere Gruppe")
+                failed_reason += f"; Gruppe {group_index}: keine positive Trefferbedingung"
+        return False, "\n".join(block), failed_reason
 
     def output_directory_for_category(self, category: CategoryMatch) -> Path:
         if category.output_path:

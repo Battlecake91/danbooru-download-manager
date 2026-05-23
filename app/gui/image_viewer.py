@@ -227,12 +227,12 @@ class PersonalStarRatingWidget(QWidget):
 class CategoryDecisionDialog(QDialog):
     def __init__(self, report: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Kategorie-Entscheidung")
-        self.resize(820, 620)
+        self.setWindowTitle("Kategorie-Details")
+        self.resize(760, 560)
 
         layout = QVBoxLayout(self)
         hint = QLabel(
-            "Diese Ansicht erklärt, welche Kategorie automatisch gewinnen würde und welche Regeln passen oder blockieren."
+            "Kompakte Diagnose der Kategorieauswahl: Gewinner, abweichende Auswahl, passende Regeln und die wichtigsten Blocker."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -240,7 +240,7 @@ class CategoryDecisionDialog(QDialog):
         self.report_edit = QTextEdit()
         self.report_edit.setReadOnly(True)
         self.report_edit.setPlainText(report)
-        self.report_edit.setLineWrapMode(QTextEdit.NoWrap)
+        self.report_edit.setLineWrapMode(QTextEdit.WidgetWidth)
         layout.addWidget(self.report_edit, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
@@ -399,8 +399,8 @@ class ImageViewerWindow(QMainWindow):
         self.category_combo.setMinimumWidth(220)
         self.below_image_controls.addWidget(self.category_combo)
 
-        self.category_reason_button = QPushButton("Warum?")
-        self.category_reason_button.setToolTip("Begründet die automatische Kategorie-Entscheidung für diesen Post.")
+        self.category_reason_button = QPushButton("Details")
+        self.category_reason_button.setToolTip("Zeigt Details zur Kategorie-Entscheidung für diesen Post.")
         self.category_reason_button.clicked.connect(self.show_category_decision_reason)
         self.below_image_controls.addWidget(self.category_reason_button)
 
@@ -880,7 +880,7 @@ class ImageViewerWindow(QMainWindow):
 
     def show_category_decision_reason(self) -> None:
         if self.current_post_id is None:
-            QMessageBox.information(self, "Kategorie-Entscheidung", "Kein Post geladen.")
+            QMessageBox.information(self, "Kategorie-Details", "Kein Post geladen.")
             return
 
         category = self.selected_category()
