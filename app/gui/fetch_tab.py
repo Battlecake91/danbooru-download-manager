@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.i18n.i18n import tr
 from app.services.llm_batch_service import LLMBatchPreselectionService
 from app.services.post_import_service import FetchProgress, PostImportService
 
@@ -58,8 +59,8 @@ class FetchWorker(QObject):
         worker_db: Database | None = None
 
         try:
-            self.log.emit("Fetch gestartet.")
-            self.log.emit("Öffne eigene SQLite-Verbindung im Worker-Thread.")
+            self.log.emit(tr("fetch.log.started", config=self.config))
+            self.log.emit(tr("fetch.log.worker_db_open", config=self.config))
 
             database_file = Path(str(self.config["database_file"]))
             worker_db = Database(database_file)
@@ -86,7 +87,7 @@ class FetchWorker(QObject):
             result.llm_skipped_reason = llm_result.skipped_reason
             result.llm_errors = llm_result.errors
 
-            self.log.emit("Fetch abgeschlossen.")
+            self.log.emit(tr("fetch.log.finished", config=self.config))
             self.finished.emit(result)
 
         except Exception:
@@ -96,7 +97,7 @@ class FetchWorker(QObject):
             if worker_db is not None:
                 try:
                     worker_db.close()
-                    self.log.emit("Worker-DB-Verbindung geschlossen.")
+                    self.log.emit(tr("fetch.log.worker_db_closed", config=self.config))
                 except Exception:
                     pass
 
@@ -279,7 +280,7 @@ class RatingTriStateBox(QCheckBox):
 
     def update_label(self, *_args: Any) -> None:
         self.setText(self.base_label)
-        self.setToolTip("Klickfolge: leer = ignorieren, Haken = einschließen, Strich = ausschließen.")
+        self.setToolTip("Click cycle: empty = ignore, check = include, dash = exclude.")
 
 
 class FetchTab(QWidget):
@@ -301,51 +302,48 @@ class FetchTab(QWidget):
 
         self.main_layout = QVBoxLayout(self)
 
-        self.info_label = QLabel(
-            "Fetch lädt neue Posts nach SQLite. Presets speichern die Eingaben, Rating-Filter und Limits. "
-            "Nach erfolgreichem Fetch wird automatisch zur Preview gewechselt."
-        )
+        self.info_label = QLabel(tr("fetch.info", config=self.config))
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
 
-        self.preset_group = QGroupBox("Preset")
+        self.preset_group = QGroupBox(tr("fetch.preset.group", config=self.config))
         self.preset_layout = QHBoxLayout(self.preset_group)
 
         self.preset_combo = QComboBox()
         self.preset_combo.setEditable(True)
         self.preset_combo.setMinimumWidth(260)
         self.preset_combo.currentIndexChanged.connect(self.on_preset_selected)
-        self.preset_layout.addWidget(QLabel("Preset:"))
+        self.preset_layout.addWidget(QLabel(tr("fetch.preset.label", config=self.config)))
         self.preset_layout.addWidget(self.preset_combo, stretch=1)
 
-        self.save_preset_button = QPushButton("Preset speichern")
+        self.save_preset_button = QPushButton(tr("fetch.preset.save", config=self.config))
         self.save_preset_button.clicked.connect(self.save_current_preset)
         self.preset_layout.addWidget(self.save_preset_button)
 
-        self.delete_preset_button = QPushButton("Preset löschen")
+        self.delete_preset_button = QPushButton(tr("fetch.preset.delete", config=self.config))
         self.delete_preset_button.clicked.connect(self.delete_current_preset)
         self.preset_layout.addWidget(self.delete_preset_button)
 
         self.main_layout.addWidget(self.preset_group)
 
-        self.source_group = QGroupBox("Suchquelle")
+        self.source_group = QGroupBox(tr("fetch.source.group", config=self.config))
         self.source_layout = QFormLayout(self.source_group)
 
         self.source_mode_combo = QComboBox()
-        self.source_mode_combo.addItem("Manuelle Tags / Query", "tags")
+        self.source_mode_combo.addItem(tr("fetch.source.manual", config=self.config), "tags")
         self.source_mode_combo.addItem("Saved Searches", "saved_searches")
         self.source_mode_combo.currentIndexChanged.connect(self.on_source_mode_changed)
-        self.source_layout.addRow("Quelle:", self.source_mode_combo)
+        self.source_layout.addRow(tr("fetch.source.label", config=self.config), self.source_mode_combo)
 
         self.main_layout.addWidget(self.source_group)
 
-        self.manual_group = QGroupBox("Manuelle Tags")
+        self.manual_group = QGroupBox(tr("fetch.manual.group", config=self.config))
         self.manual_layout = QFormLayout(self.manual_group)
 
         self.manual_query_edit = TagQueryLineEdit()
-        self.manual_query_edit.setPlaceholderText("z. B. 1girl cute smile -red_hair")
+        self.manual_query_edit.setPlaceholderText(tr("fetch.manual.placeholder", config=self.config))
         self.manual_query_edit.suggestions_requested.connect(self.request_tag_suggestions)
-        self.manual_layout.addRow("Tags / Query:", self.manual_query_edit)
+        self.manual_layout.addRow(tr("fetch.manual.query", config=self.config), self.manual_query_edit)
 
         self.main_layout.addWidget(self.manual_group)
 
@@ -353,25 +351,22 @@ class FetchTab(QWidget):
         self.saved_search_layout = QFormLayout(self.saved_search_group)
 
         self.saved_search_label_edit = QLineEdit()
-        self.saved_search_label_edit.setPlaceholderText("z. B. default")
+        self.saved_search_label_edit.setPlaceholderText(tr("fetch.saved.label_placeholder", config=self.config))
         self.saved_search_layout.addRow("Label:", self.saved_search_label_edit)
 
         self.saved_search_query_edit = QLineEdit()
-        self.saved_search_query_edit.setPlaceholderText("optional: exakter Saved-Search-Querystring")
-        self.saved_search_layout.addRow("Query-Filter:", self.saved_search_query_edit)
+        self.saved_search_query_edit.setPlaceholderText(tr("fetch.saved.query_placeholder", config=self.config))
+        self.saved_search_layout.addRow(tr("fetch.saved.query_filter", config=self.config), self.saved_search_query_edit)
 
-        self.saved_search_hint = QLabel(
-            "Label filtert nach Saved-Search-Labels. Query-Filter ist optional und muss exakt passen. "
-            "Mehrere Labels oder Queries kannst du mit Komma trennen."
-        )
+        self.saved_search_hint = QLabel(tr("fetch.saved.hint", config=self.config))
         self.saved_search_hint.setWordWrap(True)
-        self.saved_search_layout.addRow("Hinweis:", self.saved_search_hint)
+        self.saved_search_layout.addRow(tr("common.hint", config=self.config), self.saved_search_hint)
 
         self.main_layout.addWidget(self.saved_search_group)
 
-        self.rating_group = QGroupBox("Rating-Filter")
+        self.rating_group = QGroupBox(tr("fetch.rating.group", config=self.config))
         self.rating_layout = QHBoxLayout(self.rating_group)
-        self.rating_layout.addWidget(QLabel("Klickzustand: leer = ignorieren, ✓ = einschließen, − = ausschließen"))
+        self.rating_layout.addWidget(QLabel(tr("fetch.rating.click_state", config=self.config)))
         self.rating_boxes: dict[str, RatingTriStateBox] = {}
         for code, label in RATING_FILTERS:
             box = RatingTriStateBox(code, label)
@@ -380,45 +375,40 @@ class FetchTab(QWidget):
         self.rating_layout.addStretch(1)
         self.main_layout.addWidget(self.rating_group)
 
-        self.options_group = QGroupBox("Fetch-Optionen")
+        self.options_group = QGroupBox(tr("fetch.options.group", config=self.config))
         self.options_layout = QFormLayout(self.options_group)
 
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(1, 200)
         self.limit_spin.setValue(int(config.get("limit", 100)))
         self.limit_spin.setKeyboardTracking(False)
-        self.options_layout.addRow("API Limit pro Seite:", self.limit_spin)
+        self.options_layout.addRow(tr("fetch.options.api_limit", config=self.config), self.limit_spin)
 
         self.max_posts_per_query_spin = QSpinBox()
         self.max_posts_per_query_spin.setRange(1, 100000)
         self.max_posts_per_query_spin.setValue(int(config.get("max_posts_per_query", 200)))
         self.max_posts_per_query_spin.setKeyboardTracking(False)
-        self.max_posts_per_query_spin.setToolTip(
-            "Alter Modus: maximal so viele Posts pro Query prüfen. Wird nur als Query-Limit genutzt, wenn Min unbekannte pro Query = 0 ist."
-        )
-        self.options_layout.addRow("Max Posts pro Query:", self.max_posts_per_query_spin)
+        self.max_posts_per_query_spin.setToolTip(tr("fetch.options.max_posts_tip", config=self.config))
+        self.options_layout.addRow(tr("fetch.options.max_posts", config=self.config), self.max_posts_per_query_spin)
 
         self.min_unknown_per_query_spin = QSpinBox()
         self.min_unknown_per_query_spin.setRange(0, 100000)
         self.min_unknown_per_query_spin.setValue(int(config.get("min_unknown_posts_per_query", 0) or 0))
         self.min_unknown_per_query_spin.setKeyboardTracking(False)
-        self.min_unknown_per_query_spin.setToolTip(
-            "0 = deaktiviert. Wenn > 0, wird jede Query weitergeblättert, bis so viele neue/unbekannte Posts gefunden wurden, "
-            "oder Max Posts gesamt bzw. das Ende der Query erreicht ist."
-        )
-        self.options_layout.addRow("Min unbekannte pro Query:", self.min_unknown_per_query_spin)
+        self.min_unknown_per_query_spin.setToolTip(tr("fetch.options.min_unknown_tip", config=self.config))
+        self.options_layout.addRow(tr("fetch.options.min_unknown", config=self.config), self.min_unknown_per_query_spin)
 
         self.max_total_posts_spin = QSpinBox()
         self.max_total_posts_spin.setRange(1, 100000)
         self.max_total_posts_spin.setValue(int(config.get("max_total_posts", 500)))
         self.max_total_posts_spin.setKeyboardTracking(False)
-        self.options_layout.addRow("Max Posts gesamt:", self.max_total_posts_spin)
+        self.options_layout.addRow(tr("fetch.options.max_total", config=self.config), self.max_total_posts_spin)
 
         self.main_layout.addWidget(self.options_group)
 
         self.button_row = QHBoxLayout()
 
-        self.fetch_button = QPushButton("Fetch starten")
+        self.fetch_button = QPushButton(tr("fetch.start", config=self.config))
         self.fetch_button.clicked.connect(self.start_fetch)
         self.button_row.addWidget(self.fetch_button)
 
@@ -426,7 +416,7 @@ class FetchTab(QWidget):
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("Fetch läuft…")
+        self.progress_bar.setFormat(tr("fetch.progress.running", config=self.config))
         self.button_row.addWidget(self.progress_bar, stretch=1)
 
         self.fetch_progress_label = QLabel("")
@@ -478,7 +468,7 @@ class FetchTab(QWidget):
         self.manual_query_edit.set_tag_suggestions(token, tags)
 
     def on_tag_suggestions_failed(self, token: str, traceback_text: str) -> None:
-        self.log_text.append(f"Tag-Vorschläge für '{token}' konnten nicht geladen werden.")
+        self.log_text.append(tr("fetch.suggestions.failed", config=self.config, token=token))
         if bool(self.config.get("debug_startup")):
             self.log_text.append(traceback_text)
 
@@ -585,22 +575,22 @@ class FetchTab(QWidget):
     def save_current_preset(self) -> None:
         name = self.current_preset_name()
         if not name:
-            QMessageBox.warning(self, "Preset speichern", "Bitte erst einen Preset-Namen ins Drop-down schreiben.")
+            QMessageBox.warning(self, tr("fetch.preset.save_title", config=self.config), tr("fetch.preset.name_missing", config=self.config))
             return
         try:
             self.db.save_fetch_preset(name, self.current_payload())
             self.save_last_fetch_payload()
             self.load_presets()
         except Exception as exc:
-            QMessageBox.critical(self, "Preset speichern", str(exc))
+            QMessageBox.critical(self, tr("fetch.preset.save_title", config=self.config), str(exc))
             return
-        QMessageBox.information(self, "Preset speichern", f"Preset gespeichert: {name}")
+        QMessageBox.information(self, tr("fetch.preset.save_title", config=self.config), tr("fetch.preset.saved", config=self.config, name=name))
 
     def delete_current_preset(self) -> None:
         name = self.current_preset_name()
         if not name:
             return
-        if QMessageBox.question(self, "Preset löschen", f"Preset wirklich löschen?\n{name}") != QMessageBox.Yes:
+        if QMessageBox.question(self, tr("fetch.preset.delete_title", config=self.config), tr("fetch.preset.delete_confirm", config=self.config, name=name)) != QMessageBox.Yes:
             return
         self.db.delete_fetch_preset(name)
         self.load_presets()
@@ -666,7 +656,7 @@ class FetchTab(QWidget):
             query = self.manual_query_edit.text().strip()
             query = self.append_rating_clause(query)
             if not query:
-                raise ValueError("Manuelle Tags/Query ist leer. Suchmaschinen funktionieren leider selten mit Telepathie.")
+                raise ValueError(tr("fetch.error.empty_manual_query", config=self.config))
 
             fetch_config["use_saved_searches"] = False
             fetch_config["search_tags"] = query
@@ -679,7 +669,7 @@ class FetchTab(QWidget):
         queries = self.split_csv_text(self.saved_search_query_edit.text())
 
         if not labels:
-            raise ValueError("Saved-Search-Label fehlt. Irgendein Anker in diesem Meer aus Tags wäre schon nett.")
+            raise ValueError(tr("fetch.error.missing_saved_label", config=self.config))
 
         fetch_config["use_saved_searches"] = True
         fetch_config["search_tags"] = ""
@@ -691,13 +681,13 @@ class FetchTab(QWidget):
 
     def start_fetch(self) -> None:
         if self.thread is not None:
-            QMessageBox.information(self, "Fetch läuft", "Es läuft bereits ein Fetch.")
+            QMessageBox.information(self, tr("fetch.already_running.title", config=self.config), tr("fetch.already_running.message", config=self.config))
             return
 
         try:
             fetch_config = self.build_fetch_config()
         except Exception as exc:
-            QMessageBox.warning(self, "Ungültige Fetch-Konfiguration", str(exc))
+            QMessageBox.warning(self, tr("fetch.invalid_config.title", config=self.config), str(exc))
             return
 
         self.save_last_fetch_payload()
@@ -706,11 +696,11 @@ class FetchTab(QWidget):
         self.delete_preset_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Fetch startet…")
+        self.progress_bar.setFormat(tr("fetch.progress.starting", config=self.config))
         self.progress_bar.setVisible(True)
-        self.fetch_progress_label.setText("Bereite Queries vor…")
+        self.fetch_progress_label.setText(tr("fetch.progress.prepare_queries", config=self.config))
         self.fetch_progress_label.setVisible(True)
-        self.log_text.append("Starte Fetch...")
+        self.log_text.append(tr("fetch.log.starting", config=self.config))
         self.fetch_started.emit()
 
         self.thread = QThread(self)
@@ -751,13 +741,13 @@ class FetchTab(QWidget):
         query_total = int(progress.query_total or 0)
         query_text = progress.query.strip()
         query_part = f"Query {query_index}/{query_total}" if query_total else "Query …"
-        known_part = f"Bekannt: {int(progress.known_posts or 0)}"
-        inserted_part = f"Neu: {inserted_total}"
+        known_part = f"{tr("fetch.progress.known", config=self.config)}: {int(progress.known_posts or 0)}"
+        inserted_part = f"{tr("fetch.progress.new", config=self.config)}: {inserted_total}"
         thumb_part = f"Thumbs: {int(progress.cached_thumbnails or 0)}"
 
         if target_unknown > 0:
-            post_part = f"Unbekannt Query: {inserted_for_query}/{target_unknown}"
-            checked_part = f"Geprüft: {seen_total}"
+            post_part = f"{tr("fetch.progress.unknown_query", config=self.config)}: {inserted_for_query}/{target_unknown}"
+            checked_part = f"{tr("fetch.progress.checked", config=self.config)}: {seen_total}"
             self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
             detail = f"{query_part} | {post_part} | {checked_part} | {known_part} | {inserted_part} | {thumb_part}"
         else:
@@ -771,8 +761,7 @@ class FetchTab(QWidget):
         self.fetch_progress_label.setToolTip(query_text)
         self.fetch_progress_label.setVisible(True)
 
-    @staticmethod
-    def format_fetch_summary(result: object) -> str:
+    def format_fetch_summary(self, result: object) -> str:
         queries = int(getattr(result, "queries", 0) or 0)
         processed_queries = int(getattr(result, "processed_queries", queries) or 0)
         seen_posts = int(getattr(result, "seen_posts", 0) or 0)
@@ -788,12 +777,12 @@ class FetchTab(QWidget):
             query_line = "Queries: ?"
 
         lines = [
-            "Fetch-Zusammenfassung:",
+            tr("fetch.summary.title", config=self.config),
             f"  {query_line}",
-            f"  Posts geprüft: {seen_posts}",
-            f"  Neu/unbekannt: {inserted_posts}" + (f" / Ziel {target_unknown_total} ({target_unknown_per_query} pro Query)" if target_unknown_per_query > 0 else ""),
-            f"  Bekannt/aktualisiert: {known_posts}",
-            f"  Thumbnails geladen/aktualisiert: {cached_thumbnails}",
+            f"  {tr("fetch.summary.posts_checked", config=self.config)}: {seen_posts}",
+            f"  {tr("fetch.summary.new_unknown", config=self.config)}: {inserted_posts}" + (f" / {tr("fetch.summary.target", config=self.config)} {target_unknown_total} ({target_unknown_per_query} {tr("fetch.summary.per_query", config=self.config)})" if target_unknown_per_query > 0 else ""),
+            f"  {tr("fetch.summary.known_updated", config=self.config)}: {known_posts}",
+            f"  {tr("fetch.summary.thumbnails", config=self.config)}: {cached_thumbnails}",
         ]
 
         llm_input = int(getattr(result, "llm_input_posts", 0) or 0)
@@ -806,9 +795,9 @@ class FetchTab(QWidget):
         llm_reason = str(getattr(result, "llm_skipped_reason", "") or "")
         if llm_input or llm_candidates or llm_payloads or llm_sent or llm_saved or llm_reason:
             lines.append(
-                f"  LLM: Eingang {llm_input}, Kandidaten {llm_candidates}, "
-                f"uebersprungen {llm_skipped}, Batches {llm_batches}, Payloads {llm_payloads}, "
-                f"Requests {llm_sent}, Entscheidungen gespeichert {llm_saved}"
+                f"  LLM: input {llm_input}, candidates {llm_candidates}, "
+                f"skipped {llm_skipped}, batches {llm_batches}, payloads {llm_payloads}, "
+                f"requests {llm_sent}, decisions saved {llm_saved}"
             )
             batch_summaries = getattr(result, "llm_batch_summaries", []) or []
             for batch in batch_summaries[:5]:
@@ -818,12 +807,12 @@ class FetchTab(QWidget):
                     id_text += ", ..."
                 lines.append(f"  LLM-Batch {batch.get('index')}/{batch.get('total')}: {batch.get('post_count')} Posts ({id_text})")
             if len(batch_summaries) > 5:
-                lines.append(f"  LLM-Batches: {len(batch_summaries) - 5} weitere ausgeblendet")
+                lines.append(f"  LLM batches: {len(batch_summaries) - 5} more hidden")
             if llm_reason:
-                lines.append(f"  LLM-Hinweis: {llm_reason}")
+                lines.append(f"  LLM note: {llm_reason}")
         llm_errors = getattr(result, "llm_errors", []) or []
         for error in llm_errors[:3]:
-            lines.append(f"  LLM-Fehler: {error}")
+            lines.append(f"  LLM error: {error}")
         return "\n".join(lines)
 
     def on_fetch_finished(self, result: object) -> None:
@@ -840,7 +829,7 @@ class FetchTab(QWidget):
         self.open_preview_requested.emit()
 
     def on_fetch_failed(self, traceback_text: str) -> None:
-        self.log_text.append("Fetch fehlgeschlagen:")
+        self.log_text.append(tr("fetch.failed", config=self.config))
         self.log_text.append(traceback_text)
         self.fetch_button.setEnabled(True)
         self.save_preset_button.setEnabled(True)
@@ -848,7 +837,7 @@ class FetchTab(QWidget):
         self.progress_bar.setVisible(False)
         self.fetch_progress_label.setVisible(False)
         self.fetch_failed_signal.emit()
-        QMessageBox.critical(self, "Fetch fehlgeschlagen", traceback_text)
+        QMessageBox.critical(self, tr("fetch.failed", config=self.config), traceback_text)
 
     def cleanup_thread(self) -> None:
         self.thread = None

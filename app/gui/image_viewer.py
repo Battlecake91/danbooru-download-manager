@@ -40,17 +40,18 @@ from app.core.database import Database
 from app.services.download_service import DownloadService
 from app.danbooru.api import DanbooruApi
 from app.gui.icon_utils import ensure_app_icon
+from app.i18n.i18n import tr
 from app.gui.tag_display import TypedTagListWidget, typed_tags_for_post
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
 from app.services.post_import_service import PostImportService
 
 
 STATUS_LABELS: dict[str, str] = {
-    "new": "Neu",
-    "potential": "Hohes Potential",
-    "rejected": "Abgelehnt",
-    "already_known": "Bereits bekannt",
-    "saved": "Gespeichert",
+    "new": "New",
+    "potential": "High Potential",
+    "rejected": "Rejected",
+    "already_known": "Already known",
+    "saved": "Saved",
 }
 
 
@@ -73,7 +74,7 @@ class StatusChip(QLabel):
         self.setFixedHeight(30)
         self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.setCursor(Qt.PointingHandCursor)
-        self.setToolTip("Status setzen. Aktiven Status erneut anklicken setzt auf Neu zurück.")
+        self.setToolTip("Set status. Clicking the active status resets it to New.")
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
         if event.button() == Qt.LeftButton:
@@ -128,8 +129,8 @@ RATING_LABELS: dict[str, tuple[str, str]] = {
     "safe": ("safe", "#38d36a"),
     "q": ("questionable", "#ffd166"),
     "questionable": ("questionable", "#ffd166"),
-    "e": ("explizit", "#ff4d4d"),
-    "explicit": ("explizit", "#ff4d4d"),
+    "e": ("explicit", "#ff4d4d"),
+    "explicit": ("explicit", "#ff4d4d"),
 }
 
 
@@ -175,7 +176,7 @@ class PersonalStarRatingWidget(QWidget):
         self.setMinimumHeight(34)
         self.setMinimumWidth(260)
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        self.setToolTip("Persönliches Rating 0–10: Linksklick setzt 1–10, Rechtsklick setzt 0.")
+        self.setToolTip("Personal rating 0–10: left click sets 1–10, right click resets to 0.")
 
     def set_rating(self, value: int | float | None) -> None:
         try:
@@ -231,12 +232,12 @@ class PersonalStarRatingWidget(QWidget):
 class CategoryDecisionDialog(QDialog):
     def __init__(self, report: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Kategorie-Details")
+        self.setWindowTitle("Category Details")
         self.resize(760, 560)
 
         layout = QVBoxLayout(self)
         hint = QLabel(
-            "Kompakte Diagnose der Kategorieauswahl: Gewinner, abweichende Auswahl, passende Regeln und die wichtigsten Blocker."
+            "Compact diagnosis of category selection: winner, changed selection, matching rules and the most important blockers."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -298,7 +299,7 @@ class ImageViewerWindow(QMainWindow):
         self.viewer_perf_config = viewer_config.get("performance", {}) or {}
         self.viewer_perf_log_path = Path(config.get("work_dir", ".")) / "logs" / "viewer_performance.log"
 
-        self.setWindowTitle("Danbooru Manager - Bildbetrachter")
+        self.setWindowTitle(self.t("viewer.window_title", "Danbooru Manager - Viewer"))
         self.setWindowIcon(ensure_app_icon(config))
         self.setFocusPolicy(Qt.StrongFocus)
 
@@ -306,55 +307,58 @@ class ImageViewerWindow(QMainWindow):
         self.toolbar.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.toolbar)
 
-        self.fit_checkbox = QCheckBox("Einpassen")
+        self.fit_checkbox = QCheckBox(self.t("viewer.fit", "Fit"))
         self.fit_checkbox.setChecked(bool(viewer_config.get("fit_to_window", True)))
         self.fit_checkbox.stateChanged.connect(self.refresh_image)
         self.toolbar.addWidget(self.fit_checkbox)
 
-        self.performance_checkbox = QCheckBox("Perf")
+        self.performance_checkbox = QCheckBox(self.t("viewer.performance", "Perf"))
         self.performance_checkbox.setChecked(bool(self.viewer_perf_config.get("enabled", False)))
         self.performance_checkbox.setToolTip(
-            f"Viewer-Performance messen und nach {self.viewer_perf_log_path} schreiben. "
-            "Hilft beim Finden langsamer Bildwechsel, weil Raten nur Astrologie mit Tastatur ist."
+            self.t(
+                "viewer.performance_tooltip",
+                "Measure viewer performance and write it to {path}. Useful for finding slow image changes without guessing.",
+                path=self.viewer_perf_log_path,
+            )
         )
         self.toolbar.addWidget(self.performance_checkbox)
 
         self.toolbar.addSeparator()
 
-        self.final_save_button = QPushButton("Speichern [F]")
+        self.final_save_button = QPushButton(self.t("viewer.save", "Save [F]"))
         self.final_save_button.clicked.connect(self.final_save_current_post)
         self.toolbar.addWidget(self.final_save_button)
 
-        self.refetch_button = QPushButton("Post neu holen")
-        self.refetch_button.setToolTip("Lädt Post-Metadaten und Viewer-Bild neu von Danbooru.")
+        self.refetch_button = QPushButton(self.t("viewer.refetch", "Refetch Post"))
+        self.refetch_button.setToolTip(self.t("viewer.refetch_tooltip", "Reloads post metadata and the viewer image from Danbooru."))
         self.refetch_button.clicked.connect(self.refetch_current_post)
         self.toolbar.addWidget(self.refetch_button)
 
-        self.delete_db_button = QPushButton("Aus DB entfernen")
-        self.delete_db_button.setToolTip("Entfernt den Post aus der lokalen Datenbank, löscht aber keine Bilddateien.")
+        self.delete_db_button = QPushButton(self.t("viewer.remove_from_db", "Remove from DB"))
+        self.delete_db_button.setToolTip(self.t("viewer.remove_from_db_tooltip", "Removes the post from the local database, but does not delete image files."))
         self.delete_db_button.clicked.connect(self.delete_current_post_from_database)
         self.toolbar.addWidget(self.delete_db_button)
 
-        self.open_saved_folder_button = QPushButton("Zielordner öffnen")
+        self.open_saved_folder_button = QPushButton(self.t("viewer.open_target_folder", "Open Target Folder"))
         self.open_saved_folder_button.clicked.connect(self.open_saved_folder)
         self.toolbar.addWidget(self.open_saved_folder_button)
 
-        self.open_local_image_button = QPushButton("Lokales Bild öffnen")
+        self.open_local_image_button = QPushButton(self.t("viewer.open_local_image", "Open Local Image"))
         self.open_local_image_button.clicked.connect(self.open_current_local_image)
         self.toolbar.addWidget(self.open_local_image_button)
 
-        self.delete_final_file_button = QPushButton("Lokale Datei löschen")
-        self.delete_final_file_button.setToolTip("Löscht die lokal gespeicherte Datei und leert den lokalen Pfad in der DB.")
+        self.delete_final_file_button = QPushButton(self.t("viewer.delete_local_file", "Delete Local File"))
+        self.delete_final_file_button.setToolTip(self.t("viewer.delete_local_file_tooltip", "Deletes the locally saved file and clears the local path in the database."))
         self.delete_final_file_button.clicked.connect(self.delete_current_final_file)
         self.toolbar.addWidget(self.delete_final_file_button)
 
         self.toolbar.addSeparator()
 
-        self.open_original_button = QPushButton("Originalpost")
+        self.open_original_button = QPushButton(self.t("viewer.original_post", "Original Post"))
         self.open_original_button.clicked.connect(self.open_original_post)
         self.toolbar.addWidget(self.open_original_button)
 
-        self.copy_link_button = QPushButton("Link kopieren")
+        self.copy_link_button = QPushButton(self.t("viewer.copy_link", "Copy Link"))
         self.copy_link_button.clicked.connect(self.copy_original_post_url)
         self.toolbar.addWidget(self.copy_link_button)
 
@@ -390,7 +394,7 @@ class ImageViewerWindow(QMainWindow):
         self.below_image_controls.setContentsMargins(0, 0, 0, 0)
         self.below_image_controls.setSpacing(12)
 
-        self.personal_rating_label = QLabel("Persönliches Rating: 0/10")
+        self.personal_rating_label = QLabel(self.t("viewer.personal_rating_value", "Personal Rating: {rating}/10", rating=0))
         self.personal_rating_label.setStyleSheet("QLabel { font-weight: bold; }")
         self.below_image_controls.addWidget(self.personal_rating_label)
 
@@ -400,7 +404,7 @@ class ImageViewerWindow(QMainWindow):
 
         self.below_image_controls.addSpacing(28)
 
-        self.prev_button = QPushButton("< Vorheriges")
+        self.prev_button = QPushButton(self.t("viewer.previous", "< Previous"))
         self.prev_button.setFixedWidth(118)
         self.prev_button.clicked.connect(self.previous_post)
         self.below_image_controls.addWidget(self.prev_button)
@@ -412,14 +416,14 @@ class ImageViewerWindow(QMainWindow):
         self.footer_label.setStyleSheet("QLabel { font-size: 22px; font-weight: bold; padding: 4px 10px; }")
         self.below_image_controls.addWidget(self.footer_label)
 
-        self.next_button = QPushButton("Nächstes >")
+        self.next_button = QPushButton(self.t("viewer.next", "Next >"))
         self.next_button.setFixedWidth(118)
         self.next_button.clicked.connect(self.next_post)
         self.below_image_controls.addWidget(self.next_button)
 
         self.below_image_controls.addStretch(1)
 
-        self.category_label = QLabel("Kategorie")
+        self.category_label = QLabel(self.t("viewer.category", "Category"))
         self.category_label.setStyleSheet("QLabel { font-weight: bold; }")
         self.category_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.below_image_controls.addWidget(self.category_label)
@@ -430,7 +434,7 @@ class ImageViewerWindow(QMainWindow):
         self.below_image_controls.addWidget(self.category_combo)
 
         self.category_reason_button = QPushButton("Details")
-        self.category_reason_button.setToolTip("Zeigt Details zur Kategorie-Entscheidung für diesen Post.")
+        self.category_reason_button.setToolTip(self.t("viewer.category_details_tooltip", "Shows details about the category decision for this post."))
         self.category_reason_button.clicked.connect(self.show_category_decision_reason)
         self.below_image_controls.addWidget(self.category_reason_button)
 
@@ -438,6 +442,8 @@ class ImageViewerWindow(QMainWindow):
         self.splitter.addWidget(self.image_panel)
 
         self.side_panel = QWidget()
+        self.side_panel.setMinimumWidth(430)
+        self.side_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.side_layout = QVBoxLayout(self.side_panel)
 
         self.info_label = QLabel()
@@ -456,7 +462,7 @@ class ImageViewerWindow(QMainWindow):
         self.side_layout.addWidget(self.status_chips)
 
         self.related_warning_label = QPushButton()
-        self.related_warning_label.setToolTip("Parent/Child-Liste ein- oder ausklappen")
+        self.related_warning_label.setToolTip(self.t("viewer.related_toggle_tooltip", "Expand or collapse the parent/child list."))
         self.related_warning_label.clicked.connect(self.toggle_related_posts_visible)
         self.related_warning_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.related_warning_label.setMaximumHeight(42)
@@ -477,7 +483,7 @@ class ImageViewerWindow(QMainWindow):
         self.related_warning_label.hide()
         self.side_layout.addWidget(self.related_warning_label)
 
-        self.related_label = QLabel("Bekannte Parent/Child-Posts:")
+        self.related_label = QLabel(self.t("viewer.related_known_posts", "Known parent/child posts:"))
         self.related_label.hide()
         self.side_layout.addWidget(self.related_label)
 
@@ -501,28 +507,32 @@ class ImageViewerWindow(QMainWindow):
         self.potential_button.clicked.connect(lambda: self.set_status("potential"))
         self.button_row_1.addWidget(self.potential_button)
 
-        self.reject_button = QPushButton("Ablehnen [Entf]")
+        self.reject_button = QPushButton(self.t("viewer.reject", "Reject [Del]"))
         self.reject_button.clicked.connect(lambda: self.set_status("rejected"))
         self.button_row_1.addWidget(self.reject_button)
 
-        self.new_button = QPushButton("Neu [N]")
+        self.new_button = QPushButton(self.t("viewer.new", "New [N]"))
         self.new_button.clicked.connect(lambda: self.set_status("new"))
         self.button_row_1.addWidget(self.new_button)
 
         self.side_layout.addLayout(self.button_row_1)
 
         self.hint_label = QLabel(
-            "Hotkeys: ←/→ blättern | 1-5 oder Sternklick persönliches Rating | "
-            "H High Potential | F speichern | Entf ablehnen oder markierte Tags ausschließen | "
-            "N neu | O Originalpost | Tags markieren + Rechtsklick für Tag-Aktionen | "
-            "Parent/Child: Doppelklick lokal öffnen, Rechtsklick für Lokal/Remote"
+            self.t(
+                "viewer.hotkeys_hint",
+                "Hotkeys: ←/→ navigate | 1-5 or star click personal rating | "
+                "H High Potential | F save | Del reject or exclude selected tags from filename | "
+                "N new | O original post | Select tags + right click for tag actions | "
+                "Parent/Child: double-click opens local, right-click for local/remote",
+            )
         )
         self.hint_label.setWordWrap(True)
         self.side_layout.addWidget(self.hint_label)
 
         self.splitter.addWidget(self.side_panel)
-        self.splitter.setStretchFactor(0, 4)
-        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 2)
+        self.splitter.setSizes([820, 520])
         self.central_layout.addWidget(self.splitter, stretch=1)
 
         self.path_footer = QWidget()
@@ -532,12 +542,12 @@ class ImageViewerWindow(QMainWindow):
 
         self.path_footer_header = QHBoxLayout()
         self.path_footer_header.setContentsMargins(0, 0, 0, 0)
-        self.final_path_title_label = QLabel("Zielpfad")
+        self.final_path_title_label = QLabel(self.t("viewer.target_path", "Target Path"))
         self.final_path_title_label.setStyleSheet("QLabel { font-weight: bold; margin-top: 2px; }")
         self.path_footer_header.addWidget(self.final_path_title_label)
         self.path_footer_header.addStretch(1)
 
-        self.filename_preview_button = QPushButton("Dateiname-Vorschau anzeigen")
+        self.filename_preview_button = QPushButton(self.t("viewer.filename_preview_show", "Show Filename Preview"))
         self.filename_preview_button.setCheckable(True)
         self.filename_preview_button.toggled.connect(self.toggle_filename_preview)
         self.filename_preview_button.hide()
@@ -574,6 +584,9 @@ class ImageViewerWindow(QMainWindow):
         self.install_shortcuts()
         self.load_current_post()
 
+    def t(self, key: str, default: str, **kwargs: Any) -> str:
+        return tr(key, default, config=self.config, **kwargs)
+
     def install_shortcuts(self) -> None:
         shortcut_map: list[tuple[str, Callable[[], None]]] = [
             ("Left", self.previous_post),
@@ -609,7 +622,7 @@ class ImageViewerWindow(QMainWindow):
         if selected_tags and self.tags_widget.is_filename_filter_active():
             self.add_tags_to_filename_exclude(selected_tags, show_message=False)
             self.statusBar().showMessage(
-                f"{len(selected_tags)} Tag(s) vom Dateinamen ausgeschlossen.",
+                self.t("viewer.tags_excluded_from_filename", "{count} tag(s) excluded from filename.", count=len(selected_tags)),
                 3500,
             )
             return
@@ -633,7 +646,7 @@ class ImageViewerWindow(QMainWindow):
     def toggle_filename_preview(self, checked: bool) -> None:
         self.filename_preview_label.setVisible(checked)
         self.filename_preview_button.setText(
-            "Dateiname-Vorschau ausblenden" if checked else "Dateiname-Vorschau anzeigen"
+            self.t("viewer.filename_preview_hide", "Hide Filename Preview") if checked else self.t("viewer.filename_preview_show", "Show Filename Preview")
         )
 
     def current_post_id_value(self) -> int | None:
@@ -725,19 +738,26 @@ class ImageViewerWindow(QMainWindow):
         self.perf_add(metrics, "related_local_paths", started_at)
 
         started_at = time.perf_counter()
-        self.setWindowTitle(f"Danbooru Manager - Bildbetrachter - {post_id}")
+        self.setWindowTitle(self.t("viewer.window_title_post", "Danbooru Manager - Viewer - {post_id}", post_id=post_id))
 
         rating_html_value = rating_html(row["rating"])
         score_value = row["score"] if row["score"] is not None else None
 
         parent_text = row['parent_id'] if row['parent_id'] is not None else '-'
         self.header_label.setText(
-            f"ID {post_id} - {rating_html_value} - Score: {score_value if score_value is not None else '-'} "
-            f"&nbsp;&nbsp;|&nbsp;&nbsp; Parent: {parent_text} "
-            f"&nbsp;&nbsp;|&nbsp;&nbsp; Parent/Child bekannt: {related_total_count} "
-            f"| lokal gespeichert: {related_local_count}"
+            self.t(
+                "viewer.header",
+                "ID {post_id} - {rating} - Score: {score} &nbsp;&nbsp;|&nbsp;&nbsp; Parent: {parent} "
+                "&nbsp;&nbsp;|&nbsp;&nbsp; Parent/Child known: {related_total} | locally saved: {related_local}",
+                post_id=post_id,
+                rating=rating_html_value,
+                score=score_value if score_value is not None else "-",
+                parent=parent_text,
+                related_total=related_total_count,
+                related_local=related_local_count,
+            )
         )
-        self.footer_label.setText(f"Position {self.current_index + 1} / {len(self.post_ids)}")
+        self.footer_label.setText(self.t("viewer.position", "Position {current} / {total}", current=self.current_index + 1, total=len(self.post_ids)))
 
         self.info_label.setText("")
         self.score_label.setText("")
@@ -746,12 +766,20 @@ class ImageViewerWindow(QMainWindow):
         if related_total_count:
             if related_local_count:
                 self.related_warning_label.setText(
-                    f"⚠ Parent/Child-Posts vorhanden: {related_total_count} bekannt, "
-                    f"{related_local_count} lokal gespeichert. Anklicken zum Anzeigen."
+                    self.t(
+                        "viewer.related_warning_with_local",
+                        "⚠ Parent/Child posts available: {total} known, {local} locally saved. Click to show.",
+                        total=related_total_count,
+                        local=related_local_count,
+                    )
                 )
             else:
                 self.related_warning_label.setText(
-                    f"⚠ Parent/Child-Posts vorhanden: {related_total_count} bekannt. Anklicken zum Anzeigen."
+                    self.t(
+                        "viewer.related_warning",
+                        "⚠ Parent/Child posts available: {total} known. Click to show.",
+                        total=related_total_count,
+                    )
                 )
             self.related_warning_label.show()
             self.related_label.hide()
@@ -792,10 +820,10 @@ class ImageViewerWindow(QMainWindow):
                 self.current_pixmap = pixmap
             else:
                 self.current_pixmap = None
-                self.image_label.setText(f"Bild konnte nicht geladen werden:\n{image_path}")
+                self.image_label.setText(self.t("viewer.image_load_failed_path", "Image could not be loaded:\n{path}", path=image_path))
         else:
             self.current_pixmap = None
-            self.image_label.setText("Keine lokale Bilddatei und Download fehlgeschlagen.")
+            self.image_label.setText(self.t("viewer.no_local_image_download_failed", "No local image file and download failed."))
 
         started_at = time.perf_counter()
         self.refresh_image()
@@ -810,8 +838,8 @@ class ImageViewerWindow(QMainWindow):
             self.write_viewer_performance_log(post_id, metrics)
 
     def populate_tag_lists(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
-        self.tags_widget.show_loading_message("Lade Tags…")
-        self.statusBar().showMessage("Lade Tags…")
+        self.tags_widget.show_loading_message(self.t("viewer.tags_loading", "Loading tags…"))
+        self.statusBar().showMessage(self.t("viewer.tags_loading", "Loading tags…"))
         QApplication.processEvents()
 
         started_at = time.perf_counter()
@@ -835,7 +863,7 @@ class ImageViewerWindow(QMainWindow):
             tag_metadata=tag_metadata,
         )
         self.perf_add(metrics, "tags_widget_ui", started_at)
-        self.statusBar().showMessage("Tags geladen.", 2000)
+        self.statusBar().showMessage(self.t("viewer.tags_loaded", "Tags loaded."), 2000)
 
 
     def toggle_related_posts_visible(self) -> None:
@@ -862,11 +890,14 @@ class ImageViewerWindow(QMainWindow):
             related_id = int(row["id"])
             local_path = self.local_path_for_post(related_id)
 
-            local_marker = "lokal vorhanden" if local_path else "nur DB/Remote"
-            text = (
-                f"⚠ {relation_label}: {related_id} | "
-                f"Status: {row['status'] or '-'} | "
-                f"{local_marker}"
+            local_marker = self.t("viewer.related_local_available", "local available") if local_path else self.t("viewer.related_db_remote_only", "DB/remote only")
+            text = self.t(
+                "viewer.related_item",
+                "⚠ {relation}: {post_id} | Status: {status} | {marker}",
+                relation=relation_label,
+                post_id=related_id,
+                status=row["status"] or "-",
+                marker=local_marker,
             )
 
             item = QListWidgetItem(text)
@@ -888,7 +919,7 @@ class ImageViewerWindow(QMainWindow):
             self.related_list.addItem(item)
 
         if not related:
-            item = QListWidgetItem("Keine bekannten Parent/Child-Posts")
+            item = QListWidgetItem(self.t("viewer.no_known_related_posts", "No known parent/child posts"))
             item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
             self.related_list.addItem(item)
 
@@ -938,19 +969,19 @@ class ImageViewerWindow(QMainWindow):
         menu = QMenu(self)
         self._related_context_menu = menu
 
-        viewer_action = QAction("In separatem Viewer öffnen", menu)
+        viewer_action = QAction(self.t("viewer.open_in_separate_viewer", "Open in separate viewer"), menu)
         viewer_action.setEnabled(local_path is not None)
         viewer_action.triggered.connect(lambda checked=False, pid=post_id: self.open_related_in_viewer(pid))
         menu.addAction(viewer_action)
 
-        local_action = QAction("Lokale Datei im System öffnen", menu)
+        local_action = QAction(self.t("viewer.open_local_file_system", "Open local file in system"), menu)
         local_action.setEnabled(local_path is not None)
         local_action.triggered.connect(
             lambda checked=False, p=local_path: self.open_local_path(p) if p is not None else None
         )
         menu.addAction(local_action)
 
-        folder_action = QAction("Lokalen Ordner öffnen", menu)
+        folder_action = QAction(self.t("viewer.open_local_folder", "Open local folder"), menu)
         folder_action.setEnabled(local_path is not None)
         folder_action.triggered.connect(
             lambda checked=False, p=local_path: self.open_local_folder(p) if p is not None else None
@@ -959,18 +990,18 @@ class ImageViewerWindow(QMainWindow):
 
         menu.addSeparator()
 
-        remote_action = QAction("Remote Originalpost öffnen", menu)
+        remote_action = QAction(self.t("viewer.open_remote_original", "Open remote original post"), menu)
         remote_action.triggered.connect(lambda checked=False, pid=post_id: webbrowser.open(self.build_post_url(pid)))
         menu.addAction(remote_action)
 
-        copy_remote_action = QAction("Remote-Link kopieren", menu)
+        copy_remote_action = QAction(self.t("viewer.copy_remote_link", "Copy remote link"), menu)
         copy_remote_action.triggered.connect(
             lambda checked=False, pid=post_id: QGuiApplication.clipboard().setText(self.build_post_url(pid))
         )
         menu.addAction(copy_remote_action)
 
         if local_path is not None:
-            copy_local_action = QAction("Lokalen Pfad kopieren", menu)
+            copy_local_action = QAction(self.t("viewer.copy_local_path", "Copy local path"), menu)
             copy_local_action.triggered.connect(
                 lambda checked=False, p=local_path: QGuiApplication.clipboard().setText(str(p))
             )
@@ -983,8 +1014,8 @@ class ImageViewerWindow(QMainWindow):
         if self.local_path_for_post(post_id) is None:
             QMessageBox.information(
                 self,
-                "Parent/Child öffnen",
-                f"Post {post_id} hat keinen lokalen finalen Pfad. Öffne den Originalpost im Browser.",
+                self.t("viewer.open_parent_child_title", "Open Parent/Child"),
+                self.t("viewer.related_no_local_path_open_remote", "Post {post_id} has no local path. Opening original post in browser.", post_id=post_id),
             )
             webbrowser.open(self.build_post_url(post_id))
             return
@@ -1017,7 +1048,7 @@ class ImageViewerWindow(QMainWindow):
 
     def open_local_path(self, path: Path) -> None:
         if not path.exists():
-            QMessageBox.warning(self, "Lokale Datei fehlt", f"Datei existiert nicht:\n{path}")
+            QMessageBox.warning(self, self.t("viewer.local_file_missing_title", "Local File Missing"), self.t("viewer.file_does_not_exist", "File does not exist:\n{path}", path=path))
             return
 
         os.startfile(path)
@@ -1025,7 +1056,7 @@ class ImageViewerWindow(QMainWindow):
     def open_local_folder(self, path: Path) -> None:
         folder = path.parent if path.is_file() else path
         if not folder.exists():
-            QMessageBox.warning(self, "Ordner fehlt", f"Ordner existiert nicht:\n{folder}")
+            QMessageBox.warning(self, self.t("viewer.folder_missing_title", "Folder Missing"), self.t("viewer.folder_does_not_exist", "Folder does not exist:\n{folder}", folder=folder))
             return
 
         os.startfile(folder)
@@ -1060,11 +1091,11 @@ class ImageViewerWindow(QMainWindow):
             label = category.name
             suffixes: list[str] = []
             if category.name == suggested.name:
-                suffixes.append("Vorschlag")
+                suffixes.append(self.t("viewer.category_suffix_suggested", "suggested"))
             if category.name == top_influence_name:
-                suffixes.append("Tag-Hinweis")
+                suffixes.append(self.t("viewer.category_suffix_tag_hint", "tag hint"))
             if assigned_name and category.name == assigned_name:
-                suffixes.append("gesetzt")
+                suffixes.append(self.t("viewer.category_suffix_assigned", "assigned"))
             if suffixes:
                 label = f"{category.name}  ← {', '.join(suffixes)}"
             self.category_combo.addItem(label, category.name)
@@ -1077,12 +1108,12 @@ class ImageViewerWindow(QMainWindow):
         self.category_combo.blockSignals(False)
 
         if assigned_name:
-            self.category_label.setText(f"Kategorie: gesetzt ({assigned_source})")
+            self.category_label.setText(self.t("viewer.category_assigned_source", "Category: assigned ({source})", source=assigned_source))
         else:
             influence_text = ""
             if top_influence_name and top_influence_name != suggested.name:
-                influence_text = f" | Tag-Hinweis: {top_influence_name}"
-            self.category_label.setText(f"Kategorie: Vorschlag {suggested.name}{influence_text}")
+                influence_text = self.t("viewer.category_tag_hint_append", " | tag hint: {name}", name=top_influence_name)
+            self.category_label.setText(self.t("viewer.category_suggestion", "Category: suggestion {name}{hint}", name=suggested.name, hint=influence_text))
         self.perf_add(metrics, "category_combo_ui", started_at)
         self.update_final_path_preview(metrics)
 
@@ -1094,7 +1125,7 @@ class ImageViewerWindow(QMainWindow):
 
     def show_category_decision_reason(self) -> None:
         if self.current_post_id is None:
-            QMessageBox.information(self, "Kategorie-Details", "Kein Post geladen.")
+            QMessageBox.information(self, self.t("viewer.category_details_title", "Category Details"), self.t("viewer.no_post_loaded", "No post loaded."))
             return
 
         category = self.selected_category()
@@ -1112,7 +1143,7 @@ class ImageViewerWindow(QMainWindow):
             if category is not None and category.id is not None:
                 self.db.assign_post_category(self.current_post_id, category.id, "manual")
                 self.final_save_service.category_engine.clear_category_influence_cache()
-                self.category_label.setText("Kategorie: gesetzt (manual)")
+                self.category_label.setText(self.t("viewer.category_assigned_manual", "Category: assigned (manual)"))
                 self.status_changed.emit(self.current_post_id, str(self.db.get_post_detail(self.current_post_id)["status"] or "new"))
         self.update_final_path_preview()
 
@@ -1133,8 +1164,8 @@ class ImageViewerWindow(QMainWindow):
             self.final_path_label.setText(f"{source}: {final_preview}")
             self.filename_preview_label.setText(self.format_filename_preview(details))
         else:
-            self.final_path_label.setText("Noch nicht bestimmbar, Datei wird bei F geladen.")
-            self.filename_preview_label.setText("Dateiname: noch nicht bestimmbar")
+            self.final_path_label.setText(self.t("viewer.path_not_known_yet", "Not known yet; file will be loaded when pressing F."))
+            self.filename_preview_label.setText(self.t("viewer.filename_not_known_yet", "Filename: not known yet"))
 
     def format_filename_preview(self, details) -> str:  # noqa: ANN001
         def count_tags(key: str) -> int:
@@ -1147,13 +1178,20 @@ class ImageViewerWindow(QMainWindow):
             general_text += f" … +{len(general_used) - 10}"
 
         return (
-            "Dateiname-Vorschau:\n"
-            f"{details.filename}\n"
-            f"Pattern: {details.pattern}\n"
-            f"Tags im Namen: Artist {count_tags('artist')}, Character {count_tags('character')}, "
-            f"Serie {count_tags('copyright')}, General {len(general_used)}, Meta {count_tags('meta')}\n"
-            f"General im Namen: {general_text}\n"
-            f"Durch Filename-Exclude entfernt: {excluded_total}"
+            self.t("viewer.filename_preview_title", "Filename Preview:\n")
+            + f"{details.filename}\n"
+            + f"Pattern: {details.pattern}\n"
+            + self.t(
+                "viewer.filename_tags_in_name",
+                "Tags in name: Artist {artist}, Character {character}, Series {series}, General {general}, Meta {meta}\n",
+                artist=count_tags("artist"),
+                character=count_tags("character"),
+                series=count_tags("copyright"),
+                general=len(general_used),
+                meta=count_tags("meta"),
+            )
+            + self.t("viewer.filename_general_in_name", "General in name: {general}\n", general=general_text)
+            + self.t("viewer.filename_excluded_removed", "Removed by filename exclude: {count}", count=excluded_total)
         )
 
     def existing_image_path_from_row(self, row) -> str | None:  # noqa: ANN001
@@ -1234,7 +1272,7 @@ class ImageViewerWindow(QMainWindow):
             scheduled += 1
 
         if scheduled:
-            self.statusBar().showMessage(f"Bild-Prefetch vorbereitet: {scheduled}", 1200)
+            self.statusBar().showMessage(self.t("viewer.image_prefetch_scheduled", "Image prefetch scheduled: {count}", count=scheduled), 1200)
 
 
     def load_pixmap_cached(self, image_path: Path | str) -> QPixmap | None:
@@ -1316,9 +1354,9 @@ class ImageViewerWindow(QMainWindow):
             return
 
         current = self.status_chips.active_status or "new"
-        # Es gibt weiterhin genau einen Status. Ein Klick auf den aktiven Status
-        # entfernt die Markierung im praktischen Sinne, also zurück auf "Neu".
-        # Ein komplett leerer Status wäre nur ein weiterer Sonderfall aus der Qt-Hölle.
+        # There is still exactly one status. Clicking the active status
+        # clears the marker in practice, so it goes back to "New".
+        # A completely empty status would just be another special case from Qt hell.
         target = "new" if status == current and current != "new" else status
         self.set_status(target)
 
@@ -1337,7 +1375,7 @@ class ImageViewerWindow(QMainWindow):
         self.set_personal_rating(int(stars))
 
     def update_personal_rating_label(self) -> None:
-        self.personal_rating_label.setText(f"Persönliches Rating: {self.personal_stars_widget.rating()}/10")
+        self.personal_rating_label.setText(self.t("viewer.personal_rating_value", "Personal Rating: {rating}/10", rating=self.personal_stars_widget.rating()))
 
     def set_personal_rating(self, rating: int | float) -> None:
         if self.current_post_id is None:
@@ -1361,19 +1399,18 @@ class ImageViewerWindow(QMainWindow):
 
         if existing_path is not None:
             message = (
-                "Dieser Post hat bereits einen lokalen Zielpfad.\n\n"
-                f"{existing_path}\n\n"
-                "Mit Danbooru-file_url neu laden und lokal überschreiben/neu speichern?"
+                self.t("viewer.replace_existing_intro", "This post already has a local target path.\n\n")
+                + f"{existing_path}\n\n"
+                + self.t("viewer.replace_existing_question", "Reload using Danbooru file_url and overwrite/resave locally?")
             )
             if not existing_is_local:
                 message = (
-                    "Für diesen Post ist ein lokaler Zielpfad in der DB eingetragen, "
-                    "die Datei fehlt aber lokal.\n\n"
-                    f"{existing_path}\n\n"
-                    "Original erneut laden und Zielpfad reparieren?"
+                    self.t("viewer.repair_missing_local_intro", "This post has a local target path in the database, but the file is missing locally.\n\n")
+                    + f"{existing_path}\n\n"
+                    + self.t("viewer.repair_missing_local_question", "Reload original and repair target path?")
                 )
 
-            answer = QMessageBox.question(self, "Lokale Datei ersetzen", message)
+            answer = QMessageBox.question(self, self.t("viewer.replace_local_file_title", "Replace Local File"), message)
             if answer != QMessageBox.StandardButton.Yes:
                 return
             overwrite_existing = True
@@ -1383,18 +1420,18 @@ class ImageViewerWindow(QMainWindow):
         except AlreadySavedError as exc:
             self.status_chips.set_status("saved")
             self.final_path_label.setText(str(exc))
-            QMessageBox.information(self, "Bereits gespeichert", str(exc))
+            QMessageBox.information(self, self.t("viewer.already_saved_title", "Already Saved"), str(exc))
             return
         except Exception as exc:
-            self.final_path_label.setText(f"Speichern fehlgeschlagen: {exc}")
-            QMessageBox.critical(self, "Speichern fehlgeschlagen", str(exc))
+            self.final_path_label.setText(self.t("viewer.save_failed_label", "Save failed: {error}", error=exc))
+            QMessageBox.critical(self, self.t("viewer.save_failed_title", "Save Failed"), str(exc))
             return
 
         self.last_saved_path = result.final_path
 
         self.status_chips.set_status("saved")
-        self.category_label.setText(f"Kategorie: {result.category.name} ({result.category_source})")
-        self.final_path_label.setText(f"Gespeichert: {result.final_path}")
+        self.category_label.setText(self.t("viewer.category_result", "Category: {name} ({source})", name=result.category.name, source=result.category_source))
+        self.final_path_label.setText(self.t("viewer.saved_path", "Saved: {path}", path=result.final_path))
         self.status_changed.emit(post_id, "saved")
 
         if self.auto_advance_after_save:
@@ -1409,17 +1446,17 @@ class ImageViewerWindow(QMainWindow):
         post_id = self.current_post_id
         row = self.db.get_post_detail(post_id)
         if row is None or not row["final_file_path"]:
-            QMessageBox.information(self, "Lokale Datei löschen", "Für diesen Post ist kein lokaler Speicherpfad eingetragen.")
+            QMessageBox.information(self, self.t("viewer.delete_local_file_title", "Delete Local File"), self.t("viewer.no_local_save_path", "No local save path is stored for this post."))
             return
 
         path = Path(str(row["final_file_path"]))
         answer = QMessageBox.question(
             self,
-            "Lokale Datei löschen",
+            self.t("viewer.delete_local_file_title", "Delete Local File"),
             (
-                "Diese lokal gespeicherte Datei wirklich löschen?\n\n"
-                f"Post {post_id}\n{path}\n\n"
-                "Der DB-Eintrag bleibt erhalten, aber der lokale Dateipfad wird geleert."
+                self.t("viewer.confirm_delete_local_file_intro", "Really delete this locally saved file?\n\n")
+                + f"Post {post_id}\n{path}\n\n"
+                + self.t("viewer.confirm_delete_local_file_note", "The DB record remains, but the local file path will be cleared.")
             ),
         )
         if answer != QMessageBox.StandardButton.Yes:
@@ -1428,19 +1465,19 @@ class ImageViewerWindow(QMainWindow):
         try:
             if path.exists():
                 if not path.is_file():
-                    raise RuntimeError("Pfad ist keine Datei")
+                    raise RuntimeError(self.t("viewer.path_is_not_file", "Path is not a file"))
                 path.unlink()
             new_status = "new" if str(row["status"] or "") == "saved" else None
             self.db.clear_post_final_file_path(post_id, new_status=new_status)
             if new_status:
                 self.status_chips.set_status(new_status)
                 self.status_changed.emit(post_id, new_status)
-            self.final_path_label.setText("Lokale Datei gelöscht; lokaler Pfad wurde geleert.")
+            self.final_path_label.setText(self.t("viewer.local_file_deleted", "Local file deleted; local path was cleared."))
             self.open_local_image_button.setEnabled(False)
             self.delete_final_file_button.setEnabled(False)
             self.load_current_post()
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Lokale Datei löschen fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, self.t("viewer.delete_local_file_failed_title", "Delete Local File Failed"), str(exc))
 
     def refetch_current_post(self) -> None:
         if self.current_post_id is None:
@@ -1452,9 +1489,9 @@ class ImageViewerWindow(QMainWindow):
             self.post_import_service.store_post(post)
             self.download_service.ensure_original_cached(self.current_post_id, force=True)
             self.load_current_post()
-            QMessageBox.information(self, "Post neu geholt", f"Post {self.current_post_id} wurde von Danbooru aktualisiert.")
+            QMessageBox.information(self, self.t("viewer.post_refetched_title", "Post Refetched"), self.t("viewer.post_refetched_message", "Post {post_id} was updated from Danbooru.", post_id=self.current_post_id))
         except Exception as exc:
-            QMessageBox.critical(self, "Neu holen fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, self.t("viewer.refetch_failed_title", "Refetch Failed"), str(exc))
         finally:
             self.refetch_button.setEnabled(True)
 
@@ -1468,9 +1505,13 @@ class ImageViewerWindow(QMainWindow):
 
         answer = QMessageBox.question(
             self,
-            "Post aus DB entfernen",
-            f"Post {post_id} wirklich aus der lokalen Datenbank entfernen?\n\n"
-            "Bilddateien werden NICHT gelöscht. Nur DB-Eintrag, Tags, Review und Kategoriezuordnung verschwinden.",
+            self.t("viewer.remove_from_db_title", "Remove Post from DB"),
+            self.t(
+                "viewer.remove_from_db_confirm",
+                "Really remove post {post_id} from the local database?\n\n",
+                post_id=post_id,
+            )
+            + self.t("viewer.remove_from_db_note", "Image files are NOT deleted. Only the DB record, tags, review and category assignment are removed."),
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -1488,7 +1529,7 @@ class ImageViewerWindow(QMainWindow):
                 self.current_post_id = None
                 self.current_pixmap = None
                 self.image_label.clear()
-                self.info_label.setText("Keine Posts mehr im Viewer.")
+                self.info_label.setText(self.t("viewer.no_posts_left", "No posts left in viewer."))
                 self.header_label.setText("")
                 self.footer_label.setText("")
                 self.score_label.setText("")
@@ -1498,7 +1539,7 @@ class ImageViewerWindow(QMainWindow):
         QMessageBox.information(
             self,
             "Aus DB entfernt",
-            f"Post {post_id} wurde aus der DB entfernt. Dateien blieben liegen.\n{final_path}",
+            self.t("viewer.post_removed_from_db", "Post {post_id} was removed from the DB. Files were left untouched.\n{final_path}", post_id=post_id, final_path=final_path),
         )
 
     def selected_viewer_tags(self) -> list[str]:
@@ -1550,11 +1591,11 @@ class ImageViewerWindow(QMainWindow):
         menu = QMenu(self)
         self._tag_context_menu = menu
 
-        category_menu = QMenu("Zu Kategorie hinzufügen", menu)
+        category_menu = QMenu(self.t("viewer.add_to_category", "Add to Category"), menu)
         category_names = self.db.list_category_names()
 
         if not category_names:
-            disabled = QAction("Keine Kategorien vorhanden", menu)
+            disabled = QAction(self.t("viewer.no_categories_available", "No categories available"), menu)
             disabled.setEnabled(False)
             category_menu.addAction(disabled)
 
@@ -1585,7 +1626,7 @@ class ImageViewerWindow(QMainWindow):
         exclude_state = self.filename_exclude_state(frozen_tags)
 
         if exclude_state in {"none", "mixed"}:
-            add_exclude_action = QAction("Vom Dateinamen ausschließen", menu)
+            add_exclude_action = QAction(self.t("viewer.exclude_from_filename", "Exclude from Filename"), menu)
             add_exclude_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                     0,
@@ -1607,12 +1648,12 @@ class ImageViewerWindow(QMainWindow):
         scoring_menu = QMenu("Scoring / Nutzung", menu)
         scoring_actions = [
             (
-                "Kategorie-Hinweis ignorieren",
+                self.t("viewer.ignore_category_hint", "Ignore Category Hint"),
                 "ignore_category_influence",
                 True,
             ),
             (
-                "Kategorie-Hinweis wieder nutzen",
+                self.t("viewer.use_category_hint_again", "Use Category Hint Again"),
                 "ignore_category_influence",
                 False,
             ),
@@ -1648,7 +1689,7 @@ class ImageViewerWindow(QMainWindow):
             scoring_menu.addAction(action)
 
         scoring_menu.addSeparator()
-        ignore_all_action = QAction("Für alle automatischen Bewertungen ignorieren", menu)
+        ignore_all_action = QAction(self.t("viewer.ignore_all_auto_scores", "Ignore for All Automatic Scores"), menu)
         ignore_all_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                 0,
@@ -1657,7 +1698,7 @@ class ImageViewerWindow(QMainWindow):
         )
         scoring_menu.addAction(ignore_all_action)
 
-        use_all_action = QAction("Für alle automatischen Bewertungen wieder nutzen", menu)
+        use_all_action = QAction(self.t("viewer.use_all_auto_scores_again", "Use for All Automatic Scores Again"), menu)
         use_all_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                 0,
@@ -1730,8 +1771,8 @@ class ImageViewerWindow(QMainWindow):
 
         QMessageBox.information(
             self,
-            "Kategorie aktualisiert",
-            f"{len(tags)} Tag(s) zu {category_name}/{rule_type} hinzugefügt.",
+            self.t("viewer.category_updated_title", "Category Updated"),
+            self.t("viewer.tags_added_to_category", "{count} tag(s) added to {category}/{rule_type}.", count=len(tags), category=category_name, rule_type=rule_type),
         )
 
         if self.current_post_id is not None:
@@ -1791,8 +1832,8 @@ class ImageViewerWindow(QMainWindow):
         if show_message:
             QMessageBox.information(
                 self,
-                "Filename-Exclude",
-                f"{len(tags)} Tag(s) vom Dateinamen ausgeschlossen.",
+                self.t("viewer.filename_exclude_title", "Filename Exclude"),
+                self.t("viewer.tags_excluded_from_filename", "{count} tag(s) excluded from filename.", count=len(tags)),
             )
         self.update_final_path_preview()
         if self.current_post_id is not None:
@@ -1805,7 +1846,7 @@ class ImageViewerWindow(QMainWindow):
         QMessageBox.information(
             self,
             "Filename-Exclude",
-            f"{len(tags)} Filename-Ausschluss/Ausschlüsse entfernt.",
+            self.t("viewer.filename_excludes_removed", "{count} filename exclude(s) removed.", count=len(tags)),
         )
         self.update_final_path_preview()
         if self.current_post_id is not None:
@@ -1822,7 +1863,7 @@ class ImageViewerWindow(QMainWindow):
         text, ok = QInputDialog.getText(
             self,
             "Alias bearbeiten",
-            f"LLM-Alias für Tag '{tag}'\nLeer lassen zum Entfernen:",
+            self.t("viewer.llm_alias_prompt", "LLM alias for tag '{tag}'\nLeave empty to remove:", tag=tag),
             text=current_alias,
         )
 
@@ -1849,7 +1890,7 @@ class ImageViewerWindow(QMainWindow):
         value, ok = QInputDialog.getDouble(
             self,
             "Manueller Score",
-            f"Manueller Score für '{tag}' (-10 bis +10):",
+            self.t("viewer.manual_score_prompt", "Manual score for '{tag}' (-10 to +10):", tag=tag),
             current_value,
             -10.0,
             10.0,
@@ -1896,11 +1937,11 @@ class ImageViewerWindow(QMainWindow):
                 path = Path(str(row["final_file_path"])).parent
 
         if path is None:
-            QMessageBox.information(self, "Kein Zielordner", "Noch kein Zielordner bekannt.")
+            QMessageBox.information(self, self.t("viewer.no_target_folder_title", "No Target Folder"), self.t("viewer.no_target_folder_message", "No target folder known yet."))
             return
 
         if not path.exists():
-            QMessageBox.warning(self, "Ordner fehlt", f"Ordner existiert nicht:\n{path}")
+            QMessageBox.warning(self, self.t("viewer.folder_missing_title", "Folder Missing"), self.t("viewer.folder_does_not_exist", "Folder does not exist:\n{folder}", folder=path))
             return
 
         os.startfile(path)
@@ -1911,7 +1952,7 @@ class ImageViewerWindow(QMainWindow):
 
         path = self.local_path_for_post(self.current_post_id)
         if path is None:
-            QMessageBox.information(self, "Kein lokales Bild", "Für diesen Post existiert keine lokal gespeicherte Datei.")
+            QMessageBox.information(self, self.t("viewer.no_local_image_title", "No Local Image"), self.t("viewer.no_local_image_message", "No locally saved file exists for this post."))
             return
 
         self.open_local_path(path)

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.i18n.i18n import tr
 
 
 TERMINAL_STATUSES = {"rejected", "already_known", "saved"}
@@ -51,9 +52,8 @@ PREVIEW_TAG_TYPE_LABELS: dict[str, str] = {
     "meta": "Meta",
 }
 
-# Gleiche Grundfarben wie im Viewer/TagDisplay. Nicht importieren, damit diese
-# Preview-Karte kein unnötiges GUI-Abhängigkeitsknäuel bekommt. Qt braucht
-# dafür wirklich keine weitere Gelegenheit, beleidigt zu sein.
+# Same base colors as Viewer/TagDisplay. Keep this local so the preview card
+# does not grow another needless GUI dependency knot.
 PREVIEW_TAG_TYPE_COLORS: dict[str, str] = {
     "artist": "#ff9f1c",
     "character": "#2ec4b6",
@@ -80,12 +80,36 @@ DEFAULT_PREVIEW_CARD_OPTIONS: dict[str, bool] = {
 }
 
 STATUS_TEXT: dict[str, str] = {
-    "new": "Neu",
-    "potential": "Hohes Potential",
-    "rejected": "Abgelehnt",
-    "already_known": "Bereits bekannt",
-    "saved": "Gespeichert",
+    "new": "New",
+    "potential": "High Potential",
+    "rejected": "Rejected",
+    "already_known": "Already Known",
+    "saved": "Saved",
 }
+
+STATUS_I18N_KEYS: dict[str, str] = {
+    "new": "common.status.new",
+    "potential": "common.status.potential",
+    "rejected": "common.status.rejected",
+    "already_known": "common.status.already_known",
+    "saved": "common.status.saved",
+}
+
+TAG_TYPE_I18N_KEYS: dict[str, str] = {
+    "artist": "common.tags.artist",
+    "character": "common.tags.character",
+    "copyright": "common.tags.copyright",
+    "general": "common.tags.general",
+    "meta": "common.tags.meta",
+}
+
+
+def preview_status_text(config: dict[str, Any], status: str) -> str:
+    return tr(STATUS_I18N_KEYS.get(status, ""), STATUS_TEXT.get(status, status), config=config)
+
+
+def preview_tag_type_label(config: dict[str, Any], tag_type: str) -> str:
+    return tr(TAG_TYPE_I18N_KEYS.get(tag_type, ""), PREVIEW_TAG_TYPE_LABELS.get(tag_type, tag_type.title()), config=config)
 
 
 DEFAULT_STATUS_COLORS: dict[str, str] = {
@@ -239,7 +263,9 @@ class ThumbnailGrid(QScrollArea):
         self.loading_label: QLabel | None = None
 
 
-    def show_loading_message(self, message: str = "Lädt Preview…") -> None:
+    def show_loading_message(self, message: str = "") -> None:
+        if not message:
+            message = tr("preview.loading", "Loading preview…", config=self.config)
         if self.loading_widget is not None:
             if self.loading_label is not None:
                 self.loading_label.setText(message)
@@ -298,7 +324,9 @@ class ThumbnailGrid(QScrollArea):
         widget.setParent(None)
         widget.deleteLater()
 
-    def show_empty_message(self, message: str = "Keine Posts in dieser Ansicht.") -> None:
+    def show_empty_message(self, message: str = "") -> None:
+        if not message:
+            message = tr("preview.empty", "No posts in this view.", config=self.config)
         if self.empty_label is not None:
             self.empty_label.setText(message)
             self.empty_label.show()
@@ -385,7 +413,7 @@ class ThumbnailGrid(QScrollArea):
 
         if not self.current_posts:
             self.setUpdatesEnabled(True)
-            self.show_empty_message("Keine Posts in dieser Ansicht. Fetch ausführen oder Filter ändern.")
+            self.show_empty_message(tr("preview.empty_fetch_or_filter", "No posts in this view. Run fetch or change filters.", config=self.config))
             self.update_columns()
             self.viewport().update()
             self.update()
@@ -398,7 +426,7 @@ class ThumbnailGrid(QScrollArea):
         generation = self._build_generation
 
         total = len(self._pending_rows)
-        self.show_loading_message("Lädt Preview…")
+        self.show_loading_message(tr("preview.loading", "Loading preview…", config=self.config))
         self.build_started.emit(total)
         QTimer.singleShot(0, lambda gen=generation: self.append_cards_batch(gen))
 
@@ -873,10 +901,8 @@ class ThumbnailCard(QFrame):
             return
 
         if event.button() == Qt.RightButton:
-            # Rechtsklick auf einen bereits markierten Post darf die Auswahl nicht
-            # zerstören. Rechtsklick auf einen unmarkierten Post setzt dagegen
-            # diesen einen Post als Ziel. Ja, wie Dateimanager seit Jahrzehnten,
-            # diese Hexerei mussten wir der GUI erst erklären.
+            # Right-clicking an already selected post must not destroy the selection.
+            # Right-clicking an unselected post makes that one the target.
             if not self.is_selected:
                 self.clicked.emit(self.post_id, False, False)
             super().mousePressEvent(event)
@@ -915,7 +941,7 @@ class ThumbnailCard(QFrame):
         status = self.value("status") or "new"
         self.current_status = str(status)
         if self.preview_options.get("show_status", True):
-            self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+            self.status_label.setText(tr("preview.card.status", "Status: {status}", config=self.config, status=preview_status_text(self.config, str(status))))
             self.status_label.show()
         else:
             self.status_label.clear()
@@ -930,18 +956,18 @@ class ThumbnailCard(QFrame):
         relation_parts = []
         parent_id = self.value("parent_id")
         if parent_id is not None:
-            relation_parts.append("Teil einer Parent/Child-Gruppe")
+            relation_parts.append(tr("preview.card.relation.parent_child_group", "part of a parent/child group", config=self.config))
         if int(self.value("known_parent_loaded") or 0):
-            relation_parts.append("Parent lokal/DB bekannt")
+            relation_parts.append(tr("preview.card.relation.parent_known", "parent locally/DB known", config=self.config))
         child_count = int(self.value("known_child_count") or 0)
         has_children = bool(self.value("has_children"))
         if child_count:
-            relation_parts.append(f"{child_count} Child(s) bekannt")
+            relation_parts.append(tr("preview.card.relation.children_known", "{count} child(s) known", config=self.config, count=child_count))
         elif has_children:
-            relation_parts.append("hat Child-Posts")
+            relation_parts.append(tr("preview.card.relation.has_children", "has child posts", config=self.config))
 
         if self.preview_options.get("show_parent", True) and relation_parts:
-            self.relation_label.setText("⚠ Verwandt: " + ", ".join(relation_parts))
+            self.relation_label.setText(tr("preview.card.related", "⚠ Related: ", config=self.config) + ", ".join(relation_parts))
             self.relation_label.show()
         else:
             self.relation_label.clear()
@@ -949,7 +975,7 @@ class ThumbnailCard(QFrame):
 
         final_path = self.value("final_file_path") or self.value("final_directory") or ""
         if self.preview_options.get("show_path", True) and final_path:
-            self.path_label.setText(f"Pfad: {final_path}")
+            self.path_label.setText(tr("preview.card.path", "Path: {path}", config=self.config, path=final_path))
             self.path_label.show()
         else:
             self.path_label.clear()
@@ -973,13 +999,13 @@ class ThumbnailCard(QFrame):
             )
         if self.preview_options.get("show_score", True):
             score = self.value("score") if self.value("score") is not None else "-"
-            rating_score_parts.append(f"Score: {html.escape(str(score))}")
+            rating_score_parts.append(tr("preview.card.score", "Score: {score}", config=self.config, score=html.escape(str(score))))
         if rating_score_parts:
             lines.append(" | ".join(rating_score_parts))
 
         if self.preview_options.get("show_parent", True):
             parent = self.value("parent_id") if self.value("parent_id") is not None else "-"
-            child_marker = " | Childs" if self.value("has_children") else ""
+            child_marker = tr("preview.card.child_marker", " | Children", config=self.config) if self.value("has_children") else ""
             lines.append(f"Parent: {html.escape(str(parent))}{html.escape(child_marker)}")
 
         if lines:
@@ -996,11 +1022,11 @@ class ThumbnailCard(QFrame):
             return
 
         typed_order: list[tuple[str, str, str]] = [
-            ("artist", "show_tag_artist", PREVIEW_TAG_TYPE_LABELS["artist"]),
-            ("character", "show_tag_character", PREVIEW_TAG_TYPE_LABELS["character"]),
-            ("copyright", "show_tag_copyright", PREVIEW_TAG_TYPE_LABELS["copyright"]),
-            ("general", "show_tag_general", PREVIEW_TAG_TYPE_LABELS["general"]),
-            ("meta", "show_tag_meta", PREVIEW_TAG_TYPE_LABELS["meta"]),
+            ("artist", "show_tag_artist", preview_tag_type_label(self.config, "artist")),
+            ("character", "show_tag_character", preview_tag_type_label(self.config, "character")),
+            ("copyright", "show_tag_copyright", preview_tag_type_label(self.config, "copyright")),
+            ("general", "show_tag_general", preview_tag_type_label(self.config, "general")),
+            ("meta", "show_tag_meta", preview_tag_type_label(self.config, "meta")),
         ]
 
         typed_tags: dict[str, list[str]] = {}
@@ -1032,18 +1058,17 @@ class ThumbnailCard(QFrame):
                 self.tags_label.show()
                 return
 
-            # Wenn keine typisierten Tags vorhanden sind und alle Tagtypen aktiv sind,
-            # fallen wir auf Raw zurück. Alte Datenbankzeilen sollen nicht plötzlich so tun,
-            # als hätten sie nie Tags gehabt. Schon genug Theater hier.
+            # If no typed tags are available and all tag types are enabled, fall back to raw.
+            # Older database rows should not suddenly pretend they never had tags.
 
         parts: list[str] = []
         for tag_type, _option_key, _label in typed_order:
             parts.extend(typed_tags.get(tag_type, []))
 
         if not parts:
-            # Fallback für alte Row-Objekte ohne tags_<type>. Wenn alle Typen aktiv sind,
-            # kann die alte Gesamttagliste trotzdem noch angezeigt werden. Sonst lieber leer
-            # statt falsche Typfilter vorzutäuschen. Wir sind hier nicht im Wahrsagerzelt.
+            # Fallback for old row objects without tags_<type>. If all types are enabled,
+            # the old full tag list may still be shown. Otherwise stay empty instead
+            # of pretending the type filters are accurate.
             all_type_options = [
                 "show_tag_copyright",
                 "show_tag_character",
@@ -1081,18 +1106,18 @@ class ThumbnailCard(QFrame):
         ignored_count = int(self.value("recommendation_ignored_count") or 0)
 
         if score == 0.0 and not positive and not negative:
-            self.recommendation_label.setText("Vorauswahl: 0")
-            self.recommendation_label.setToolTip("Keine verwertbaren Tag-Scores für die Vorauswahl.")
+            self.recommendation_label.setText(tr("preview.card.preselection_value", "Preselection: {score}", config=self.config, score="0"))
+            self.recommendation_label.setToolTip(tr("preview.card.no_tag_scores", "No usable tag scores for preselection.", config=self.config))
         else:
             score_text = f"+{score:g}" if score > 0 else f"{score:g}"
-            self.recommendation_label.setText(f"Vorauswahl: {score_text}")
-            tooltip_parts = [f"Vorauswahl-Score: {score_text}", f"Genutzte Tags: {used_count}"]
+            self.recommendation_label.setText(tr("preview.card.preselection_value", "Preselection: {score}", config=self.config, score=score_text))
+            tooltip_parts = [tr("preview.card.preselection_score", "Preselection score: {score}", config=self.config, score=score_text), tr("preview.card.used_tags", "Used tags: {count}", config=self.config, count=used_count)]
             if positive:
-                tooltip_parts.append("Positiv: " + positive)
+                tooltip_parts.append(tr("preview.card.positive", "Positive: {tags}", config=self.config, tags=positive))
             if negative:
-                tooltip_parts.append("Negativ: " + negative)
+                tooltip_parts.append(tr("preview.card.negative", "Negative: {tags}", config=self.config, tags=negative))
             if ignored_count:
-                tooltip_parts.append(f"Ignorierte Tags: {ignored_count}")
+                tooltip_parts.append(tr("preview.card.ignored_tags", "Ignored tags: {count}", config=self.config, count=ignored_count))
             self.recommendation_label.setToolTip("\n".join(tooltip_parts))
 
         if score >= 5.0:
@@ -1109,7 +1134,7 @@ class ThumbnailCard(QFrame):
     def apply_external_status(self, status: str) -> None:
         self.current_status = status
         if self.preview_options.get("show_status", True):
-            self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+            self.status_label.setText(tr("preview.card.status", "Status: {status}", config=self.config, status=preview_status_text(self.config, str(status))))
             self.status_label.show()
         else:
             self.status_label.clear()
@@ -1125,8 +1150,8 @@ class ThumbnailCard(QFrame):
             self.category_label.hide()
             return
 
-        source_label = "manuell" if self.current_category_source == "manual" else "auto"
-        self.category_label.setText(f"Kategorie: {self.current_category} ({source_label})")
+        source_label = tr("common.manual", "manual", config=self.config) if self.current_category_source == "manual" else tr("common.auto", "auto", config=self.config)
+        self.category_label.setText(tr("preview.card.category", "Category: {category} ({source})", config=self.config, category=self.current_category, source=source_label))
         self.category_label.show()
 
         if self.current_category_source == "manual":
@@ -1216,27 +1241,27 @@ class ThumbnailCard(QFrame):
     def open_context_menu(self, position) -> None:  # noqa: ANN001
         menu = QMenu(self)
 
-        open_viewer_action = QAction("Bildbetrachter öffnen (Enter/Doppelklick)", self)
+        open_viewer_action = QAction(tr("preview.menu.open_viewer", "Open Image Viewer (Enter/double-click)", config=self.config), self)
         open_viewer_action.triggered.connect(lambda: self.double_clicked.emit(self.post_id))
         menu.addAction(open_viewer_action)
 
-        reload_thumbnail_action = QAction("Thumbnail neu laden", self)
+        reload_thumbnail_action = QAction(tr("preview.reload_thumbnails", "Reload Thumbnail", config=self.config), self)
         reload_thumbnail_action.triggered.connect(lambda: self.thumbnail_reload_requested.emit(self.post_id))
         menu.addAction(reload_thumbnail_action)
 
-        final_save_action = QAction("Speichern (F)", self)
+        final_save_action = QAction(tr("preview.save.tooltip", "Save (F)", config=self.config), self)
         final_save_action.triggered.connect(lambda: self.final_save_requested.emit(self.post_id))
         menu.addAction(final_save_action)
 
-        final_delete_action = QAction("Lokale Datei löschen", self)
+        final_delete_action = QAction(tr("preview.menu.delete_local", "Delete Local File", config=self.config), self)
         final_delete_action.setEnabled(bool(self.value("final_file_path")))
         final_delete_action.triggered.connect(lambda: self.final_delete_requested.emit(self.post_id))
         menu.addAction(final_delete_action)
 
-        category_menu = QMenu("Kategorie setzen", self)
+        category_menu = QMenu(tr("preview.menu.set_category", "Set Category", config=self.config), self)
         category_names = self.db.list_category_names()
         if not category_names:
-            disabled = QAction("Keine Kategorien vorhanden", self)
+            disabled = QAction(tr("preview.menu.no_categories", "No categories available", config=self.config), self)
             disabled.setEnabled(False)
             category_menu.addAction(disabled)
         for category_name in category_names:
@@ -1249,19 +1274,19 @@ class ThumbnailCard(QFrame):
 
         menu.addSeparator()
 
-        open_original_action = QAction("Originalpost öffnen (O)", self)
+        open_original_action = QAction(tr("preview.menu.open_original", "Open Original Post (O)", config=self.config), self)
         open_original_action.triggered.connect(self.open_original_post)
         menu.addAction(open_original_action)
 
-        copy_url_action = QAction("Originalpost-Link kopieren", self)
+        copy_url_action = QAction(tr("preview.menu.copy_original_link", "Copy Original Post Link", config=self.config), self)
         copy_url_action.triggered.connect(self.copy_original_post_url)
         menu.addAction(copy_url_action)
 
-        copy_id_action = QAction("Post-ID kopieren", self)
+        copy_id_action = QAction(tr("preview.menu.copy_post_id", "Copy Post ID", config=self.config), self)
         copy_id_action.triggered.connect(self.copy_post_id)
         menu.addAction(copy_id_action)
 
-        copy_tags_action = QAction("Tags kopieren", self)
+        copy_tags_action = QAction(tr("preview.menu.copy_tags", "Copy Tags", config=self.config), self)
         copy_tags_action.triggered.connect(self.copy_tags)
         menu.addAction(copy_tags_action)
 
@@ -1269,10 +1294,10 @@ class ThumbnailCard(QFrame):
 
         actions: list[tuple[str, str]] = [
             ("High Potential [H]", "potential"),
-            ("Ablehnen [Entf]", "rejected"),
-            ("Als gespeichert markieren [G]", "saved"),
-            ("Bereits bekannt [K]", "already_known"),
-            ("Neu zurücksetzen [N]", "new"),
+            (tr("preview.menu.reject", "Reject [Del]", config=self.config), "rejected"),
+            (tr("preview.menu.mark_saved", "Mark as Saved [G]", config=self.config), "saved"),
+            (tr("preview.menu.already_known", "Already Known [K]", config=self.config), "already_known"),
+            (tr("preview.menu.reset_new", "Reset to New [N]", config=self.config), "new"),
         ]
 
         for label, status in actions:
@@ -1302,7 +1327,7 @@ class ThumbnailCard(QFrame):
     def set_status(self, status: str, emit_reload: bool = False) -> None:
         self.db.set_post_status(self.post_id, status, self.config)
         self.current_status = status
-        self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+        self.status_label.setText(tr("preview.card.status", "Status: {status}", config=self.config, status=preview_status_text(self.config, str(status))))
         self.apply_status_style(status)
         self.status_changed.emit(self.post_id, status)
 

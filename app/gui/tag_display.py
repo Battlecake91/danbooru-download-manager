@@ -6,6 +6,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget
 
+from app.i18n.i18n import tr
+
 TAG_TYPE_LABELS = {
     "artist": "Artist",
     "character": "Character",
@@ -137,7 +139,7 @@ class TypedTagListWidget(QWidget):
             self.lists[tag_type] = list_widget
             self.identity_grid.addWidget(label, 0, column)
             self.identity_grid.addWidget(list_widget, 1, column)
-            self.identity_grid.setColumnStretch(column, 1)
+            self.identity_grid.setColumnStretch(column, 2 if tag_type == "character" else 1)
         self.identity_grid.setRowStretch(0, 0)
         self.identity_grid.setRowStretch(1, 0)
 
@@ -147,9 +149,14 @@ class TypedTagListWidget(QWidget):
         meta_group = self._create_tag_group("meta", expanding=False)
         self.layout.addWidget(meta_group)
 
-        self.filename_filter_checkbox = QCheckBox("Nur nicht ausgeschlossene Filename-Tags anzeigen")
+        self.filename_filter_checkbox = QCheckBox(
+            tr("viewer.show_only_filename_allowed_tags", "Show only tags not excluded from filenames")
+        )
         self.filename_filter_checkbox.setToolTip(
-            "Blendet alle Tags aus, die bereits im Filename-Exclude stehen. Praktisch zum Aussortieren, leider."
+            tr(
+                "viewer.show_only_filename_allowed_tags_tooltip",
+                "Hides tags that are already listed as filename excludes.",
+            )
         )
         self.filename_filter_checkbox.toggled.connect(self._refresh_all_lists)
         self.layout.addWidget(self.filename_filter_checkbox)
@@ -207,7 +214,9 @@ class TypedTagListWidget(QWidget):
         return list_widget
 
 
-    def show_loading_message(self, message: str = "Lade Tags…") -> None:
+    def show_loading_message(self, message: str | None = None) -> None:
+        if message is None:
+            message = tr("viewer.tags_loading", "Loading tags…")
         self.setUpdatesEnabled(False)
         try:
             for tag_type, list_widget in self.lists.items():

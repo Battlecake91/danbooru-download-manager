@@ -40,6 +40,7 @@ from app.gui.thumbnail_grid import ThumbnailGrid
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
+from app.i18n.i18n import tr
 
 
 def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
@@ -64,11 +65,19 @@ def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
 
 
 STATUS_LABELS: dict[str, str] = {
-    "new": "Ungeprüft",
-    "potential": "Hohes Potential",
-    "rejected": "Abgelehnt",
-    "already_known": "Bereits bekannt",
-    "saved": "Gespeichert",
+    "new": "New",
+    "potential": "High Potential",
+    "rejected": "Rejected",
+    "already_known": "Already Known",
+    "saved": "Saved",
+}
+
+STATUS_I18N_KEYS: dict[str, str] = {
+    "new": "common.status.new",
+    "potential": "common.status.potential",
+    "rejected": "common.status.rejected",
+    "already_known": "common.status.already_known",
+    "saved": "common.status.saved",
 }
 
 
@@ -88,33 +97,46 @@ DEFAULT_VISIBLE_STATUSES: set[str] = {
 
 
 VIEW_LABELS: dict[str, str] = {
-    "filtered": "Status-Filter",
-    "worklist": "Arbeitsliste",
-    "saved": "Gespeichert",
-    "rejected": "Aussortiert",
-    "known": "Bereits bekannt",
-    "all": "Alle bekannten Posts",
+    "filtered": "Status Filter",
+    "worklist": "Worklist",
+    "saved": "Saved",
+    "rejected": "Rejected",
+    "known": "Already Known",
+    "all": "All Known Posts",
+}
+
+VIEW_I18N_KEYS: dict[str, str] = {
+    "filtered": "preview.view.filtered",
+    "worklist": "preview.view.worklist",
+    "saved": "preview.view.saved",
+    "rejected": "preview.view.rejected",
+    "known": "preview.view.known",
+    "all": "preview.view.all",
 }
 
 
 SORT_LABELS: dict[str, str] = {
-    "id_desc": "Post-ID: neueste zuerst",
-    "id_asc": "Post-ID: älteste zuerst",
-    "score_desc": "Danbooru-Score: hoch → niedrig",
-    "score_asc": "Danbooru-Score: niedrig → hoch",
-    "recommendation_desc": "Vorauswahl: hoch → niedrig",
-    "recommendation_asc": "Vorauswahl: niedrig → hoch",
-    "llm_score_desc": "LLM-Score: hoch → niedrig",
-    "llm_score_asc": "LLM-Score: niedrig → hoch",
-    "personal_desc": "Persönliches Rating: hoch → niedrig",
-    "personal_asc": "Persönliches Rating: niedrig → hoch",
-    "rating": "Danbooru-Rating: general → explicit",
+    "id_desc": "Post ID: newest first",
+    "id_asc": "Post ID: oldest first",
+    "score_desc": "Danbooru Score: high → low",
+    "score_asc": "Danbooru Score: low → high",
+    "recommendation_desc": "Preselection: high → low",
+    "recommendation_asc": "Preselection: low → high",
+    "llm_score_desc": "LLM Score: high → low",
+    "llm_score_asc": "LLM Score: low → high",
+    "personal_desc": "Personal Rating: high → low",
+    "personal_asc": "Personal Rating: low → high",
+    "rating": "Danbooru Rating: general → explicit",
     "status": "Status",
-    "category": "Kategorie",
-    "saved_desc": "Zuletzt gespeichert",
-    "seen_desc": "Zuletzt gesehen",
-    "resolution_desc": "Auflösung: groß → klein",
-    "filesize_desc": "Dateigröße: groß → klein",
+    "category": "Category",
+    "saved_desc": "Last saved",
+    "seen_desc": "Last seen",
+    "resolution_desc": "Resolution: large → small",
+    "filesize_desc": "File size: large → small",
+}
+
+SORT_I18N_KEYS: dict[str, str] = {
+    key: f"preview.sort.{key}" for key in SORT_LABELS
 }
 
 
@@ -135,6 +157,17 @@ SQL_SORT_ORDER: dict[str, str] = {
     "filesize_desc": "COALESCE(p.file_size, 0) DESC, p.id DESC",
 }
 
+
+def preview_status_label(config: dict[str, Any], status: str) -> str:
+    return tr(STATUS_I18N_KEYS.get(status, ""), STATUS_LABELS.get(status, status), config=config)
+
+
+def preview_view_label(config: dict[str, Any], view_mode: str) -> str:
+    return tr(VIEW_I18N_KEYS.get(view_mode, ""), VIEW_LABELS.get(view_mode, view_mode), config=config)
+
+
+def preview_sort_label(config: dict[str, Any], sort_key: str) -> str:
+    return tr(SORT_I18N_KEYS.get(sort_key, ""), SORT_LABELS.get(sort_key, sort_key), config=config)
 
 
 class PreviewWindow(QMainWindow):
@@ -177,27 +210,27 @@ class PreviewWindow(QMainWindow):
         self.setAutoFillBackground(True)
         self.setStyleSheet("QMainWindow { background: #151515; }")
 
-        self.toolbar_actions = QToolBar("Preview Aktionen")
+        self.toolbar_actions = QToolBar(tr("preview.toolbar.actions", "Preview Actions", config=self.config))
         self.toolbar_actions.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.toolbar_actions)
 
-        self.reload_button = QPushButton("Neu laden")
+        self.reload_button = QPushButton(tr("preview.reload", "Reload", config=self.config))
         self.reload_button.clicked.connect(self.reload_posts)
         self.toolbar_actions.addWidget(self.reload_button)
 
-        self.reload_thumbnails_button = QPushButton("Thumbnail neu laden")
-        self.reload_thumbnails_button.setToolTip("Lädt die Thumbnails der ausgewählten Posts neu. Hilft gegen graue Platzhalter, dieser digitale Schimmel.")
+        self.reload_thumbnails_button = QPushButton(tr("preview.reload_thumbnails", "Reload Thumbnail", config=self.config))
+        self.reload_thumbnails_button.setToolTip(tr("preview.reload_thumbnails.tooltip", "Reloads thumbnails for the selected posts. Useful against gray placeholders.", config=self.config))
         self.reload_thumbnails_button.clicked.connect(self.reload_selected_thumbnails)
         self.toolbar_actions.addWidget(self.reload_thumbnails_button)
 
-        self.final_save_button = QPushButton("Speichern")
-        self.final_save_button.setToolTip("Speichern (F)")
+        self.final_save_button = QPushButton(tr("common.save", "Save", config=self.config))
+        self.final_save_button.setToolTip(tr("preview.save.tooltip", "Save (F)", config=self.config))
         self.final_save_button.clicked.connect(self.final_save_selected_posts)
         self.toolbar_actions.addWidget(self.final_save_button)
 
 
-        self.fetch_status_label = QLabel("Fetch läuft…")
-        self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
+        self.fetch_status_label = QLabel(tr("preview.fetch_running", "Fetch running…", config=self.config))
+        self.fetch_status_label.setToolTip(tr("preview.fetch_running.tooltip", "Posts are currently being fetched from Danbooru. The preview may still be incomplete.", config=self.config))
         self.fetch_status_label.setStyleSheet(
             "QLabel { padding: 3px 8px; border: 1px solid #d6a000; "
             "border-radius: 6px; color: #ffd166; background: rgba(214, 160, 0, 0.12); }"
@@ -207,14 +240,14 @@ class PreviewWindow(QMainWindow):
         self.toolbar_actions.addWidget(self.fetch_status_label)
 
         self.addToolBarBreak(Qt.TopToolBarArea)
-        self.toolbar_filters = QToolBar("Preview Filter")
+        self.toolbar_filters = QToolBar(tr("preview.toolbar.filters", "Preview Filters", config=self.config))
         self.toolbar_filters.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.toolbar_filters)
 
         self.view_mode = QComboBox()
-        self.view_mode.setToolTip("Ansicht / Preset")
+        self.view_mode.setToolTip(tr("preview.view.tooltip", "View / preset", config=self.config))
         for view_mode, label in VIEW_LABELS.items():
-            self.view_mode.addItem(label, view_mode)
+            self.view_mode.addItem(preview_view_label(self.config, view_mode), view_mode)
 
         self.view_mode.setCurrentIndex(self.view_mode.findData("filtered"))
         self.view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
@@ -222,14 +255,14 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_filters.addSeparator()
 
-        self.all_status_checkbox = QCheckBox("Alle")
-        self.all_status_checkbox.setToolTip("Alle Status anzeigen")
+        self.all_status_checkbox = QCheckBox(tr("common.all", "All", config=self.config))
+        self.all_status_checkbox.setToolTip(tr("preview.status.all.tooltip", "Show all statuses", config=self.config))
         self.all_status_checkbox.setChecked(False)
         self.all_status_checkbox.stateChanged.connect(self.on_all_status_changed)
         self.toolbar_filters.addWidget(self.all_status_checkbox)
 
         for status in STATUS_ORDER:
-            checkbox = QCheckBox(STATUS_LABELS[status])
+            checkbox = QCheckBox(preview_status_label(self.config, status))
             checkbox.setChecked(status in DEFAULT_VISIBLE_STATUSES)
             checkbox.stateChanged.connect(self.on_status_checkbox_changed)
             self.status_checkboxes[status] = checkbox
@@ -238,18 +271,17 @@ class PreviewWindow(QMainWindow):
         self.toolbar_filters.addSeparator()
 
         self.category_filter = QComboBox()
-        self.category_filter.setToolTip("Kategorie-Filter")
+        self.category_filter.setToolTip(tr("preview.category_filter.tooltip", "Category filter", config=self.config))
         self.category_filter.setMinimumWidth(180)
         self.category_filter.currentIndexChanged.connect(self.on_passive_filter_changed)
         self.toolbar_filters.addWidget(self.category_filter)
 
         self.toolbar_filters.addSeparator()
 
-        self.toolbar_filters.addWidget(QLabel("Vorauswahl: "))
+        self.toolbar_filters.addWidget(QLabel(tr("preview.preselection.label", "Preselection: ", config=self.config)))
         self.recommendation_filter_checkbox = QCheckBox("≥")
         self.recommendation_filter_checkbox.setToolTip(
-            "Filtert die geladenen Preview-Kandidaten nach lokalem Vorauswahl-Score. "
-            "Ausgeschaltet bedeutet: kein Score-Filter."
+            tr("preview.preselection.tooltip", "Filters the loaded preview candidates by local preselection score. Disabled means no score filter.", config=self.config)
         )
         self.recommendation_filter_checkbox.stateChanged.connect(self.on_passive_filter_changed)
         self.toolbar_filters.addWidget(self.recommendation_filter_checkbox)
@@ -261,40 +293,39 @@ class PreviewWindow(QMainWindow):
         self.recommendation_min_spin.setValue(0.0)
         self.recommendation_min_spin.setKeyboardTracking(False)
         self.recommendation_min_spin.setToolTip(
-            "Mindestwert fuer die lokale Vorauswahl. Der Filter greift nur, "
-            "wenn die Checkbox links aktiv ist."
+            tr("preview.preselection_min.tooltip", "Minimum value for local preselection. The filter only applies when the checkbox on the left is enabled.", config=self.config)
         )
         self.recommendation_min_spin.valueChanged.connect(self.on_passive_filter_changed)
         self.toolbar_filters.addWidget(self.recommendation_min_spin)
 
         self.toolbar_filters.addSeparator()
 
-        self.toolbar_filters.addWidget(QLabel("Suche: "))
+        self.toolbar_filters.addWidget(QLabel(tr("common.search.label", "Search: ", config=self.config)))
         self.search_edit = TagQueryLineEdit()
-        self.search_edit.setPlaceholderText("Exakte Tags suchen, z. B. brown_eyes -red_hair")
+        self.search_edit.setPlaceholderText(tr("preview.search.placeholder", "Search exact tags, e.g. brown_eyes -red_hair", config=self.config))
         self.search_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.search_edit.returnPressed.connect(self.reload_posts)
         self.search_edit.setMinimumWidth(280)
         self.toolbar_filters.addWidget(self.search_edit)
 
-        self.search_button = QPushButton("Suchen")
+        self.search_button = QPushButton(tr("common.search", "Search", config=self.config))
         self.search_button.clicked.connect(self.reload_posts)
         self.toolbar_filters.addWidget(self.search_button)
 
-        self.clear_search_button = QPushButton("Leeren")
+        self.clear_search_button = QPushButton(tr("common.clear", "Clear", config=self.config))
         self.clear_search_button.clicked.connect(self.clear_search)
         self.toolbar_filters.addWidget(self.clear_search_button)
 
         self.addToolBarBreak(Qt.TopToolBarArea)
-        self.toolbar_sort = QToolBar("Preview Sortierung")
+        self.toolbar_sort = QToolBar(tr("preview.toolbar.sort", "Preview Sorting", config=self.config))
         self.toolbar_sort.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.toolbar_sort)
 
         self.sort_combo = QComboBox()
-        self.sort_combo.setToolTip("Sortierung")
+        self.sort_combo.setToolTip(tr("preview.sort.tooltip", "Sorting", config=self.config))
         self.sort_combo.setMinimumWidth(240)
         for sort_key, sort_label in SORT_LABELS.items():
-            self.sort_combo.addItem(sort_label, sort_key)
+            self.sort_combo.addItem(preview_sort_label(self.config, sort_key), sort_key)
         saved_sort_key = str(gui_config.get("preview_sort_order", "id_desc") or "id_desc")
         saved_sort_index = self.sort_combo.findData(saved_sort_key)
         if saved_sort_index < 0:
@@ -305,9 +336,9 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_sort.addSeparator()
 
-        self.toolbar_sort.addWidget(QLabel("Limit: "))
+        self.toolbar_sort.addWidget(QLabel(tr("common.limit.label", "Limit: ", config=self.config)))
         self.limit_spin = QSpinBox()
-        self.limit_spin.setToolTip("Limit / maximale Anzahl angezeigter Posts")
+        self.limit_spin.setToolTip(tr("preview.limit.tooltip", "Limit / maximum number of displayed posts", config=self.config))
         self.limit_spin.setRange(50, 5000)
         self.limit_spin.setSingleStep(50)
         self.limit_spin.setValue(self.current_limit)
@@ -318,9 +349,9 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_sort.addSeparator()
 
-        self.toolbar_sort.addWidget(QLabel("Thumbnail: "))
+        self.toolbar_sort.addWidget(QLabel(tr("preview.thumbnail.label", "Thumbnail: ", config=self.config)))
         self.thumbnail_size_spin = QSpinBox()
-        self.thumbnail_size_spin.setToolTip("Thumbnailgröße")
+        self.thumbnail_size_spin.setToolTip(tr("preview.thumbnail_size.tooltip", "Thumbnail size", config=self.config))
         self.thumbnail_size_spin.setRange(
             int(gui_config.get("thumbnail_size_min", 120)),
             int(gui_config.get("thumbnail_size_max", 600)),
@@ -373,7 +404,7 @@ class PreviewWindow(QMainWindow):
 
         self.sync_all_checkbox_from_statuses()
         self.reload_category_filter()
-        self.show_preview_loading("Preview bereit. Wähle eine Ansicht oder klicke auf Neu laden.")
+        self.show_preview_loading(tr("preview.ready_hint", "Preview ready. Choose a view or click Reload.", config=self.config))
 
 
 
@@ -390,7 +421,7 @@ class PreviewWindow(QMainWindow):
         layout.setSpacing(16)
         layout.addStretch(1)
 
-        self.loading_label = QLabel("Lädt Preview…")
+        self.loading_label = QLabel(tr("preview.loading", "Loading preview…", config=self.config))
         self.loading_label.setAlignment(Qt.AlignCenter)
         self.loading_label.setStyleSheet(
             "QLabel { color: #eeeeee; font-size: 20px; font-weight: bold; }"
@@ -407,7 +438,9 @@ class PreviewWindow(QMainWindow):
         layout.addStretch(1)
         return panel
 
-    def show_preview_loading(self, message: str = "Lädt Preview…") -> None:
+    def show_preview_loading(self, message: str = "") -> None:
+        if not message:
+            message = tr("preview.loading", "Loading preview…", config=self.config)
         self.loading_label.setText(message)
         self.loading_bar.setRange(0, 0)
         self.content_stack.setCurrentWidget(self.loading_panel)
@@ -483,7 +516,7 @@ class PreviewWindow(QMainWindow):
 
     def on_tag_suggestions_failed(self, token: str, traceback_text: str) -> None:
         if bool(self.config.get("debug_startup")):
-            self.status_bar.showMessage(f"Tag-Vorschläge für '{token}' konnten nicht geladen werden.", 5000)
+            self.status_bar.showMessage(tr("preview.tag_suggestions_failed", "Tag suggestions for '{token}' could not be loaded.", config=self.config, token=token), 5000)
             print(traceback_text, flush=True)
 
     def cleanup_suggestion_thread(self) -> None:
@@ -498,17 +531,17 @@ class PreviewWindow(QMainWindow):
 
     def on_grid_build_started(self, total: int) -> None:
         if total > 0:
-            self.show_preview_loading(f"Lädt Thumbnails… 0/{total}")
-            self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{total}")
+            self.show_preview_loading(tr("preview.loading_thumbnails_progress", "Loading thumbnails… {current}/{total}", config=self.config, current=0, total=total))
+            self.status_bar.showMessage(tr("preview.loading_cards_progress", "Loading preview cards… {current}/{total}", config=self.config, current=0, total=total))
 
     def on_grid_build_progress(self, current: int, total: int) -> None:
         if total > 0:
-            self.loading_label.setText(f"Lädt Thumbnails… {current}/{total}")
-            self.status_bar.showMessage(f"Lädt Preview-Karten… {current}/{total}")
+            self.loading_label.setText(tr("preview.loading_thumbnails_progress", "Loading thumbnails… {current}/{total}", config=self.config, current=current, total=total))
+            self.status_bar.showMessage(tr("preview.loading_cards_progress", "Loading preview cards… {current}/{total}", config=self.config, current=current, total=total))
             QApplication.processEvents()
 
     def on_grid_build_finished(self, total: int) -> None:
-        self.status_bar.showMessage(f"Preview geladen: {total} Thumbnail(s)", 5000)
+        self.status_bar.showMessage(tr("preview.loaded_thumbnails", "Preview loaded: {total} thumbnail(s)", config=self.config, total=total), 5000)
         QTimer.singleShot(0, self.hide_preview_loading)
 
     @staticmethod
@@ -520,11 +553,11 @@ class PreviewWindow(QMainWindow):
         self.fetch_status_label.setVisible(self._fetch_running)
 
         if self._fetch_running:
-            self.status_bar.showMessage("Fetch läuft: Preview wird aktualisiert, sobald neue Posts geladen wurden.")
+            self.status_bar.showMessage(tr("preview.fetch_running_status", "Fetch running: preview will update as soon as new posts are loaded.", config=self.config))
             if not self.grid.has_visible_content():
-                self.grid.show_empty_message("Fetch läuft… Noch keine Posts in dieser Ansicht.")
+                self.grid.show_empty_message(tr("preview.fetch_running_empty", "Fetch running… No posts in this view yet.", config=self.config))
         else:
-            self.status_bar.showMessage("Fetch beendet. Preview wird aktualisiert.", 5000)
+            self.status_bar.showMessage(tr("preview.fetch_finished_status", "Fetch finished. Preview will update.", config=self.config), 5000)
 
         self.grid.viewport().update()
         self.grid.update()
@@ -560,10 +593,10 @@ class PreviewWindow(QMainWindow):
         # erstem Öffnen oder geänderten Filtern. Revolutionär: nicht unnötig arbeiten.
         if not self.preview_needs_reload():
             self.show_preview_grid_without_reload()
-            self.status_bar.showMessage("Preview bereit.", 3000)
+            self.status_bar.showMessage(tr("preview.ready", "Preview ready.", config=self.config), 3000)
             return
 
-        self.show_preview_loading("Lädt Preview…")
+        self.show_preview_loading(tr("preview.loading", "Loading preview…", config=self.config))
         self.content_stack.setCurrentWidget(self.loading_panel)
         self.loading_panel.raise_()
         self.content_stack.repaint()
@@ -582,8 +615,8 @@ class PreviewWindow(QMainWindow):
         self.category_filter.blockSignals(True)
         try:
             self.category_filter.clear()
-            self.category_filter.addItem("Alle Kategorien", "__all__")
-            self.category_filter.addItem("_unmatched / keine Kategorie", "__unmatched__")
+            self.category_filter.addItem(tr("preview.category.all", "All Categories", config=self.config), "__all__")
+            self.category_filter.addItem(tr("preview.category.unmatched", "_unmatched / no category", config=self.config), "__unmatched__")
 
             for row in self.db.list_categories_full():
                 name = str(row["name"])
@@ -810,7 +843,7 @@ class PreviewWindow(QMainWindow):
 
         category = self.db.get_category_by_name(category_name)
         if category is None:
-            self.status_bar.showMessage(f"Kategorie nicht gefunden: {category_name}")
+            self.status_bar.showMessage(tr("preview.category_not_found", "Category not found: {category}", config=self.config, category=category_name))
             return
 
         category_id = int(category["id"])
@@ -836,7 +869,7 @@ class PreviewWindow(QMainWindow):
         self.db.commit()
 
         # Absichtlich kein Popup. Review-Workflow soll nicht von Dialogen zerhackt werden.
-        self.status_bar.showMessage(f"{len(post_ids)} Post(s) → Kategorie {category_name}")
+        self.status_bar.showMessage(tr("preview.category_assigned", "{count} post(s) → category {category}", config=self.config, count=len(post_ids), category=category_name))
 
     # -------------------------------------------------------------------------
     # Status-Checkbox-Filter
@@ -937,13 +970,13 @@ class PreviewWindow(QMainWindow):
         except Exception as exc:
             # Sortierung soll nicht den ganzen Previewer zerlegen, nur weil SQLite
             # gerade beleidigt ist. Der sichtbare Reload bleibt trotzdem korrekt.
-            self.status_bar.showMessage(f"Sortierung konnte nicht gespeichert werden: {exc}", 8000)
+            self.status_bar.showMessage(tr("preview.sort_save_failed", "Sorting could not be saved: {error}", config=self.config, error=exc), 8000)
 
         self.on_passive_filter_changed()
 
     def on_passive_filter_changed(self, *_args) -> None:
         self._filters_dirty = True
-        self.status_bar.showMessage("Filter geändert. Preview lädt automatisch neu…", 3000)
+        self.status_bar.showMessage(tr("preview.filter_changed", "Filter changed. Preview reloads automatically…", config=self.config), 3000)
         self.schedule_reload()
 
     def schedule_reload(self, *_args) -> None:
@@ -969,7 +1002,7 @@ class PreviewWindow(QMainWindow):
 
     def on_thumbnail_size_changed(self, size: int) -> None:
         self.grid.set_thumbnail_size(int(size))
-        self.status_bar.showMessage(f"Thumbnail-Größe: {size}px")
+        self.status_bar.showMessage(tr("preview.thumbnail_size_status", "Thumbnail size: {size}px", config=self.config, size=size))
 
     def reload_posts(self) -> None:
         if self._applying_viewer_query:
@@ -981,8 +1014,8 @@ class PreviewWindow(QMainWindow):
 
         self.reload_timer.stop()
         self._is_reloading = True
-        self.show_preview_loading("Lädt Preview…")
-        self.status_bar.showMessage("Lädt Preview…")
+        self.show_preview_loading(tr("preview.loading", "Loading preview…", config=self.config))
+        self.status_bar.showMessage(tr("preview.loading", "Loading preview…", config=self.config))
         QApplication.processEvents()
 
         try:
@@ -1044,24 +1077,24 @@ class PreviewWindow(QMainWindow):
             score_summary = self.preview_score_summary(filtered if python_filtered_or_sorted else enriched)
 
             self.info_label.setText(
-                f"Angezeigt: {len(posts)}/{total_filtered}{total_suffix}\n"
-                f"{score_summary}"
+                tr("preview.info_displayed", "Displayed: {shown}/{total}{suffix}", config=self.config, shown=len(posts), total=total_filtered, suffix=total_suffix)
+                + "\n"
+                + score_summary
             )
             if posts:
-                self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{len(posts)}")
+                self.status_bar.showMessage(tr("preview.loading_cards_progress", "Loading preview cards… {current}/{total}", config=self.config, current=0, total=len(posts)))
             else:
                 self.hide_preview_loading()
-                self.status_bar.showMessage("Preview geladen: keine Treffer", 5000)
+                self.status_bar.showMessage(tr("preview.loaded_no_hits", "Preview loaded: no hits", config=self.config), 5000)
 
         except sqlite3.OperationalError as exc:
             if "database is locked" in str(exc).lower() or "database table is locked" in str(exc).lower():
                 self.show_preview_loading(
-                    "Datenbank ist gerade beschäftigt. Fetch oder Speichern läuft noch – "
-                    "bitte gleich erneut laden."
+                    tr("preview.database_busy", "Database is busy. Fetch or save is still running. Please reload again shortly.", config=self.config)
                 )
                 self.loading_bar.setRange(0, 1)
                 self.loading_bar.setValue(0)
-                self.status_bar.showMessage("Datenbank ist gesperrt. Preview wartet auf den nächsten Reload.", 8000)
+                self.status_bar.showMessage(tr("preview.database_locked", "Database is locked. Preview is waiting for the next reload.", config=self.config), 8000)
                 self._reload_pending = True
             else:
                 raise
@@ -1074,12 +1107,12 @@ class PreviewWindow(QMainWindow):
 
     def status_filter_description(self, statuses: list[str]) -> str:
         if not statuses:
-            return "Keine"
+            return tr("common.none", "None", config=self.config)
 
         if set(statuses) == set(STATUS_ORDER):
-            return "Alle"
+            return tr("common.all", "All", config=self.config)
 
-        return ", ".join(STATUS_LABELS.get(status, status) for status in statuses)
+        return ", ".join(preview_status_label(self.config, status) for status in statuses)
 
     def build_preview_where(
         self,
@@ -1304,7 +1337,7 @@ class PreviewWindow(QMainWindow):
     def reload_thumbnails_for_posts(self, post_ids: list[int]) -> None:
         clean_ids = [int(post_id) for post_id in post_ids if post_id]
         if not clean_ids:
-            self.status_bar.showMessage("Thumbnail neu laden: kein Post ausgewählt.", 4000)
+            self.status_bar.showMessage(tr("preview.reload_thumbnail.none", "Reload thumbnail: no post selected.", config=self.config), 4000)
             return
 
         self.reload_thumbnails_button.setEnabled(False)
@@ -1339,16 +1372,16 @@ class PreviewWindow(QMainWindow):
 
         if failed:
             self.status_bar.showMessage(
-                f"Thumbnails neu geladen: {updated}, Fehler: {len(failed)}",
+                tr("preview.reload_thumbnail.done_with_errors", "Thumbnails reloaded: {updated}, errors: {errors}", config=self.config, updated=updated, errors=len(failed)),
                 8000,
             )
             QMessageBox.warning(
                 self,
-                "Thumbnail neu laden",
-                "Einige Thumbnails konnten nicht neu geladen werden:\n" + "\n".join(failed[:12]),
+                tr("preview.reload_thumbnails", "Reload Thumbnail", config=self.config),
+                tr("preview.reload_thumbnail.some_failed", "Some thumbnails could not be reloaded:\n", config=self.config) + "\n".join(failed[:12]),
             )
         else:
-            self.status_bar.showMessage(f"Thumbnails neu geladen: {updated}", 5000)
+            self.status_bar.showMessage(tr("preview.reload_thumbnail.done", "Thumbnails reloaded: {updated}", config=self.config, updated=updated), 5000)
 
     def thumbnail_post_payload_from_db(self, post_id: int) -> dict[str, Any]:
         row = self.db.execute(
@@ -1360,7 +1393,7 @@ class PreviewWindow(QMainWindow):
             (int(post_id),),
         ).fetchone()
         if row is None:
-            raise RuntimeError(f"Post {post_id} nicht in der DB")
+            raise RuntimeError(tr("preview.post_not_in_db", "Post {post_id} is not in the database", config=self.config, post_id=post_id))
 
         post = {
             "id": int(row["id"]),
@@ -1403,7 +1436,7 @@ class PreviewWindow(QMainWindow):
 
     def final_save_posts(self, post_ids: list[int]) -> None:
         if not post_ids:
-            self.status_bar.showMessage("Speichern: keine Posts ausgewählt.")
+            self.status_bar.showMessage(tr("preview.save.none", "Save: no posts selected.", config=self.config))
             return
 
         saved: list[str] = []
@@ -1429,20 +1462,20 @@ class PreviewWindow(QMainWindow):
         parts: list[str] = []
 
         if saved:
-            parts.append(f"Gespeichert: {len(saved)}")
+            parts.append(tr("preview.save.saved_count", "Saved: {count}", config=self.config, count=len(saved)))
         if skipped:
-            parts.append(f"Bereits gespeichert/übersprungen: {len(skipped)}")
+            parts.append(tr("preview.save.skipped_count", "Already saved/skipped: {count}", config=self.config, count=len(skipped)))
         if failed:
-            parts.append(f"Fehler: {len(failed)}")
+            parts.append(tr("preview.errors_count", "Errors: {count}", config=self.config, count=len(failed)))
 
-        summary = " | ".join(parts) if parts else "Nichts erledigt."
+        summary = " | ".join(parts) if parts else tr("preview.no_action_done", "Nothing done.", config=self.config)
         self.status_bar.showMessage(summary)
 
         if failed:
             QMessageBox.warning(
                 self,
-                "Speichern",
-                summary + "\n\nFehler:\n" + "\n".join(failed[:10]),
+                tr("common.save", "Save", config=self.config),
+                summary + tr("preview.error_block", "\n\nErrors:\n", config=self.config) + "\n".join(failed[:10]),
             )
 
     def delete_final_files_for_posts(self, post_ids: list[int]) -> None:
@@ -1456,7 +1489,7 @@ class PreviewWindow(QMainWindow):
             clean_ids.append(post_id_int)
 
         if not clean_ids:
-            self.status_bar.showMessage("Lokale Datei löschen: kein Post ausgewählt.", 4000)
+            self.status_bar.showMessage(tr("preview.delete_local.none", "Delete local file: no post selected.", config=self.config), 4000)
             return
 
         rows = []
@@ -1465,28 +1498,27 @@ class PreviewWindow(QMainWindow):
             row = self.db.get_post_detail(post_id)
             final_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
             if final_path is None:
-                missing.append(f"{post_id}: kein lokaler Pfad")
+                missing.append(f"{post_id}: " + tr("preview.delete_local.no_path_short", "no local path", config=self.config))
                 continue
             rows.append((post_id, row, final_path))
 
         if not rows:
             QMessageBox.information(
                 self,
-                "Lokale Datei löschen",
-                "Für die Auswahl ist kein lokaler Speicherpfad eingetragen.\n" + "\n".join(missing[:10]),
+                tr("preview.delete_local.title", "Delete Local File", config=self.config),
+                tr("preview.delete_local.no_path", "No local storage path is set for the selection.\n", config=self.config) + "\n".join(missing[:10]),
             )
             return
 
         preview_lines = [f"{post_id}: {path}" for post_id, _row, path in rows[:12]]
         if len(rows) > 12:
-            preview_lines.append(f"... und {len(rows) - 12} weitere")
+            preview_lines.append(tr("preview.and_more", "... and {count} more", config=self.config, count=len(rows) - 12))
 
         answer = QMessageBox.question(
             self,
-            "Lokale Dateien löschen",
+            tr("preview.delete_local.title_plural", "Delete Local Files", config=self.config),
             (
-                "Diese lokale Datei bzw. diese lokalen Dateien werden gelöscht.\n"
-                "Die DB-Einträge bleiben erhalten, aber die lokalen Dateipfade werden geleert.\n\n"
+                tr("preview.delete_local.confirm", "These local file(s) will be deleted.\nThe database entries stay in place, but local file paths will be cleared.\n\n", config=self.config)
                 + "\n".join(preview_lines)
             ),
         )
@@ -1499,7 +1531,7 @@ class PreviewWindow(QMainWindow):
             try:
                 if path.exists():
                     if not path.is_file():
-                        raise RuntimeError("Pfad ist keine Datei")
+                        raise RuntimeError(tr("preview.delete_local.path_not_file", "Path is not a file", config=self.config))
                     path.unlink()
                 new_status = "new" if str(row["status"] or "") == "saved" else None
                 self.db.clear_post_final_file_path(post_id, new_status=new_status)
@@ -1509,12 +1541,12 @@ class PreviewWindow(QMainWindow):
                 failed.append(f"{post_id}: {exc}")
 
         self.schedule_reload()
-        self.status_bar.showMessage(f"Lokale Dateien gelöscht: {deleted}, Fehler: {len(failed)}", 8000)
+        self.status_bar.showMessage(tr("preview.delete_local.done", "Local files deleted: {deleted}, errors: {errors}", config=self.config, deleted=deleted, errors=len(failed)), 8000)
         if failed:
             QMessageBox.warning(
                 self,
-                "Lokale Dateien löschen",
-                f"Gelöscht: {deleted}\nFehler: {len(failed)}\n\n" + "\n".join(failed[:12]),
+                tr("preview.delete_local.title_plural", "Delete Local Files", config=self.config),
+                tr("preview.delete_local.error_summary", "Deleted: {deleted}\nErrors: {errors}\n\n", config=self.config, deleted=deleted, errors=len(failed)) + "\n".join(failed[:12]),
             )
 
     # -------------------------------------------------------------------------
@@ -1523,17 +1555,17 @@ class PreviewWindow(QMainWindow):
 
     def on_status_changed(self, post_id: int, status: str) -> None:
         if status == "deleted":
-            self.status_bar.showMessage(f"Post {post_id} wurde aus der DB entfernt")
+            self.status_bar.showMessage(tr("preview.post_removed", "Post {post_id} was removed from the database", config=self.config, post_id=post_id))
             self.schedule_reload()
             return
 
         self.grid.update_card_status(post_id, status)
-        self.status_bar.showMessage(f"Post {post_id} → {STATUS_LABELS.get(status, status)}")
+        self.status_bar.showMessage(tr("preview.status_changed", "Post {post_id} → {status}", config=self.config, post_id=post_id, status=preview_status_label(self.config, status)))
 
 
     def on_statuses_changed(self, post_ids: list[int], status: str) -> None:
         count = len(post_ids)
-        self.status_bar.showMessage(f"{count} Post(s) → {STATUS_LABELS.get(status, status)}")
+        self.status_bar.showMessage(tr("preview.statuses_changed", "{count} post(s) → {status}", config=self.config, count=count, status=preview_status_label(self.config, status)))
 
     def open_viewer(self, post_id: int) -> None:
         post_id = int(post_id)
@@ -1591,7 +1623,7 @@ class PreviewWindow(QMainWindow):
             self._applying_viewer_query = False
 
         self.reload_posts()
-        self.status_bar.showMessage(f"Query aus Viewer übernommen: {query}")
+        self.status_bar.showMessage(tr("preview.query_from_viewer", "Query from viewer applied: {query}", config=self.config, query=query))
 
     def cleanup_viewers(self) -> None:
         self.viewer_windows_by_post_id = {

@@ -110,8 +110,6 @@
       "args": [
         "main.py",
         "--debug-startup",
-        "--config",
-        "config.yaml",
         "--gui"
       ],
       "problemMatcher": [],
