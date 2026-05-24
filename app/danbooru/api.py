@@ -67,6 +67,19 @@ class DanbooruApi:
             raise RuntimeError(f"Unerwartete Danbooru-Post-Antwort: {post!r}")
         return post
 
+    def get_post_by_md5(self, md5_hash: str) -> dict[str, Any] | None:
+        clean_hash = str(md5_hash or "").strip().lower()
+        if len(clean_hash) != 32 or any(char not in "0123456789abcdef" for char in clean_hash):
+            raise ValueError(f"Ungültiger MD5-Hash: {md5_hash!r}")
+
+        page = self.get_posts(f"md5:{clean_hash}", limit=1)
+        if not page.posts:
+            return None
+        post = page.posts[0]
+        if not isinstance(post, dict):
+            raise RuntimeError(f"Unerwartete Danbooru-Post-Antwort: {post!r}")
+        return post
+
     def get_saved_searches(self) -> list[dict[str, Any]]:
         url = urljoin(self.base_url, "saved_searches.json")
         LOGGER.debug("Danbooru GET %s", url)

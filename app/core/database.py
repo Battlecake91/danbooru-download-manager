@@ -1282,6 +1282,93 @@ class Database:
             raise RuntimeError(f"Kategorie nicht gefunden: {category_name}")
         self.assign_post_category(post_id, int(category["id"]), source)
 
+    def import_existing_saved_file(self, post_id: int, category_id: int, file_path: str, source: str = "import") -> None:
+        """Mark an already downloaded local file as saved and feed its tags into scoring.
+
+        Used by the legacy-file importer. It deliberately does not move files,
+        because the import source folder is supposed to remain under the user's
+        control. Touching old download folders without being asked is how tools
+        earn uninstall privileges.
+        """
+        path = Path(str(file_path)).expanduser()
+        final_path = str(path)
+        final_directory = str(path.parent)
+
+        self.execute(
+            """
+            UPDATE posts
+            SET status = 'saved',
+                final_file_path = ?,
+                final_directory = ?,
+                original_path = COALESCE(original_path, ?),
+                downloaded_at = COALESCE(downloaded_at, CURRENT_TIMESTAMP),
+                saved_at = COALESCE(saved_at, CURRENT_TIMESTAMP),
+                reviewed_at = COALESCE(reviewed_at, CURRENT_TIMESTAMP),
+                last_seen_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (final_path, final_directory, final_path, int(post_id)),
+        )
+
+        self.execute("DELETE FROM post_categories WHERE post_id = ?", (int(post_id),))
+        self.execute(
+            """
+            INSERT INTO post_categories (post_id, category_id, source)
+            VALUES (?, ?, ?)
+            """,
+            (int(post_id), int(category_id), source),
+        )
+
+        affected_tags = self._fetch_tags_for_posts([int(post_id)])
+        if affected_tags:
+            self.refresh_tag_statistics_for_tags(affected_tags)
+
+        self.commit()
+
+    def update_post_final_file_path(self, post_id: int, file_path: str) -> None:
+        path = Path(str(file_path)).expanduser()
+        self.execute(
+            """
+            UPDATE posts
+            SET final_file_path = ?,
+                final_directory = ?,
+                original_path = COALESCE(original_path, ?),
+                status = 'saved',
+                saved_at = COALESCE(saved_at, CURRENT_TIMESTAMP),
+                last_seen_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (str(path), str(path.parent), str(path), int(post_id)),
+        )
+        self.commit()
+
+    def fetch_saved_file_posts_for_category(self, category_id: int | None = None) -> list[sqlite3.Row]:
+        parameters: list[Any] = []
+        category_filter = ""
+        if category_id is not None:
+            category_filter = "AND pc.category_id = ?"
+            parameters.append(int(category_id))
+
+        return list(
+            self.execute(
+                f"""
+                SELECT DISTINCT
+                    p.id,
+                    p.final_file_path,
+                    p.file_ext,
+                    pc.category_id
+                FROM posts p
+                JOIN post_categories pc ON pc.post_id = p.id
+                WHERE p.final_file_path IS NOT NULL
+                  AND p.final_file_path != ''
+                  AND p.status = 'saved'
+                  {category_filter}
+                ORDER BY p.saved_at DESC, p.id DESC
+                """,
+                parameters,
+            ).fetchall()
+        )
+
     def get_assigned_category_for_post(self, post_id: int) -> sqlite3.Row | None:
         return self.execute(
             """

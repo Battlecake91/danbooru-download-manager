@@ -9,6 +9,7 @@ from app.gui.category_tab import CategoryTab
 from app.gui.config_tab import ConfigTab
 from app.gui.fetch_tab import FetchTab
 from app.gui.icon_utils import ensure_app_icon
+from app.gui.import_tab import ImportTab
 from app.gui.preview_window import PreviewWindow
 from app.gui.tag_tab import TagTab
 
@@ -28,12 +29,14 @@ class AppWindow(QMainWindow):
 
         self.fetch_tab = FetchTab(config, db)
         self.preview_window = PreviewWindow(config, db)
+        self.import_tab = ImportTab(config, db)
         self.tag_tab = TagTab(config, db)
         self.category_tab = CategoryTab(config, db)
         self.config_tab = ConfigTab(config, db)
 
         self.tabs.addTab(self.fetch_tab, "Fetch / Suche")
         self.tabs.addTab(self.preview_window, "Preview / Review")
+        self.tabs.addTab(self.import_tab, "Importer")
         self.tabs.addTab(self.tag_tab, "Tags")
         self.tabs.addTab(self.category_tab, "Kategorien")
         self.tabs.addTab(self.config_tab, "Konfiguration")
@@ -43,6 +46,7 @@ class AppWindow(QMainWindow):
         self.fetch_tab.fetch_failed_signal.connect(self.on_fetch_failed)
         self.fetch_tab.open_preview_requested.connect(self.open_preview_tab)
         self.config_tab.config_changed.connect(self.on_config_changed)
+        self.import_tab.import_finished.connect(self.on_import_finished)
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
     def on_tab_changed(self, index: int) -> None:
@@ -73,6 +77,9 @@ class AppWindow(QMainWindow):
         index = self.tabs.indexOf(self.preview_window)
         if index >= 0:
             self.tabs.setCurrentIndex(index)
+
+    def on_import_finished(self) -> None:
+        self.preview_window.schedule_reload()
 
     def on_config_changed(self) -> None:
         # Laufende Widgets haben Referenz auf dasselbe config-dict.
