@@ -204,8 +204,8 @@ class PreviewWindow(QMainWindow):
         self.toolbar_filters.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.toolbar_filters)
 
-        self.toolbar_filters.addWidget(QLabel("Ansicht: "))
         self.view_mode = QComboBox()
+        self.view_mode.setToolTip("Ansicht / Preset")
         for view_mode, label in VIEW_LABELS.items():
             self.view_mode.addItem(label, view_mode)
 
@@ -215,9 +215,8 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_filters.addSeparator()
 
-        self.toolbar_filters.addWidget(QLabel("Status: "))
-
         self.all_status_checkbox = QCheckBox("Alle")
+        self.all_status_checkbox.setToolTip("Alle Status anzeigen")
         self.all_status_checkbox.setChecked(False)
         self.all_status_checkbox.stateChanged.connect(self.on_all_status_changed)
         self.toolbar_filters.addWidget(self.all_status_checkbox)
@@ -231,15 +230,15 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_filters.addSeparator()
 
-        self.toolbar_filters.addWidget(QLabel("Kategorie: "))
         self.category_filter = QComboBox()
+        self.category_filter.setToolTip("Kategorie-Filter")
         self.category_filter.setMinimumWidth(180)
         self.category_filter.currentIndexChanged.connect(self.on_passive_filter_changed)
         self.toolbar_filters.addWidget(self.category_filter)
 
         self.toolbar_filters.addSeparator()
 
-        self.recommendation_filter_checkbox = QCheckBox("Vorauswahl ≥")
+        self.recommendation_filter_checkbox = QCheckBox("≥")
         self.recommendation_filter_checkbox.setToolTip(
             "Filtert die geladenen Preview-Kandidaten nach lokalem Vorauswahl-Score. "
             "Ausgeschaltet bedeutet: kein Score-Filter."
@@ -283,8 +282,8 @@ class PreviewWindow(QMainWindow):
         self.toolbar_sort.setMovable(False)
         self.addToolBar(Qt.TopToolBarArea, self.toolbar_sort)
 
-        self.toolbar_sort.addWidget(QLabel("Sortierung: "))
         self.sort_combo = QComboBox()
+        self.sort_combo.setToolTip("Sortierung")
         self.sort_combo.setMinimumWidth(240)
         for sort_key, sort_label in SORT_LABELS.items():
             self.sort_combo.addItem(sort_label, sort_key)
@@ -296,6 +295,7 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_sort.addWidget(QLabel("Limit: "))
         self.limit_spin = QSpinBox()
+        self.limit_spin.setToolTip("Limit / maximale Anzahl angezeigter Posts")
         self.limit_spin.setRange(50, 5000)
         self.limit_spin.setSingleStep(50)
         self.limit_spin.setValue(self.current_limit)
@@ -306,8 +306,8 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_sort.addSeparator()
 
-        self.toolbar_sort.addWidget(QLabel("Thumbnail: "))
         self.thumbnail_size_spin = QSpinBox()
+        self.thumbnail_size_spin.setToolTip("Thumbnailgröße")
         self.thumbnail_size_spin.setRange(
             int(gui_config.get("thumbnail_size_min", 120)),
             int(gui_config.get("thumbnail_size_max", 600)),
@@ -735,7 +735,7 @@ class PreviewWindow(QMainWindow):
 
     def preview_score_summary(self, rows: list[dict[str, Any]]) -> str:
         if not rows:
-            return "Vorauswahl: keine Treffer"
+            return "Best – | Worst – | Average –"
 
         scores: list[float] = []
         for row in rows:
@@ -748,7 +748,7 @@ class PreviewWindow(QMainWindow):
         worst = min(scores) if scores else 0.0
         average = sum(scores) / len(scores) if scores else 0.0
         return (
-            f"Vorauswahl: Best {best:+.1f} | Worst {worst:+.1f} | Average {average:+.1f}"
+            f"Best {best:+.1f} | Worst {worst:+.1f} | Average {average:+.1f}"
         )
 
     def assign_category_to_posts(self, post_ids: list[int], category_name: str) -> None:
@@ -972,23 +972,10 @@ class PreviewWindow(QMainWindow):
             self._has_loaded_once = True
             self._filters_dirty = False
 
-            status_text = self.status_filter_description(statuses)
-            category_text = self.category_filter.currentText()
-            recommendation_filter_text = (
-                f"Vorauswahl ≥ {recommendation_minimum:+.1f}"
-                if recommendation_minimum is not None
-                else "Vorauswahl: alle"
-            )
             score_summary = self.preview_score_summary(filtered if python_filtered_or_sorted else enriched)
 
             self.info_label.setText(
-                f"Angezeigt: {len(posts)}/{total_filtered}{total_suffix} | "
-                f"Basis-Treffer: {base_total} | "
-                f"Ansicht: {VIEW_LABELS.get(self.selected_view_mode(), self.selected_view_mode())} | "
-                f"Status: {status_text}\n"
-                f"Kategorie: {category_text} | {recommendation_filter_text} | "
-                f"Sortierung: {self.sort_combo.currentText()} | "
-                f"Thumbnail: {self.grid.thumbnail_size}px\n"
+                f"Angezeigt: {len(posts)}/{total_filtered}{total_suffix}\n"
                 f"{score_summary}"
             )
             if posts:

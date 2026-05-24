@@ -536,7 +536,13 @@ class ConfigTab(QWidget):
         preset = str(self.thumbnail_preset_combo.currentData() or "custom")
         is_custom = preset == "custom"
         self.thumbnail_size_spin.setVisible(is_custom)
-        self.gui_form.labelForField(self.thumbnail_size_spin).setVisible(is_custom)
+        thumbnail_size_label = None
+        if hasattr(self, "preview_left_layout"):
+            thumbnail_size_label = self.preview_left_layout.labelForField(self.thumbnail_size_spin)
+        if thumbnail_size_label is None:
+            thumbnail_size_label = self.gui_form.labelForField(self.thumbnail_size_spin)
+        if thumbnail_size_label is not None:
+            thumbnail_size_label.setVisible(is_custom)
         if not is_custom:
             size = THUMBNAIL_SIZE_PRESETS.get(preset, 340)
             if self.thumbnail_size_spin.value() != size:
