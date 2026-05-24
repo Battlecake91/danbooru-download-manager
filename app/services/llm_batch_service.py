@@ -8,6 +8,7 @@ from typing import Any, Iterable
 import requests
 
 from app.core.database import Database
+from app.i18n.i18n import tr
 from app.services.llm_payload_service import LLMPayloadService
 
 
@@ -35,6 +36,9 @@ class LLMBatchPreselectionService:
         self.log_callback = log_callback
         self.payload_service = LLMPayloadService(config, db)
 
+    def _tr(self, key: str, default: str | None = None, **kwargs: Any) -> str:
+        return tr(key, default, config=self.config, **kwargs)
+
     def log(self, message: str) -> None:
         if self.log_callback is not None:
             self.log_callback(message)
@@ -47,7 +51,7 @@ class LLMBatchPreselectionService:
         result.input_posts = len(input_ids)
 
         if not bool(llm_config.get("run_after_fetch", False)):
-            result.skipped_reason = "LLM nach Fetch ist deaktiviert."
+            result.skipped_reason = self._tr("llm.batch.reason.after_fetch_disabled", "LLM after fetch is disabled.")
             self._store_last_fetch_summary(result, input_ids=input_ids, candidates=[], payloads=[])
             return result
 
@@ -57,11 +61,14 @@ class LLMBatchPreselectionService:
         status_list = [str(status) for status in statuses if str(status).strip()]
         skip_scored = bool(llm_config.get("skip_already_scored", True))
 
-        self.log(f"LLM-Batch: Eingangsposts: {len(input_ids)}")
+        self.log(self._tr("llm.batch.log.input_posts", "LLM batch: input posts: {count}", count=len(input_ids)))
         self.log(
-            "LLM-Batch: Statusfilter: "
-            + (", ".join(status_list) if status_list else "alle")
-            + f" | bereits bewertete ueberspringen: {'ja' if skip_scored else 'nein'}"
+            self._tr(
+                "llm.batch.log.status_filter",
+                "LLM batch: status filter: {statuses} | skip already scored: {skip_scored}",
+                statuses=", ".join(status_list) if status_list else self._tr("common.all", "all"),
+                skip_scored=self._tr("common.yes", "yes") if skip_scored else self._tr("common.no", "no"),
+            )
         )
 
         candidates = self.db.filter_post_ids_for_llm(
@@ -71,10 +78,10 @@ class LLMBatchPreselectionService:
         )
         result.candidate_posts = len(candidates)
         result.skipped_posts = max(0, len(input_ids) - len(candidates))
-        self.log(f"LLM-Batch: Kandidaten nach Filter: {len(candidates)} | uebersprungen: {result.skipped_posts}")
+        self.log(self._tr("llm.batch.log.candidates", "LLM batch: candidates after filter: {candidates} | skipped: {skipped}", candidates=len(candidates), skipped=result.skipped_posts))
 
         if not candidates:
-            result.skipped_reason = "Keine passenden neuen Posts fuer LLM-Batch vorhanden."
+            result.skipped_reason = self._tr("llm.batch.reason.no_candidates", "No matching new posts for LLM batch.")
             self._store_last_fetch_summary(result, input_ids=input_ids, candidates=candidates, payloads=[])
             return result
 
@@ -84,28 +91,28 @@ class LLMBatchPreselectionService:
         result.batch_summaries = self._summarize_payloads(payloads)
 
         self._store_last_fetch_summary(result, input_ids=input_ids, candidates=candidates, payloads=payloads)
-        self.log(f"LLM-Batch: {len(candidates)} Posts in {len(payloads)} Payload(s) vorbereitet.")
+        self.log(self._tr("llm.batch.log.payloads_prepared", "LLM batch: prepared {posts} posts in {payloads} payload(s).", posts=len(candidates), payloads=len(payloads)))
         for batch in result.batch_summaries:
             ids = batch.get("post_ids", [])
             id_text = ", ".join(str(post_id) for post_id in ids[:20])
             if len(ids) > 20:
                 id_text += ", ..."
-            self.log(f"LLM-Batch {batch.get('index')}/{batch.get('total')}: Posts {batch.get('post_count')}: {id_text}")
+            self.log(self._tr("llm.batch.log.batch_posts", "LLM batch {index}/{total}: posts {count}: {ids}", index=batch.get("index"), total=batch.get("total"), count=batch.get("post_count"), ids=id_text))
 
         if not bool(llm_config.get("enabled", False)):
-            result.skipped_reason = "LLM deaktiviert: Payloads wurden nur vorbereitet."
+            result.skipped_reason = self._tr("llm.batch.reason.disabled_payloads_only", "LLM disabled: payloads were prepared only.")
             self._store_last_fetch_summary(result, input_ids=input_ids, candidates=candidates, payloads=payloads)
             return result
 
         backend = str(llm_config.get("backend", "none") or "none").lower()
         if backend == "none":
-            result.skipped_reason = "LLM-Backend ist 'none': Payloads wurden nur vorbereitet."
+            result.skipped_reason = self._tr("llm.batch.reason.backend_none", "LLM backend is 'none': payloads were prepared only.")
             self._store_last_fetch_summary(result, input_ids=input_ids, candidates=candidates, payloads=payloads)
             return result
 
         model = str(llm_config.get("model", "") or "").strip()
         for index, payload in enumerate(payloads, start=1):
-            self.log(f"LLM-Batch {index}/{len(payloads)} wird gesendet...")
+            self.log(self._tr("llm.batch.log.sending", "Sending LLM batch {index}/{total}...", index=index, total=len(payloads)))
             try:
                 decisions = self._send_payload(payload, backend=backend)
                 decisions = self._resolve_decision_categories(decisions)
@@ -113,9 +120,9 @@ class LLMBatchPreselectionService:
                 result.decisions_received += len(decisions)
                 saved = self.db.store_llm_decisions(decisions, model=model or backend)
                 result.decisions_saved += saved
-                self.log(f"LLM-Batch {index}/{len(payloads)}: {len(decisions)} Entscheidungen empfangen, {saved} gespeichert.")
+                self.log(self._tr("llm.batch.log.decisions_saved", "LLM batch {index}/{total}: received {decisions} decisions, saved {saved}.", index=index, total=len(payloads), decisions=len(decisions), saved=saved))
             except Exception as exc:
-                text = f"LLM-Batch {index}/{len(payloads)} fehlgeschlagen: {exc}"
+                text = self._tr("llm.batch.log.failed", "LLM batch {index}/{total} failed: {error}", index=index, total=len(payloads), error=exc)
                 result.errors.append(text)
                 self.log(text)
         return result

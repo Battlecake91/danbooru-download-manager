@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -25,7 +24,14 @@ from PySide6.QtWidgets import (
 
 from app.core.database import Database
 from app.danbooru.api import DanbooruApi
+from app.i18n.i18n import tr
 from app.services.download_service import DownloadService
+
+
+STATUS_OK = "OK"
+STATUS_SUSPECT = "Suspect"
+STATUS_UNCLEAR = "Unclear"
+STATUS_ERROR = "Error"
 
 
 @dataclass
@@ -43,20 +49,16 @@ class QualityAuditRow:
 
 
 class MaintenanceTab(QWidget):
-    """Temporäre Werkbank für einmalige Reparaturen.
+    """Temporary workbench for database maintenance and local file audits."""
 
-    Das Ding ist absichtlich nicht hübsch. Es soll falsche lokale Dateien finden,
-    nicht im Museum für GUI-Design ausgestellt werden.
-    """
-
-    HEADERS = [
-        "Status",
-        "Post-ID",
-        "Lokal",
-        "Danbooru",
-        "Dateigröße",
-        "Hinweis",
-        "Pfad",
+    HEADER_KEYS = [
+        "maintenance.header.status",
+        "maintenance.header.post_id",
+        "maintenance.header.local",
+        "maintenance.header.danbooru",
+        "maintenance.header.file_size",
+        "maintenance.header.note",
+        "maintenance.header.path",
     ]
 
     def __init__(self, config: dict[str, Any], db: Database) -> None:
@@ -69,28 +71,24 @@ class MaintenanceTab(QWidget):
 
         layout = QVBoxLayout(self)
 
-        self.db_info_label = QLabel(
-            "Datenbank-Wartung: analysiert Tabellen/Indizes, app_settings, WAL-Dateien "
-            "und kann LLM-Debug-Payloads löschen. VACUUM kann je nach DB-Größe kurz dauern, "
-            "weil SQLite dann einmal tief durchatmet und die Möbel neu stellt."
-        )
+        self.db_info_label = QLabel(tr("maintenance.db_info", config=self.config))
         self.db_info_label.setWordWrap(True)
         layout.addWidget(self.db_info_label)
 
         db_controls = QHBoxLayout()
-        self.analyze_db_button = QPushButton("Datenbankgröße analysieren")
+        self.analyze_db_button = QPushButton(tr("maintenance.analyze_db", config=self.config))
         self.analyze_db_button.clicked.connect(self.analyze_database_size)
         db_controls.addWidget(self.analyze_db_button)
 
-        self.clear_llm_payloads_button = QPushButton("LLM-Debug-Payloads löschen")
+        self.clear_llm_payloads_button = QPushButton(tr("maintenance.clear_llm_payloads", config=self.config))
         self.clear_llm_payloads_button.clicked.connect(self.clear_llm_debug_payloads)
         db_controls.addWidget(self.clear_llm_payloads_button)
 
-        self.checkpoint_wal_button = QPushButton("WAL komprimieren")
+        self.checkpoint_wal_button = QPushButton(tr("maintenance.checkpoint_wal", config=self.config))
         self.checkpoint_wal_button.clicked.connect(self.checkpoint_wal)
         db_controls.addWidget(self.checkpoint_wal_button)
 
-        self.vacuum_button = QPushButton("VACUUM ausführen")
+        self.vacuum_button = QPushButton(tr("maintenance.vacuum", config=self.config))
         self.vacuum_button.clicked.connect(self.vacuum_database)
         db_controls.addWidget(self.vacuum_button)
         db_controls.addStretch(1)
@@ -99,45 +97,40 @@ class MaintenanceTab(QWidget):
         self.db_result_text = QPlainTextEdit()
         self.db_result_text.setReadOnly(True)
         self.db_result_text.setMinimumHeight(180)
-        self.db_result_text.setPlainText("Noch keine Datenbankanalyse ausgeführt.")
+        self.db_result_text.setPlainText(tr("maintenance.db_no_analysis", config=self.config))
         layout.addWidget(self.db_result_text)
 
-        self.info_label = QLabel(
-            "Temporäre Prüfung: findet lokal gespeicherte Dateien, die kleiner als die "
-            "Danbooru-Originalauflösung sind. Fehlende Originalmaße können direkt von "
-            "Danbooru nachgeladen werden. Später darf dieser Tab wieder rausfliegen, "
-            "wie ein hässliches Gerüst nach der Renovierung."
-        )
+        self.info_label = QLabel(tr("maintenance.quality_info", config=self.config))
         self.info_label.setWordWrap(True)
         layout.addWidget(self.info_label)
 
         controls = QHBoxLayout()
 
-        self.fetch_missing_metadata_checkbox = QCheckBox("Fehlende Originalmaße von Danbooru nachladen")
+        self.fetch_missing_metadata_checkbox = QCheckBox(tr("maintenance.fetch_missing_metadata", config=self.config))
         self.fetch_missing_metadata_checkbox.setChecked(True)
         controls.addWidget(self.fetch_missing_metadata_checkbox)
 
-        self.scan_button = QPushButton("Gespeicherte Dateien prüfen")
+        self.scan_button = QPushButton(tr("maintenance.scan_saved_files", config=self.config))
         self.scan_button.clicked.connect(self.scan_saved_files)
         controls.addWidget(self.scan_button)
 
-        self.repair_selected_button = QPushButton("Ausgewählte Verdächtige neu laden/ersetzen")
+        self.repair_selected_button = QPushButton(tr("maintenance.repair_selected", config=self.config))
         self.repair_selected_button.clicked.connect(self.repair_selected_rows)
         controls.addWidget(self.repair_selected_button)
 
-        self.repair_all_button = QPushButton("Alle Verdächtigen/Fehlenden neu laden/ersetzen")
+        self.repair_all_button = QPushButton(tr("maintenance.repair_all", config=self.config))
         self.repair_all_button.clicked.connect(self.repair_all_suspects)
         controls.addWidget(self.repair_all_button)
 
         controls.addStretch(1)
         layout.addLayout(controls)
 
-        self.result_label = QLabel("Noch nicht geprüft.")
+        self.result_label = QLabel(tr("maintenance.not_checked", config=self.config))
         self.result_label.setWordWrap(True)
         layout.addWidget(self.result_label)
 
-        self.table = QTableWidget(0, len(self.HEADERS))
-        self.table.setHorizontalHeaderLabels(self.HEADERS)
+        self.table = QTableWidget(0, len(self.HEADER_KEYS))
+        self.table.setHorizontalHeaderLabels([tr(key, config=self.config) for key in self.HEADER_KEYS])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -146,31 +139,34 @@ class MaintenanceTab(QWidget):
 
     def analyze_database_size(self) -> None:
         self.analyze_db_button.setEnabled(False)
-        self.db_result_text.setPlainText("Analysiere Datenbankgröße ...")
+        self.db_result_text.setPlainText(tr("maintenance.analyzing_db", config=self.config))
         try:
             report = self.db.analyze_database_size()
-            self.db_result_text.setPlainText(format_database_size_report(report))
+            self.db_result_text.setPlainText(format_database_size_report(report, self.config))
         except Exception as exc:
-            QMessageBox.critical(self, "Datenbankanalyse fehlgeschlagen", str(exc))
-            self.db_result_text.setPlainText(f"Datenbankanalyse fehlgeschlagen: {exc}")
+            QMessageBox.critical(self, tr("maintenance.db_analysis_failed_title", config=self.config), str(exc))
+            self.db_result_text.setPlainText(tr("maintenance.db_analysis_failed", config=self.config, error=exc))
         finally:
             self.analyze_db_button.setEnabled(True)
 
     def clear_llm_debug_payloads(self) -> None:
         answer = QMessageBox.question(
             self,
-            "LLM-Debug-Payloads löschen?",
-            "Die gespeicherten LLM-Debug-Payloads und deren Summary werden aus app_settings gelöscht. "
-            "LLM-Ergebnisse an Posts bleiben erhalten. Fortfahren?",
+            tr("maintenance.clear_llm_payloads_title", config=self.config),
+            tr("maintenance.clear_llm_payloads_question", config=self.config),
         )
         if answer != QMessageBox.Yes:
             return
         try:
             deleted = self.db.clear_llm_debug_payload_settings()
-            QMessageBox.information(self, "LLM-Debug-Payloads gelöscht", f"Gelöschte Einträge: {deleted}")
+            QMessageBox.information(
+                self,
+                tr("maintenance.clear_llm_payloads_done_title", config=self.config),
+                tr("maintenance.deleted_entries", config=self.config, count=deleted),
+            )
             self.analyze_database_size()
         except Exception as exc:
-            QMessageBox.critical(self, "Löschen fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, tr("maintenance.delete_failed_title", config=self.config), str(exc))
 
     def checkpoint_wal(self) -> None:
         try:
@@ -179,49 +175,55 @@ class MaintenanceTab(QWidget):
             after = self.db.database_file_sizes()
             QMessageBox.information(
                 self,
-                "WAL komprimiert",
-                "WAL-Checkpoint/TRUNCATE ausgeführt.\n"
-                f"Vorher WAL: {format_bytes(before.get('wal', 0))}\n"
-                f"Nachher WAL: {format_bytes(after.get('wal', 0))}\n"
-                f"SQLite-Ergebnis: {result}",
+                tr("maintenance.wal_checkpoint_done_title", config=self.config),
+                tr(
+                    "maintenance.wal_checkpoint_done_message",
+                    config=self.config,
+                    before=format_bytes(before.get("wal", 0)),
+                    after=format_bytes(after.get("wal", 0)),
+                    result=result,
+                ),
             )
             self.analyze_database_size()
         except Exception as exc:
-            QMessageBox.critical(self, "WAL-Komprimierung fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, tr("maintenance.wal_checkpoint_failed_title", config=self.config), str(exc))
 
     def vacuum_database(self) -> None:
         answer = QMessageBox.warning(
             self,
-            "VACUUM ausführen?",
-            "VACUUM kompaktiert die SQLite-Datei und kann bei großen Datenbanken eine Weile dauern. "
-            "Währenddessen sollte kein Fetch/Import laufen. Fortfahren?",
+            tr("maintenance.vacuum_question_title", config=self.config),
+            tr("maintenance.vacuum_question", config=self.config),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         if answer != QMessageBox.Yes:
             return
         self.vacuum_button.setEnabled(False)
-        self.db_result_text.setPlainText("VACUUM läuft ... bitte nicht nervös auf Knöpfe hämmern.")
+        self.db_result_text.setPlainText(tr("maintenance.vacuum_running", config=self.config))
         try:
             before = self.db.database_file_sizes()
             self.db.vacuum_database()
             after = self.db.database_file_sizes()
             QMessageBox.information(
                 self,
-                "VACUUM abgeschlossen",
-                f"Vorher: {format_bytes(before.get('database', 0))}\n"
-                f"Nachher: {format_bytes(after.get('database', 0))}",
+                tr("maintenance.vacuum_done_title", config=self.config),
+                tr(
+                    "maintenance.vacuum_done_message",
+                    config=self.config,
+                    before=format_bytes(before.get("database", 0)),
+                    after=format_bytes(after.get("database", 0)),
+                ),
             )
             self.analyze_database_size()
         except Exception as exc:
-            QMessageBox.critical(self, "VACUUM fehlgeschlagen", str(exc))
-            self.db_result_text.setPlainText(f"VACUUM fehlgeschlagen: {exc}")
+            QMessageBox.critical(self, tr("maintenance.vacuum_failed_title", config=self.config), str(exc))
+            self.db_result_text.setPlainText(tr("maintenance.vacuum_failed", config=self.config, error=exc))
         finally:
             self.vacuum_button.setEnabled(True)
 
     def scan_saved_files(self) -> None:
         self.scan_button.setEnabled(False)
-        self.result_label.setText("Prüfe gespeicherte Dateien ...")
+        self.result_label.setText(tr("maintenance.scanning_saved_files", config=self.config))
         self.table.setRowCount(0)
         self.current_rows = []
 
@@ -231,17 +233,24 @@ class MaintenanceTab(QWidget):
             self.current_rows = audit_rows
             self.populate_table(audit_rows)
 
-            suspects = sum(1 for row in audit_rows if row.status == "Verdächtig")
-            unclear = sum(1 for row in audit_rows if row.status == "Unklar")
-            errors = sum(1 for row in audit_rows if row.status == "Fehler")
-            ok = sum(1 for row in audit_rows if row.status == "OK")
+            suspects = sum(1 for row in audit_rows if row.status == STATUS_SUSPECT)
+            unclear = sum(1 for row in audit_rows if row.status == STATUS_UNCLEAR)
+            errors = sum(1 for row in audit_rows if row.status == STATUS_ERROR)
+            ok = sum(1 for row in audit_rows if row.status == STATUS_OK)
             self.result_label.setText(
-                f"Geprüft: {len(audit_rows)} | OK: {ok} | Verdächtig: {suspects} | "
-                f"Unklar: {unclear} | Fehlend/Fehler: {errors}"
+                tr(
+                    "maintenance.scan_summary",
+                    config=self.config,
+                    total=len(audit_rows),
+                    ok=ok,
+                    suspects=suspects,
+                    unclear=unclear,
+                    errors=errors,
+                )
             )
         except Exception as exc:
-            QMessageBox.critical(self, "Prüfung fehlgeschlagen", str(exc))
-            self.result_label.setText(f"Prüfung fehlgeschlagen: {exc}")
+            QMessageBox.critical(self, tr("maintenance.scan_failed_title", config=self.config), str(exc))
+            self.result_label.setText(tr("maintenance.scan_failed", config=self.config, error=exc))
         finally:
             self.scan_button.setEnabled(True)
 
@@ -271,14 +280,11 @@ class MaintenanceTab(QWidget):
                     remote_size=remote_size,
                     remote_width=remote_width,
                     remote_height=remote_height,
-                    status="Unklar",
-                    note=f"Remote-Metadaten konnten nicht geladen werden: {exc}",
+                    status=STATUS_UNCLEAR,
+                    note=tr("maintenance.note.remote_metadata_failed", config=self.config, error=exc),
                 )
 
         if final_path is None or not final_path.exists():
-            # Fehlende lokale Dateien sind reparierbar, wenn ein lokaler Dateipfad in der DB steht.
-            # Früher wurde hier nur gemeckert und beim Reparieren trotzdem abgebrochen.
-            # Sehr hilfreich, wenn man gerne Türen ohne Griff einbaut.
             return QualityAuditRow(
                 post_id=post_id,
                 final_path=final_path,
@@ -288,8 +294,8 @@ class MaintenanceTab(QWidget):
                 remote_size=remote_size,
                 remote_width=remote_width,
                 remote_height=remote_height,
-                status="Fehler",
-                note="Lokaler Dateipfad fehlt oder Datei existiert nicht",
+                status=STATUS_ERROR,
+                note=tr("maintenance.note.local_file_missing", config=self.config),
             )
 
         local_size = final_path.stat().st_size
@@ -305,8 +311,8 @@ class MaintenanceTab(QWidget):
                 remote_size=remote_size,
                 remote_width=remote_width,
                 remote_height=remote_height,
-                status="Unklar",
-                note="Danbooru-Originalmaße fehlen",
+                status=STATUS_UNCLEAR,
+                note=tr("maintenance.note.remote_dimensions_missing", config=self.config),
             )
 
         dimension_suspect = (
@@ -317,17 +323,17 @@ class MaintenanceTab(QWidget):
         size_suspect = remote_size is not None and local_size < int(remote_size * 0.98)
 
         if dimension_suspect:
-            status = "Verdächtig"
-            note = "Lokale Auflösung ist kleiner als Danbooru-Original"
+            status = STATUS_SUSPECT
+            note = tr("maintenance.note.local_resolution_smaller", config=self.config)
         elif size_suspect:
-            status = "Verdächtig"
-            note = "Lokale Datei ist deutlich kleiner als Danbooru-file_size"
+            status = STATUS_SUSPECT
+            note = tr("maintenance.note.local_file_smaller", config=self.config)
         elif local_width is None or local_height is None:
-            status = "Unklar"
-            note = "Lokale Bildmaße nicht lesbar, eventuell Video/defekte Datei"
+            status = STATUS_UNCLEAR
+            note = tr("maintenance.note.local_dimensions_unreadable", config=self.config)
         else:
-            status = "OK"
-            note = "Lokale Datei passt zu den bekannten Originaldaten"
+            status = STATUS_OK
+            note = tr("maintenance.note.local_file_ok", config=self.config)
 
         return QualityAuditRow(
             post_id=post_id,
@@ -344,7 +350,7 @@ class MaintenanceTab(QWidget):
 
     def populate_table(self, rows: list[QualityAuditRow]) -> None:
         def priority(row: QualityAuditRow) -> int:
-            return {"Verdächtig": 0, "Fehler": 1, "Unklar": 2, "OK": 3}.get(row.status, 9)
+            return {STATUS_SUSPECT: 0, STATUS_ERROR: 1, STATUS_UNCLEAR: 2, STATUS_OK: 3}.get(row.status, 9)
 
         sorted_rows = sorted(rows, key=lambda row: (priority(row), -row.post_id))
         self.current_rows = sorted_rows
@@ -364,11 +370,11 @@ class MaintenanceTab(QWidget):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.UserRole, row.post_id)
                 item.setData(Qt.UserRole + 1, str(row.final_path or ""))
-                if row.status == "Verdächtig":
+                if row.status == STATUS_SUSPECT:
                     item.setBackground(QColor("#5a4a00"))
-                elif row.status == "Fehler":
+                elif row.status == STATUS_ERROR:
                     item.setBackground(QColor("#5a1d1d"))
-                elif row.status == "OK":
+                elif row.status == STATUS_OK:
                     item.setBackground(QColor("#1f4a1f"))
                 self.table.setItem(index, column, item)
 
@@ -388,7 +394,7 @@ class MaintenanceTab(QWidget):
         return post_ids
 
     def suspect_post_ids(self) -> list[int]:
-        return [row.post_id for row in self.current_rows if row.status in {"Verdächtig", "Fehler"}]
+        return [row.post_id for row in self.current_rows if row.status in {STATUS_SUSPECT, STATUS_ERROR}]
 
     def repair_selected_rows(self) -> None:
         self.repair_posts(self.selected_post_ids())
@@ -398,7 +404,11 @@ class MaintenanceTab(QWidget):
 
     def repair_posts(self, post_ids: list[int]) -> None:
         if not post_ids:
-            QMessageBox.information(self, "Nichts zu tun", "Keine verdächtigen Posts ausgewählt.")
+            QMessageBox.information(
+                self,
+                tr("maintenance.nothing_to_do_title", config=self.config),
+                tr("maintenance.nothing_to_do_message", config=self.config),
+            )
             return
 
         self.repair_selected_button.setEnabled(False)
@@ -418,34 +428,34 @@ class MaintenanceTab(QWidget):
             self.repair_selected_button.setEnabled(True)
             self.repair_all_button.setEnabled(True)
 
-        message = f"Ersetzt: {repaired}"
+        message = tr("maintenance.repair_summary", config=self.config, repaired=repaired)
         if failed:
-            message += "\nFehler:\n" + "\n".join(failed[:20])
+            message += "\n" + tr("maintenance.errors_heading", config=self.config) + "\n" + "\n".join(failed[:20])
             if len(failed) > 20:
-                message += f"\n... und {len(failed) - 20} weitere"
+                message += "\n" + tr("maintenance.more_errors", config=self.config, count=len(failed) - 20)
 
-        QMessageBox.information(self, "Reparatur abgeschlossen", message)
+        QMessageBox.information(self, tr("maintenance.repair_done_title", config=self.config), message)
         self.scan_saved_files()
 
     def replace_final_file_with_original(self, post_id: int) -> None:
         row = self.db.get_post_detail(post_id)
         if row is None:
-            raise RuntimeError("Post nicht in Datenbank")
+            raise RuntimeError(tr("maintenance.error.post_not_in_db", config=self.config))
 
         final_value = row["final_file_path"]
         if not final_value:
-            raise RuntimeError("final_file_path fehlt")
+            raise RuntimeError(tr("maintenance.error.final_file_path_missing", config=self.config))
 
         final_path = Path(str(final_value))
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
         original_path_value = self.download_service.ensure_full_original_cached(post_id, force=True)
         if not original_path_value:
-            raise RuntimeError("Originaldatei konnte nicht geladen werden")
+            raise RuntimeError(tr("maintenance.error.original_download_failed", config=self.config))
 
         original_path = Path(original_path_value)
         if not original_path.exists():
-            raise RuntimeError(f"Original-Cache fehlt: {original_path}")
+            raise RuntimeError(tr("maintenance.error.original_cache_missing", config=self.config, path=original_path))
 
         tmp_path = final_path.with_name(final_path.name + ".replace_tmp")
         shutil.copy2(original_path, tmp_path)
@@ -492,7 +502,7 @@ def format_bytes(value: int | None) -> str:
     return f"{value} B"
 
 
-def format_database_size_report(report: dict[str, Any]) -> str:
+def format_database_size_report(report: dict[str, Any], config: dict[str, Any] | None = None) -> str:
     file_sizes = report.get("file_sizes", {}) or {}
     sqlite_info = report.get("sqlite", {}) or {}
     counts = report.get("counts", {}) or {}
@@ -500,38 +510,44 @@ def format_database_size_report(report: dict[str, Any]) -> str:
     largest_app_settings = report.get("largest_app_settings", []) or []
 
     lines: list[str] = []
-    lines.append("Datenbankgröße")
+    lines.append(tr("maintenance.report.database_size", config=config))
     lines.append("===============")
-    lines.append(f"Pfad: {report.get('path', '-')}")
-    lines.append(f"DB-Datei: {format_bytes(file_sizes.get('database', 0))}")
-    lines.append(f"WAL:      {format_bytes(file_sizes.get('wal', 0))}")
-    lines.append(f"SHM:      {format_bytes(file_sizes.get('shm', 0))}")
-    lines.append(f"Gesamt:   {format_bytes(file_sizes.get('total', 0))}")
+    lines.append(tr("maintenance.report.path", config=config, path=report.get("path", "-")))
+    lines.append(tr("maintenance.report.db_file", config=config, value=format_bytes(file_sizes.get("database", 0))))
+    lines.append(tr("maintenance.report.wal", config=config, value=format_bytes(file_sizes.get("wal", 0))))
+    lines.append(tr("maintenance.report.shm", config=config, value=format_bytes(file_sizes.get("shm", 0))))
+    lines.append(tr("maintenance.report.total", config=config, value=format_bytes(file_sizes.get("total", 0))))
     lines.append("")
     lines.append("SQLite")
     lines.append("------")
-    lines.append(f"Journal-Modus: {sqlite_info.get('journal_mode', '-')}")
-    lines.append(f"Page size: {sqlite_info.get('page_size', '-')}")
-    lines.append(f"Pages: {sqlite_info.get('page_count', '-')}")
-    lines.append(f"Freelist pages: {sqlite_info.get('freelist_count', '-')}")
-    lines.append(f"Geschätzter freier Platz: {format_bytes(sqlite_info.get('free_bytes_estimate', 0))}")
+    lines.append(tr("maintenance.report.journal_mode", config=config, value=sqlite_info.get("journal_mode", "-")))
+    lines.append(tr("maintenance.report.page_size", config=config, value=sqlite_info.get("page_size", "-")))
+    lines.append(tr("maintenance.report.pages", config=config, value=sqlite_info.get("page_count", "-")))
+    lines.append(tr("maintenance.report.freelist_pages", config=config, value=sqlite_info.get("freelist_count", "-")))
+    lines.append(
+        tr(
+            "maintenance.report.estimated_free_space",
+            config=config,
+            value=format_bytes(sqlite_info.get("free_bytes_estimate", 0)),
+        )
+    )
     lines.append("")
-    lines.append("Zeilen")
+    lines.append(tr("maintenance.report.rows", config=config))
     lines.append("------")
     for key in ("posts", "post_tags", "tag_scores", "categories", "app_settings"):
         lines.append(f"{key}: {counts.get(key, '-')}")
 
     lines.append("")
     if report.get("dbstat_available"):
-        lines.append("Größte Tabellen/Indizes laut dbstat")
+        lines.append(tr("maintenance.report.largest_objects", config=config))
         lines.append("-----------------------------------")
         for item in object_sizes[:30]:
             lines.append(f"{format_bytes(int(item.get('bytes', 0))):>12}  {item.get('name', '-')}")
     else:
-        lines.append("dbstat ist in dieser SQLite-Version nicht verfügbar. Natürlich fehlt genau das Werkzeug, wenn man es mal braucht.")
+        lines.append(tr("maintenance.report.dbstat_missing", config=config))
 
     lines.append("")
-    lines.append("Größte app_settings")
+    lines.append(tr("maintenance.report.largest_app_settings", config=config))
     lines.append("-------------------")
     for item in largest_app_settings[:20]:
         lines.append(
@@ -539,9 +555,9 @@ def format_database_size_report(report: dict[str, Any]) -> str:
         )
 
     lines.append("")
-    lines.append("Hinweis")
+    lines.append(tr("maintenance.report.note", config=config))
     lines.append("-------")
-    lines.append("Wenn llm.last_fetch_payloads groß ist: 'LLM-Debug-Payloads löschen' drücken.")
-    lines.append("Wenn WAL groß ist: 'WAL komprimieren' drücken.")
-    lines.append("Wenn Freelist groß ist: 'VACUUM ausführen' kann die DB-Datei verkleinern.")
+    lines.append(tr("maintenance.report.note_llm", config=config))
+    lines.append(tr("maintenance.report.note_wal", config=config))
+    lines.append(tr("maintenance.report.note_vacuum", config=config))
     return "\n".join(lines)

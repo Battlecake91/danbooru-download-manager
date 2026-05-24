@@ -740,18 +740,20 @@ class FetchTab(QWidget):
         query_index = int(progress.query_index or 0)
         query_total = int(progress.query_total or 0)
         query_text = progress.query.strip()
-        query_part = f"Query {query_index}/{query_total}" if query_total else "Query …"
-        known_part = f"{tr("fetch.progress.known", config=self.config)}: {int(progress.known_posts or 0)}"
-        inserted_part = f"{tr("fetch.progress.new", config=self.config)}: {inserted_total}"
-        thumb_part = f"Thumbs: {int(progress.cached_thumbnails or 0)}"
+        query_word = tr("fetch.progress.query", "Query", config=self.config)
+        post_word = tr("fetch.progress.post", "Post", config=self.config)
+        query_part = f"{query_word} {query_index}/{query_total}" if query_total else f"{query_word} …"
+        known_part = f"{tr('fetch.progress.known', 'Known', config=self.config)}: {int(progress.known_posts or 0)}"
+        inserted_part = f"{tr('fetch.progress.new', 'New', config=self.config)}: {inserted_total}"
+        thumb_part = f"{tr('fetch.progress.thumbs', 'Thumbs', config=self.config)}: {int(progress.cached_thumbnails or 0)}"
 
         if target_unknown > 0:
-            post_part = f"{tr("fetch.progress.unknown_query", config=self.config)}: {inserted_for_query}/{target_unknown}"
-            checked_part = f"{tr("fetch.progress.checked", config=self.config)}: {seen_total}"
+            post_part = f"{tr('fetch.progress.unknown_query', 'Unknown this query', config=self.config)}: {inserted_for_query}/{target_unknown}"
+            checked_part = f"{tr('fetch.progress.checked', 'Checked', config=self.config)}: {seen_total}"
             self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
             detail = f"{query_part} | {post_part} | {checked_part} | {known_part} | {inserted_part} | {thumb_part}"
         else:
-            post_part = f"Post {seen_total}/{planned_total}"
+            post_part = f"{post_word} {seen_total}/{planned_total}"
             self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
             detail = f"{query_part} | {post_part} | {known_part} | {inserted_part} | {thumb_part}"
 
@@ -771,18 +773,26 @@ class FetchTab(QWidget):
         target_unknown_per_query = int(getattr(result, "target_unknown_per_query", 0) or 0)
         target_unknown_total = int(getattr(result, "target_unknown_total", 0) or 0)
 
+        query_label = tr("fetch.summary.queries", "Queries", config=self.config)
         if queries:
-            query_line = f"Queries: {processed_queries}/{queries}"
+            query_line = f"{query_label}: {processed_queries}/{queries}"
         else:
-            query_line = "Queries: ?"
+            query_line = f"{query_label}: ?"
+
+        new_unknown_line = f"  {tr('fetch.summary.new_unknown', 'New / unknown', config=self.config)}: {inserted_posts}"
+        if target_unknown_per_query > 0:
+            new_unknown_line += (
+                f" / {tr('fetch.summary.target', 'target', config=self.config)} {target_unknown_total} "
+                f"({target_unknown_per_query} {tr('fetch.summary.per_query', 'per query', config=self.config)})"
+            )
 
         lines = [
-            tr("fetch.summary.title", config=self.config),
+            tr("fetch.summary.title", "Fetch summary", config=self.config),
             f"  {query_line}",
-            f"  {tr("fetch.summary.posts_checked", config=self.config)}: {seen_posts}",
-            f"  {tr("fetch.summary.new_unknown", config=self.config)}: {inserted_posts}" + (f" / {tr("fetch.summary.target", config=self.config)} {target_unknown_total} ({target_unknown_per_query} {tr("fetch.summary.per_query", config=self.config)})" if target_unknown_per_query > 0 else ""),
-            f"  {tr("fetch.summary.known_updated", config=self.config)}: {known_posts}",
-            f"  {tr("fetch.summary.thumbnails", config=self.config)}: {cached_thumbnails}",
+            f"  {tr('fetch.summary.posts_checked', 'Posts checked', config=self.config)}: {seen_posts}",
+            new_unknown_line,
+            f"  {tr('fetch.summary.known_updated', 'Known updated', config=self.config)}: {known_posts}",
+            f"  {tr('fetch.summary.thumbnails', 'Thumbnails', config=self.config)}: {cached_thumbnails}",
         ]
 
         llm_input = int(getattr(result, "llm_input_posts", 0) or 0)
@@ -795,9 +805,19 @@ class FetchTab(QWidget):
         llm_reason = str(getattr(result, "llm_skipped_reason", "") or "")
         if llm_input or llm_candidates or llm_payloads or llm_sent or llm_saved or llm_reason:
             lines.append(
-                f"  LLM: input {llm_input}, candidates {llm_candidates}, "
-                f"skipped {llm_skipped}, batches {llm_batches}, payloads {llm_payloads}, "
-                f"requests {llm_sent}, decisions saved {llm_saved}"
+                "  "
+                + tr(
+                    "fetch.summary.llm",
+                    "LLM: input {input}, candidates {candidates}, skipped {skipped}, batches {batches}, payloads {payloads}, requests {requests}, decisions saved {saved}",
+                    config=self.config,
+                    input=llm_input,
+                    candidates=llm_candidates,
+                    skipped=llm_skipped,
+                    batches=llm_batches,
+                    payloads=llm_payloads,
+                    requests=llm_sent,
+                    saved=llm_saved,
+                )
             )
             batch_summaries = getattr(result, "llm_batch_summaries", []) or []
             for batch in batch_summaries[:5]:
@@ -805,14 +825,39 @@ class FetchTab(QWidget):
                 id_text = ", ".join(str(post_id) for post_id in post_ids[:12])
                 if len(post_ids) > 12:
                     id_text += ", ..."
-                lines.append(f"  LLM-Batch {batch.get('index')}/{batch.get('total')}: {batch.get('post_count')} Posts ({id_text})")
+                lines.append(
+                    "  "
+                    + tr(
+                        "fetch.summary.llm_batch",
+                        "LLM batch {index}/{total}: {count} posts ({ids})",
+                        config=self.config,
+                        index=batch.get("index"),
+                        total=batch.get("total"),
+                        count=batch.get("post_count"),
+                        ids=id_text,
+                    )
+                )
             if len(batch_summaries) > 5:
-                lines.append(f"  LLM batches: {len(batch_summaries) - 5} more hidden")
+                lines.append(
+                    "  "
+                    + tr(
+                        "fetch.summary.llm_batches_more",
+                        "LLM batches: {count} more hidden",
+                        config=self.config,
+                        count=len(batch_summaries) - 5,
+                    )
+                )
             if llm_reason:
-                lines.append(f"  LLM note: {llm_reason}")
+                lines.append(
+                    "  "
+                    + tr("fetch.summary.llm_note", "LLM note: {note}", config=self.config, note=llm_reason)
+                )
         llm_errors = getattr(result, "llm_errors", []) or []
         for error in llm_errors[:3]:
-            lines.append(f"  LLM error: {error}")
+            lines.append(
+                "  "
+                + tr("fetch.summary.llm_error", "LLM error: {error}", config=self.config, error=error)
+            )
         return "\n".join(lines)
 
     def on_fetch_finished(self, result: object) -> None:
