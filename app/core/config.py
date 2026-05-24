@@ -54,6 +54,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "thumbnail_size_max": 700,
         "thumbnail_size_step": 20,
         "card_width_extra": 100,
+        "preview_sample_post_id": 11199825,
         "preview_render_batch_size": 40,
         "preview_limit": 100,
         "status_colors": {
@@ -82,6 +83,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "scoring": {
         "use_aliases_for_scoring": True,
         "ignore_scoring_excluded_tags": True,
+    },
+    "tag_catalog": {
+        "popular_tag_limit": 10000,
+        "popular_tag_min_post_count": 50,
+        "popular_tag_categories": ["general", "artist", "copyright", "character", "meta"],
+    },
+    "first_run": {
+        "sample_post_id": 11199825,
+        "fetch_sample_post": True,
+        "import_popular_tags": True,
     },
     "llm": {
         "enabled": False,

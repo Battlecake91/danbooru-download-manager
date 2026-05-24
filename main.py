@@ -27,32 +27,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--init-db",
         action="store_true",
-        help="Datenbank initialisieren",
+        help="Initialize the database",
     )
     parser.add_argument(
         "--import-history",
         action="store_true",
-        help="downloaded_ids.txt in die SQLite-Datenbank übernehmen",
+        help="Import downloaded_ids.txt into the SQLite database",
     )
     parser.add_argument(
         "--fetch",
         action="store_true",
-        help="Danbooru-Posts laden, speichern und Thumbnails cachen",
+        help="Fetch Danbooru posts, store metadata and cache thumbnails",
     )
     parser.add_argument(
         "--gui",
         action="store_true",
-        help="Preview-GUI starten",
+        help="Start the GUI explicitly. The GUI is also the default when no CLI action is given.",
     )
     parser.add_argument(
         "--debug",
         action="store_true",
-        help="Debug-Logging aktivieren",
+        help="Enable debug logging",
     )
     parser.add_argument(
         "--debug-startup",
         action="store_true",
-        help="Startzeit-Markierungen ausgeben und Lazy-Tab-Erzeugung protokollieren",
+        help="Print startup timing markers and log lazy tab creation",
     )
     return parser.parse_args()
 
@@ -94,16 +94,18 @@ def main() -> int:
             result.cached_thumbnails,
         )
 
-    if args.gui:
-        # Import erst hier, damit CLI-Operationen nicht von Qt abhängen müssen.
+    cli_action_requested = bool(args.init_db or args.import_history or args.fetch)
+    should_start_gui = bool(args.gui or not cli_action_requested)
+
+    if should_start_gui:
+        # Import only when the GUI is actually started, so CLI operations do not
+        # require Qt to be importable. A frozen .exe starts the GUI by default
+        # because double-click launches do not pass --gui. Shocking, I know.
         from app.gui.main_window import run_gui
 
         exit_code = run_gui(config, db)
         db.close()
         return exit_code
-
-    if not args.init_db and not args.import_history and not args.fetch and not args.gui:
-        logging.info("Nothing to do. Use --init-db, --import-history, --fetch or --gui.")
 
     db.close()
     return 0

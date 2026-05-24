@@ -297,6 +297,30 @@ class Database:
             alias_tag TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS danbooru_tags (
+            name TEXT PRIMARY KEY,
+            category TEXT,
+            category_id INTEGER,
+            post_count INTEGER DEFAULT 0,
+            is_deprecated INTEGER DEFAULT 0,
+            last_synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            raw_json TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_danbooru_tags_category ON danbooru_tags(category);
+        CREATE INDEX IF NOT EXISTS idx_danbooru_tags_post_count ON danbooru_tags(post_count DESC);
+        CREATE INDEX IF NOT EXISTS idx_danbooru_tags_name ON danbooru_tags(name);
+
+        CREATE TABLE IF NOT EXISTS danbooru_tag_aliases (
+            antecedent_name TEXT PRIMARY KEY,
+            consequent_name TEXT NOT NULL,
+            status TEXT,
+            last_synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            raw_json TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_danbooru_tag_aliases_consequent ON danbooru_tag_aliases(consequent_name);
+
         CREATE TABLE IF NOT EXISTS tag_identity_cache (
             original_tag TEXT PRIMARY KEY,
             canonical_tag TEXT NOT NULL,
@@ -484,6 +508,8 @@ class Database:
         self.execute("CREATE INDEX IF NOT EXISTS idx_tag_scores_tag ON tag_scores(tag)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_tag_aliases_original ON tag_aliases(original_tag)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_filename_excluded_tags_tag ON filename_excluded_tags(tag)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_danbooru_tags_category_count ON danbooru_tags(category, post_count DESC)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_danbooru_tags_name_count ON danbooru_tags(name, post_count DESC)")
 
     def add_column_if_missing(self, table_name: str, column_name: str, declaration: str) -> None:
         columns = self.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -1554,17 +1580,27 @@ class Database:
         search_text: str | None = None,
         tag_type: str | None = None,
         limit: int = 1000,
+        source: str = "local",
     ) -> list[sqlite3.Row]:
+        """Return tag overview rows from local posts, Danbooru catalog or both."""
         where_parts: list[str] = []
         parameters: list[Any] = []
 
         if search_text:
-            where_parts.append("pt.tag LIKE ?")
+            where_parts.append("tag LIKE ?")
             parameters.append(f"%{search_text.strip()}%")
 
         if tag_type and tag_type != "all":
-            where_parts.append("pt.tag_type = ?")
+            where_parts.append("tag_type = ?")
             parameters.append(tag_type)
+
+        source = str(source or "local").lower()
+        if source == "local":
+            where_parts.append("local_post_count > 0")
+        elif source == "catalog":
+            where_parts.append("catalog_post_count > 0")
+        elif source == "catalog_only":
+            where_parts.append("catalog_post_count > 0 AND local_post_count = 0")
 
         where_sql = ""
         if where_parts:
@@ -1575,41 +1611,159 @@ class Database:
         return list(
             self.execute(
                 f"""
+                WITH local_tags AS (
+                    SELECT
+                        pt.tag AS tag,
+                        MIN(pt.tag_type) AS tag_type,
+                        COUNT(DISTINCT pt.post_id) AS local_post_count,
+                        SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
+                        SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                        SUM(CASE WHEN p.status IN ('new', 'potential') THEN 1 ELSE 0 END) AS open_count,
+                        COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating
+                    FROM post_tags pt
+                    JOIN posts p ON p.id = pt.post_id
+                    LEFT JOIN tag_scores ts ON ts.tag = pt.tag
+                    LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
+                    GROUP BY pt.tag
+                ),
+                all_tags AS (
+                    SELECT tag FROM local_tags
+                    UNION
+                    SELECT name AS tag FROM danbooru_tags
+                ),
+                merged AS (
+                    SELECT
+                        all_tags.tag AS tag,
+                        COALESCE(local_tags.tag_type, danbooru_tags.category, 'general') AS tag_type,
+                        COALESCE(local_tags.local_post_count, 0) AS local_post_count,
+                        COALESCE(danbooru_tags.post_count, 0) AS catalog_post_count,
+                        COALESCE(local_tags.saved_count, 0) AS saved_count,
+                        COALESCE(local_tags.rejected_count, 0) AS rejected_count,
+                        COALESCE(local_tags.open_count, 0) AS open_count,
+                        local_tags.average_rating AS local_average_rating
+                    FROM all_tags
+                    LEFT JOIN local_tags ON local_tags.tag = all_tags.tag
+                    LEFT JOIN danbooru_tags ON danbooru_tags.name = all_tags.tag
+                )
                 SELECT
-                    pt.tag AS tag,
-                    MIN(pt.tag_type) AS tag_type,
-                    COUNT(DISTINCT pt.post_id) AS post_count,
-
-                    SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
-                    SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
-                    SUM(CASE WHEN p.status IN ('new', 'potential') THEN 1 ELSE 0 END) AS open_count,
-
+                    merged.tag AS tag,
+                    merged.tag_type AS tag_type,
+                    CASE
+                        WHEN merged.local_post_count > 0 THEN merged.local_post_count
+                        ELSE merged.catalog_post_count
+                    END AS post_count,
+                    merged.local_post_count AS local_post_count,
+                    merged.catalog_post_count AS danbooru_post_count,
+                    CASE
+                        WHEN merged.local_post_count > 0 AND merged.catalog_post_count > 0 THEN 'both'
+                        WHEN merged.catalog_post_count > 0 THEN 'catalog'
+                        ELSE 'local'
+                    END AS tag_source,
+                    merged.saved_count AS saved_count,
+                    merged.rejected_count AS rejected_count,
+                    merged.open_count AS open_count,
                     COALESCE(ts.manual_score, '') AS manual_score,
                     COALESCE(ts.computed_score, 0) AS computed_score,
-                    COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
+                    COALESCE(ts.average_rating, merged.local_average_rating) AS average_rating,
                     COALESCE(ts.scoring_excluded, 0) AS scoring_excluded,
                     COALESCE(ts.ignore_category_influence, 0) AS ignore_category_influence,
                     COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
                     COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input,
-
-                    ta.alias_tag AS alias_tag,
-
+                    COALESCE(ta.alias_tag, dta.consequent_name, '') AS alias_tag,
                     CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded
-
-                FROM post_tags pt
-                JOIN posts p ON p.id = pt.post_id
-                LEFT JOIN tag_scores ts ON ts.tag = pt.tag
-                LEFT JOIN tag_aliases ta ON ta.original_tag = pt.tag
-                LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
-                LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
+                FROM merged
+                LEFT JOIN tag_scores ts ON ts.tag = merged.tag
+                LEFT JOIN tag_aliases ta ON ta.original_tag = merged.tag
+                LEFT JOIN danbooru_tag_aliases dta ON dta.antecedent_name = merged.tag AND LOWER(COALESCE(dta.status, 'active')) IN ('active', 'approved')
+                LEFT JOIN filename_excluded_tags fet ON fet.tag = merged.tag
                 {where_sql}
-                GROUP BY pt.tag
-                ORDER BY post_count DESC, pt.tag ASC
+                ORDER BY post_count DESC, merged.tag ASC
                 LIMIT ?
                 """,
                 parameters,
             ).fetchall()
         )
+
+    def upsert_danbooru_tags(self, tags: Iterable[dict[str, Any]]) -> int:
+        category_names = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta"}
+        rows: list[tuple[str, str, int | None, int, int, str]] = []
+        for tag in tags:
+            name = normalize_tag_token(str(tag.get("name") or ""))
+            if not name:
+                continue
+            raw_category = tag.get("category")
+            try:
+                category_id = int(raw_category) if raw_category is not None else None
+            except (TypeError, ValueError):
+                category_id = None
+            category = category_names.get(category_id, str(raw_category or "general").lower())
+            try:
+                post_count = int(tag.get("post_count") or 0)
+            except (TypeError, ValueError):
+                post_count = 0
+            is_deprecated = 1 if tag.get("is_deprecated") else 0
+            rows.append((name, category, category_id, post_count, is_deprecated, json.dumps(tag, ensure_ascii=False, sort_keys=True)))
+
+        if not rows:
+            return 0
+
+        self.executemany(
+            """
+            INSERT INTO danbooru_tags (name, category, category_id, post_count, is_deprecated, raw_json, last_synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(name) DO UPDATE SET
+                category = excluded.category,
+                category_id = excluded.category_id,
+                post_count = excluded.post_count,
+                is_deprecated = excluded.is_deprecated,
+                raw_json = excluded.raw_json,
+                last_synced_at = CURRENT_TIMESTAMP
+            """,
+            rows,
+        )
+        for name, *_ in rows:
+            self.execute(
+                """
+                INSERT INTO tag_scores (tag)
+                VALUES (?)
+                ON CONFLICT(tag) DO NOTHING
+                """,
+                (name,),
+            )
+        self.commit()
+        return len(rows)
+
+    def upsert_danbooru_tag_aliases(self, aliases: Iterable[dict[str, Any]]) -> int:
+        rows: list[tuple[str, str, str, str]] = []
+        for alias in aliases:
+            antecedent = normalize_tag_token(str(alias.get("antecedent_name") or alias.get("antecedent") or ""))
+            consequent = normalize_tag_token(str(alias.get("consequent_name") or alias.get("consequent") or ""))
+            if not antecedent or not consequent:
+                continue
+            rows.append((antecedent, consequent, str(alias.get("status") or ""), json.dumps(alias, ensure_ascii=False, sort_keys=True)))
+
+        if not rows:
+            return 0
+
+        self.executemany(
+            """
+            INSERT INTO danbooru_tag_aliases (antecedent_name, consequent_name, status, raw_json, last_synced_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(antecedent_name) DO UPDATE SET
+                consequent_name = excluded.consequent_name,
+                status = excluded.status,
+                raw_json = excluded.raw_json,
+                last_synced_at = CURRENT_TIMESTAMP
+            """,
+            rows,
+        )
+        self.commit()
+        return len(rows)
+
+    def count_danbooru_tags(self) -> int:
+        row = self.execute("SELECT COUNT(*) AS count FROM danbooru_tags").fetchone()
+        return int(row["count"] if row else 0)
+
 
 
     def search_tags_by_pattern(

@@ -37,6 +37,14 @@ from app.core.database import Database
 from app.i18n.i18n import tr
 
 
+TAG_SOURCE_LABELS = {
+    "local": "Used locally",
+    "both": "Local + Danbooru catalog",
+    "catalog": "Danbooru catalog",
+    "catalog_only": "Catalog only (unused locally)",
+}
+
+
 TAG_TYPE_LABELS = {
     "all": "All",
     "copyright": "Copyright",
@@ -328,6 +336,14 @@ class TagTab(QWidget):
         self.search_edit.returnPressed.connect(lambda: self.safe(self.reload_tags, self.t("tags.action.reload", "Reload tags")))
         self.toolbar_layout.addWidget(self.search_edit, stretch=1)
 
+        self.toolbar_layout.addWidget(QLabel(self.t("tags.source.label", "Source:")))
+        self.source_filter = QComboBox()
+        for source_key, label in TAG_SOURCE_LABELS.items():
+            self.source_filter.addItem(self.t(f"tags.source.{source_key}", label), source_key)
+        self.source_filter.setCurrentIndex(1)
+        self.source_filter.currentIndexChanged.connect(lambda *_: self.safe(self.reload_tags, self.t("tags.action.reload", "Reload tags")))
+        self.toolbar_layout.addWidget(self.source_filter)
+
         self.toolbar_layout.addWidget(QLabel(self.t("tags.type.label", "Type:")))
         self.type_filter = QComboBox()
         for tag_type, label in TAG_TYPE_LABELS.items():
@@ -483,6 +499,11 @@ class TagTab(QWidget):
     # Data loading / table helpers
     # ------------------------------------------------------------------
 
+    def selected_tag_source(self) -> str:
+        if hasattr(self, "source_filter"):
+            return str(self.source_filter.currentData() or "both")
+        return "both"
+
     def selected_tag_type(self) -> str:
         return str(self.type_filter.currentData())
 
@@ -548,6 +569,7 @@ class TagTab(QWidget):
             search_text=self.search_text(),
             tag_type=self.selected_tag_type(),
             limit=5000,
+            source=self.selected_tag_source(),
         )
         self.log_message(f"fetch_tag_overview: end, rows={len(rows)}")
 

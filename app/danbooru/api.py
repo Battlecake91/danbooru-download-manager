@@ -16,6 +16,16 @@ class DanbooruSearchPage:
     next_page: str | None
 
 
+TAG_CATEGORY_NAMES = {
+    0: "general",
+    1: "artist",
+    3: "copyright",
+    4: "character",
+    5: "meta",
+}
+TAG_CATEGORY_VALUES = {value: key for key, value in TAG_CATEGORY_NAMES.items()}
+
+
 class DanbooruApi:
     def __init__(self, config: dict[str, Any]) -> None:
         self.base_url = str(config["base_url"]).rstrip("/") + "/"
@@ -79,6 +89,90 @@ class DanbooruApi:
         if not isinstance(post, dict):
             raise RuntimeError(f"Unerwartete Danbooru-Post-Antwort: {post!r}")
         return post
+
+
+    def get_tags_page(
+        self,
+        *,
+        limit: int = 200,
+        page: int = 1,
+        order: str = "count",
+        name_matches: str | None = None,
+        category: str | int | None = None,
+        min_post_count: int | None = None,
+    ) -> list[dict[str, Any]]:
+        url = urljoin(self.base_url, "tags.json")
+        params: dict[str, Any] = {
+            "limit": min(max(int(limit), 1), 200),
+            "page": max(int(page), 1),
+            "search[order]": order,
+        }
+        if name_matches:
+            params["search[name_matches]"] = str(name_matches)
+        if category not in {None, "", "all"}:
+            category_value = category
+            if isinstance(category, str) and not category.isdigit():
+                category_value = TAG_CATEGORY_VALUES.get(category.strip().lower())
+            if category_value is not None:
+                params["search[category]"] = int(category_value)
+        if min_post_count is not None and int(min_post_count) > 0:
+            params["search[post_count_gte]"] = int(min_post_count)
+
+        LOGGER.debug("Danbooru GET %s params=%s", url, params)
+        response = self.session.get(url, params=params, timeout=self.timeout)
+        response.raise_for_status()
+
+        data = response.json()
+        if not isinstance(data, list):
+            raise RuntimeError(f"Unexpected Danbooru tags response: {data!r}")
+        return [item for item in data if isinstance(item, dict)]
+
+    def get_popular_tags(
+        self,
+        *,
+        total_limit: int,
+        min_post_count: int = 0,
+        categories: list[str] | None = None,
+        progress_callback: Any | None = None,
+    ) -> list[dict[str, Any]]:
+        wanted_total = max(0, int(total_limit or 0))
+        if wanted_total <= 0:
+            return []
+
+        category_list = categories or ["general", "artist", "copyright", "character", "meta"]
+        per_category_target = max(1, (wanted_total + len(category_list) - 1) // len(category_list))
+        collected: dict[str, dict[str, Any]] = {}
+
+        for category in category_list:
+            page = 1
+            category_count = 0
+            while category_count < per_category_target and len(collected) < wanted_total:
+                batch = self.get_tags_page(
+                    limit=200,
+                    page=page,
+                    order="count",
+                    category=category,
+                    min_post_count=min_post_count,
+                )
+                if not batch:
+                    break
+                for tag in batch:
+                    name = str(tag.get("name") or "").strip()
+                    if not name:
+                        continue
+                    collected[name] = tag
+                    category_count += 1
+                    if category_count >= per_category_target or len(collected) >= wanted_total:
+                        break
+                if progress_callback is not None:
+                    progress_callback(category, len(collected), wanted_total)
+                page += 1
+
+        return sorted(
+            collected.values(),
+            key=lambda item: int(item.get("post_count") or 0),
+            reverse=True,
+        )[:wanted_total]
 
     def get_saved_searches(self) -> list[dict[str, Any]]:
         url = urljoin(self.base_url, "saved_searches.json")

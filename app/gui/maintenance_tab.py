@@ -26,6 +26,7 @@ from app.core.database import Database
 from app.danbooru.api import DanbooruApi
 from app.i18n.i18n import tr
 from app.services.download_service import DownloadService
+from app.gui.first_run_setup import FirstRunSetupDialog
 
 
 STATUS_OK = "OK"
@@ -91,6 +92,10 @@ class MaintenanceTab(QWidget):
         self.vacuum_button = QPushButton(tr("maintenance.vacuum", config=self.config))
         self.vacuum_button.clicked.connect(self.vacuum_database)
         db_controls.addWidget(self.vacuum_button)
+
+        self.setup_button = QPushButton(tr("maintenance.open_setup", "Setup / tag catalog", config=self.config))
+        self.setup_button.clicked.connect(self.open_setup_dialog)
+        db_controls.addWidget(self.setup_button)
         db_controls.addStretch(1)
         layout.addLayout(db_controls)
 
@@ -136,6 +141,11 @@ class MaintenanceTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.doubleClicked.connect(self.open_selected_file)
         layout.addWidget(self.table, stretch=1)
+
+    def open_setup_dialog(self) -> None:
+        dialog = FirstRunSetupDialog(self.config, self.db)
+        dialog.exec()
+        self.analyze_database_size()
 
     def analyze_database_size(self) -> None:
         self.analyze_db_button.setEnabled(False)

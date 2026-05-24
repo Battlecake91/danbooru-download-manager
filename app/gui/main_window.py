@@ -9,6 +9,7 @@ from app.core.database import Database
 from app.gui.app_window import AppWindow
 from app.gui.error_handler import install_global_exception_hook
 from app.gui.icon_utils import ensure_app_icon
+from app.gui.first_run_setup import FirstRunSetupDialog, should_show_first_run_setup
 
 
 def run_gui(config: dict[str, Any], db: Database) -> int:
@@ -23,6 +24,10 @@ def run_gui(config: dict[str, Any], db: Database) -> int:
     error_logger = install_global_exception_hook(config)
 
     try:
+        if should_show_first_run_setup(db):
+            setup_dialog = FirstRunSetupDialog(config, db)
+            setup_dialog.exec()
+
         window = AppWindow(config, db)
         window.resize(1500, 950)
         window.show()
@@ -30,8 +35,8 @@ def run_gui(config: dict[str, Any], db: Database) -> int:
         error_logger.write_exception(type(exc), exc, exc.__traceback__, "GUI startup failed")
         QMessageBox.critical(
             None,
-            "GUI-Fehler",
-            f"GUI konnte nicht gestartet werden:\n{exc}\n\nLog: {error_logger.log_path}",
+            "GUI error",
+            f"GUI could not be started:\n{exc}\n\nLog: {error_logger.log_path}",
         )
         return 1
 

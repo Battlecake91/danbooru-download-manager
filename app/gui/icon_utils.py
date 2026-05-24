@@ -6,6 +6,8 @@ from urllib.request import urlretrieve
 
 from PySide6.QtGui import QIcon
 
+from app.core.paths import resource_path, resolve_runtime_path
+
 
 DANBOORU_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Danbooru_icon.png"
 
@@ -13,19 +15,25 @@ DANBOORU_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/b/b5/Danboor
 def ensure_app_icon(config: dict[str, Any]) -> QIcon:
     """Return the configured Danbooru app icon.
 
-    Prefer a configured local file, then a bundled asset, then a cached download from
-    the Wikimedia Danbooru icon URL. If the machine is offline, Qt simply gets an
-    empty icon instead of exploding theatrically.
+    Prefer a configured local file, then bundled assets, then a cached download.
+    In frozen builds bundled assets live below PyInstaller's resource directory,
+    while writable cache files live next to the executable. Naturally those are
+    different places, because simplicity was apparently busy that day.
     """
     configured_icon = config.get("app_icon_file")
     if configured_icon:
-        path = Path(str(configured_icon))
-        if path.exists():
-            return QIcon(str(path))
+        configured_path = resolve_runtime_path(str(configured_icon))
+        if configured_path.exists():
+            return QIcon(str(configured_path))
 
-    bundled_icon = Path(__file__).resolve().parents[1] / "assets" / "danbooru_icon.png"
-    if bundled_icon.exists():
-        return QIcon(str(bundled_icon))
+    for candidate in (
+        resource_path("app/assets/danbooru_icon.png"),
+        resource_path("assets/danbooru_icon.png"),
+        resource_path("assets/app_icon.png"),
+        resource_path("assets/app_icon.ico"),
+    ):
+        if candidate.exists():
+            return QIcon(str(candidate))
 
     work_dir = Path(str(config.get("work_dir", ".")))
     icon_dir = work_dir / "assets"
