@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -22,14 +23,65 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QFileDialog,
+    QTabWidget,
+    QSizePolicy,
 )
 
 from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
+from app.gui.thumbnail_grid import ThumbnailGrid
+from app.services.post_import_service import PostImportService
 
 
 SECRET_SETTING_KEYS = {"api_key"}
 SECRET_DISPLAY = "********"
+
+THUMBNAIL_SIZE_PRESETS = {
+    "small": 180,
+    "medium": 260,
+    "large": 340,
+    "huge": 520,
+}
+
+
+PREVIEW_CARD_OPTION_KEYS = [
+    "show_id",
+    "show_rating",
+    "show_score",
+    "show_parent",
+    "show_status",
+    "show_recommendation",
+    "show_category",
+    "show_path",
+    "show_tags",
+    "show_tag_general",
+    "show_tag_character",
+    "show_tag_meta",
+    "show_tag_copyright",
+    "show_tag_artist",
+]
+
+PREVIEW_CARD_OPTION_LABELS = {
+    "show_id": "ID",
+    "show_rating": "Rating",
+    "show_score": "Score",
+    "show_parent": "Parent / Child-Hinweis",
+    "show_status": "Status",
+    "show_recommendation": "Vorauswahl",
+    "show_category": "Kategorie",
+    "show_path": "Pfad",
+    "show_tags": "Tags anzeigen",
+    "show_tag_general": "General-Tags",
+    "show_tag_character": "Character-Tags",
+    "show_tag_meta": "Meta-Tags",
+    "show_tag_copyright": "Copyright/Serie-Tags",
+    "show_tag_artist": "Artist-Tags",
+}
+
+PREVIEW_TAG_DISPLAY_MODES = [
+    ("raw", "Raw: einfache Tag-Zeile"),
+    ("structured", "Aufgeschlüsselt: Artist / Character / Copyright / …"),
+]
 
 
 def is_secret_setting_key(key: str) -> bool:
@@ -60,6 +112,23 @@ class ConfigTab(QWidget):
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
 
+        self.config_tabs = QTabWidget()
+        self.content_layout.addWidget(self.config_tabs)
+
+        self.basis_page, self.basis_layout = self._make_tab_page()
+        self.fetch_page, self.fetch_layout = self._make_tab_page()
+        self.gui_page, self.gui_layout = self._make_tab_page()
+        self.filename_page, self.filename_layout = self._make_tab_page()
+        self.scoring_page, self.scoring_layout = self._make_tab_page()
+        self.custom_page, self.custom_layout = self._make_tab_page()
+
+        self.config_tabs.addTab(self.basis_page, "Basis")
+        self.config_tabs.addTab(self.fetch_page, "Fetch")
+        self.config_tabs.addTab(self.gui_page, "GUI")
+        self.config_tabs.addTab(self.filename_page, "Filename")
+        self.config_tabs.addTab(self.scoring_page, "Scoring")
+        self.config_tabs.addTab(self.custom_page, "Custom (Expert)")
+
         self.general_group = QGroupBox("Pfade / Basis")
         self.general_form = QFormLayout(self.general_group)
 
@@ -79,7 +148,7 @@ class ConfigTab(QWidget):
         self.general_form.addRow("saved_thumbnail_dir:", self.saved_thumbnail_dir_edit)
         self.general_form.addRow("rejected_thumbnail_dir:", self.rejected_thumbnail_dir_edit)
 
-        self.content_layout.addWidget(self.general_group)
+        self.basis_layout.addWidget(self.general_group)
 
         self.fetch_group = QGroupBox("Fetch")
         self.fetch_form = QFormLayout(self.fetch_group)
@@ -98,8 +167,11 @@ class ConfigTab(QWidget):
         self.show_api_key_checkbox = QCheckBox("API-Key anzeigen")
         self.show_api_key_checkbox.toggled.connect(self.toggle_api_key_visibility)
 
-        self.use_saved_searches_checkbox = QCheckBox("Saved Searches verwenden")
-        self.use_saved_searches_checkbox.setChecked(bool(config.get("use_saved_searches", False)))
+        self.legacy_saved_searches_label = QLabel(
+            "Saved Searches werden im neuen Workflow ueber Fetch-Presets gesteuert. "
+            "Der alte globale Schalter bleibt intern auf false, damit Presets nicht von einer Altlast ueberschrieben werden."
+        )
+        self.legacy_saved_searches_label.setWordWrap(True)
 
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(1, 200)
@@ -120,14 +192,14 @@ class ConfigTab(QWidget):
         self.fetch_form.addRow("username:", self.username_edit)
         self.fetch_form.addRow("api_key:", self.api_key_edit)
         self.fetch_form.addRow("", self.show_api_key_checkbox)
-        self.fetch_form.addRow("search_tags:", self.search_tags_edit)
-        self.fetch_form.addRow("saved_search_extra_tags:", self.saved_search_extra_tags_edit)
-        self.fetch_form.addRow("", self.use_saved_searches_checkbox)
+        self.fetch_form.addRow("Default search_tags:", self.search_tags_edit)
+        self.fetch_form.addRow("Default saved_search_extra_tags:", self.saved_search_extra_tags_edit)
+        self.fetch_form.addRow("Saved Searches:", self.legacy_saved_searches_label)
         self.fetch_form.addRow("limit:", self.limit_spin)
         self.fetch_form.addRow("max_posts_per_query:", self.max_posts_per_query_spin)
         self.fetch_form.addRow("max_total_posts:", self.max_total_posts_spin)
 
-        self.content_layout.addWidget(self.fetch_group)
+        self.fetch_layout.addWidget(self.fetch_group)
 
         self.gui_group = QGroupBox("GUI / Preview")
         self.gui_form = QFormLayout(self.gui_group)
@@ -135,10 +207,34 @@ class ConfigTab(QWidget):
         gui_config = config.get("gui", {}) or {}
         viewer_config = config.get("viewer", {}) or {}
 
+        current_thumbnail_size = int(gui_config.get("thumbnail_size", config.get("thumbnail_size", 340)))
+
+        self.thumbnail_preset_combo = QComboBox()
+        self.thumbnail_preset_combo.addItem("Small", "small")
+        self.thumbnail_preset_combo.addItem("Medium", "medium")
+        self.thumbnail_preset_combo.addItem("Large", "large")
+        self.thumbnail_preset_combo.addItem("Huge", "huge")
+        self.thumbnail_preset_combo.addItem("Custom", "custom")
+        preset_key = self._thumbnail_preset_for_size(current_thumbnail_size)
+        preset_index = self.thumbnail_preset_combo.findData(preset_key)
+        if preset_index >= 0:
+            self.thumbnail_preset_combo.setCurrentIndex(preset_index)
+        self.thumbnail_preset_combo.currentIndexChanged.connect(self.on_thumbnail_preset_changed)
+
         self.thumbnail_size_spin = QSpinBox()
         self.thumbnail_size_spin.setRange(80, 1200)
-        self.thumbnail_size_spin.setValue(int(gui_config.get("thumbnail_size", config.get("thumbnail_size", 340))))
+        self.thumbnail_size_spin.setValue(current_thumbnail_size)
         self.thumbnail_size_spin.setKeyboardTracking(False)
+        self.thumbnail_size_spin.valueChanged.connect(self.update_thumbnail_preview)
+
+        self.thumbnail_preview_host = QWidget()
+        self.thumbnail_preview_host_layout = QVBoxLayout(self.thumbnail_preview_host)
+        self.thumbnail_preview_host_layout.setContentsMargins(0, 0, 0, 0)
+        self.thumbnail_preview_host_layout.setSpacing(6)
+        self.thumbnail_preview_card: QWidget | QLabel | None = None
+
+        self.thumbnail_preview_text = QLabel()
+        self.thumbnail_preview_text.setWordWrap(True)
 
         self.thumbnail_min_spin = QSpinBox()
         self.thumbnail_min_spin.setRange(50, 1200)
@@ -154,6 +250,7 @@ class ConfigTab(QWidget):
         self.card_width_extra_spin.setRange(0, 500)
         self.card_width_extra_spin.setValue(int(gui_config.get("card_width_extra", 100)))
         self.card_width_extra_spin.setKeyboardTracking(False)
+        self.card_width_extra_spin.valueChanged.connect(self.update_thumbnail_preview)
 
         self.viewer_default_view_combo = QComboBox()
         for value, label in [
@@ -177,7 +274,42 @@ class ConfigTab(QWidget):
         self.auto_advance_after_reject_checkbox = QCheckBox("Nach Ablehnen automatisch weiter")
         self.auto_advance_after_reject_checkbox.setChecked(bool(viewer_config.get("auto_advance_after_reject", True)))
 
+        preview_card_config = gui_config.get("preview_card", {}) or {}
+        self.preview_card_group = QGroupBox("Preview-Karten-Inhalte")
+        self.preview_card_layout = QVBoxLayout(self.preview_card_group)
+        self.preview_card_checkboxes: dict[str, QCheckBox] = {}
+
+        for key in PREVIEW_CARD_OPTION_KEYS:
+            checkbox = QCheckBox(PREVIEW_CARD_OPTION_LABELS[key])
+            checkbox.setChecked(bool(preview_card_config.get(key, True)))
+            checkbox.toggled.connect(self.update_thumbnail_preview)
+            self.preview_card_checkboxes[key] = checkbox
+            self.preview_card_layout.addWidget(checkbox)
+
+        self.preview_tag_display_mode_combo = QComboBox()
+        for value, label in PREVIEW_TAG_DISPLAY_MODES:
+            self.preview_tag_display_mode_combo.addItem(label, value)
+        current_tag_mode = str(preview_card_config.get("tag_display_mode", "raw") or "raw")
+        tag_mode_index = self.preview_tag_display_mode_combo.findData(current_tag_mode)
+        if tag_mode_index < 0:
+            tag_mode_index = self.preview_tag_display_mode_combo.findData("raw")
+        self.preview_tag_display_mode_combo.setCurrentIndex(max(0, tag_mode_index))
+        self.preview_tag_display_mode_combo.currentIndexChanged.connect(self.update_thumbnail_preview)
+        self.preview_card_layout.addWidget(QLabel("Tag-Darstellung:"))
+        self.preview_card_layout.addWidget(self.preview_tag_display_mode_combo)
+
+        tag_hint = QLabel(
+            "Die Tag-Typen wirken nur, wenn 'Tags anzeigen' aktiv ist. "
+            "Das Rating wird in der Karte als ausgeschriebener Danbooru-Wert mit Farbe angezeigt."
+        )
+        tag_hint.setWordWrap(True)
+        self.preview_card_layout.addWidget(tag_hint)
+
+        self.gui_form.addRow("Thumbnail-Preset:", self.thumbnail_preset_combo)
         self.gui_form.addRow("thumbnail_size:", self.thumbnail_size_spin)
+        self.gui_form.addRow("Vorschau:", self.thumbnail_preview_host)
+        self.gui_form.addRow("", self.thumbnail_preview_text)
+        self.gui_form.addRow("Karteninhalt:", self.preview_card_group)
         self.gui_form.addRow("thumbnail_size_min:", self.thumbnail_min_spin)
         self.gui_form.addRow("thumbnail_size_max:", self.thumbnail_max_spin)
         self.gui_form.addRow("card_width_extra:", self.card_width_extra_spin)
@@ -185,7 +317,7 @@ class ConfigTab(QWidget):
         self.gui_form.addRow("", self.auto_advance_after_save_checkbox)
         self.gui_form.addRow("", self.auto_advance_after_reject_checkbox)
 
-        self.content_layout.addWidget(self.gui_group)
+        self.gui_layout.addWidget(self.gui_group)
 
         self.filename_group = QGroupBox("Dateiname")
         self.filename_form = QFormLayout(self.filename_group)
@@ -229,7 +361,7 @@ class ConfigTab(QWidget):
         self.filename_form.addRow("Tag-Reihenfolge:", self.filename_tag_order_combo)
         self.filename_form.addRow("", filename_help)
 
-        self.content_layout.addWidget(self.filename_group)
+        self.filename_layout.addWidget(self.filename_group)
 
         self.scoring_llm_group = QGroupBox("Scoring / LLM-Tag-Privacy")
         self.scoring_llm_form = QFormLayout(self.scoring_llm_group)
@@ -278,7 +410,7 @@ class ConfigTab(QWidget):
         self.scoring_llm_form.addRow("", self.llm_include_legend_checkbox)
         self.scoring_llm_form.addRow("", llm_help)
 
-        self.content_layout.addWidget(self.scoring_llm_group)
+        self.scoring_layout.addWidget(self.scoring_llm_group)
 
         self.workflow_group = QGroupBox("Workflow")
         self.workflow_form = QFormLayout(self.workflow_group)
@@ -297,7 +429,29 @@ class ConfigTab(QWidget):
         self.workflow_form.addRow("worklist_statuses:", self.worklist_statuses_edit)
         self.workflow_form.addRow("rejected_thumbnail_retention_days:", self.rejected_retention_spin)
 
-        self.content_layout.addWidget(self.workflow_group)
+        self.basis_layout.addWidget(self.workflow_group)
+
+        self.preview_sample_group = QGroupBox("GUI-Vorschau Beispielpost")
+        self.preview_sample_form = QFormLayout(self.preview_sample_group)
+
+        self.preview_sample_post_id_spin = QSpinBox()
+        self.preview_sample_post_id_spin.setRange(1, 2_147_483_647)
+        self.preview_sample_post_id_spin.setValue(int(config.get("gui", {}).get("preview_sample_post_id", config.get("preview_sample_post_id", 1)) or 1))
+        self.preview_sample_post_id_spin.setKeyboardTracking(False)
+        self.preview_sample_post_id_spin.valueChanged.connect(self.on_preview_sample_post_id_changed)
+
+        self.preview_sample_fetch_button = QPushButton("Beispielpost laden/aktualisieren")
+        self.preview_sample_fetch_button.clicked.connect(self.fetch_preview_sample_post)
+
+        self.preview_sample_status_label = QLabel(
+            "Der Beispielpost wird nur auf Knopfdruck von Danbooru geladen und danach lokal aus der DB/Thumbnail-Datei angezeigt."
+        )
+        self.preview_sample_status_label.setWordWrap(True)
+
+        self.preview_sample_form.addRow("Danbooru Post-ID:", self.preview_sample_post_id_spin)
+        self.preview_sample_form.addRow("", self.preview_sample_fetch_button)
+        self.preview_sample_form.addRow("", self.preview_sample_status_label)
+        self.custom_layout.addWidget(self.preview_sample_group)
 
         self.raw_group = QGroupBox("Raw app_settings")
         self.raw_layout = QVBoxLayout(self.raw_group)
@@ -307,9 +461,14 @@ class ConfigTab(QWidget):
         self.raw_text.setMinimumHeight(160)
         self.raw_layout.addWidget(self.raw_text)
 
-        self.content_layout.addWidget(self.raw_group)
+        self.custom_layout.addWidget(self.raw_group)
 
-        self.content_layout.addStretch(1)
+        self.basis_layout.addStretch(1)
+        self.fetch_layout.addStretch(1)
+        self.gui_layout.addStretch(1)
+        self.filename_layout.addStretch(1)
+        self.scoring_layout.addStretch(1)
+        self.custom_layout.addStretch(1)
 
         self.scroll.setWidget(self.content)
         self.main_layout.addWidget(self.scroll, stretch=1)
@@ -345,7 +504,191 @@ class ConfigTab(QWidget):
 
         self.apply_sql_settings_to_runtime()
         self.reload_from_runtime()
+        self.on_thumbnail_preset_changed()
         self.refresh_raw_settings()
+
+
+    def _make_tab_page(self) -> tuple[QWidget, QVBoxLayout]:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        return page, layout
+
+    def _thumbnail_preset_for_size(self, size: int) -> str:
+        for key, preset_size in THUMBNAIL_SIZE_PRESETS.items():
+            if int(size) == int(preset_size):
+                return key
+        return "custom"
+
+    def on_thumbnail_preset_changed(self) -> None:
+        preset = str(self.thumbnail_preset_combo.currentData() or "custom")
+        is_custom = preset == "custom"
+        self.thumbnail_size_spin.setVisible(is_custom)
+        self.gui_form.labelForField(self.thumbnail_size_spin).setVisible(is_custom)
+        if not is_custom:
+            size = THUMBNAIL_SIZE_PRESETS.get(preset, 340)
+            if self.thumbnail_size_spin.value() != size:
+                self.thumbnail_size_spin.blockSignals(True)
+                self.thumbnail_size_spin.setValue(size)
+                self.thumbnail_size_spin.blockSignals(False)
+        self.update_thumbnail_preview()
+
+    def update_thumbnail_preview(self) -> None:
+        size = int(self.thumbnail_size_spin.value())
+        card_width_extra = int(self.card_width_extra_spin.value()) if hasattr(self, "card_width_extra_spin") else 100
+        card_width = size + card_width_extra
+
+        self._clear_thumbnail_preview_card()
+
+        post_id = self._current_preview_sample_post_id()
+        row = self.db.get_post_detail(post_id) if post_id else None
+
+        if row is not None:
+            preview_config = copy.deepcopy(self.config)
+            preview_config.setdefault("gui", {})["thumbnail_size"] = size
+            preview_config.setdefault("gui", {})["card_width_extra"] = card_width_extra
+            preview_config.setdefault("gui", {})["preview_render_batch_size"] = 1
+            preview_card_config = self.preview_card_options_from_form()
+            preview_card_config["tag_display_mode"] = self.preview_tag_display_mode_from_form()
+            preview_config.setdefault("gui", {})["preview_card"] = preview_card_config
+
+            # Nicht direkt ThumbnailCard einbetten: Im echten Previewer sitzt die Karte
+            # in ThumbnailGrid/QScrollArea. Genau dieser Kontext beeinflusst Hintergrund,
+            # Breite, Scroll-Verhalten und damit das sichtbare Layout. Direktes Einbetten
+            # sah ähnlich aus, war aber genau die Art UI-Lüge, die später Ärger macht.
+            grid = ThumbnailGrid(self.db, preview_config)
+            grid.setFocusPolicy(Qt.NoFocus)
+            grid.setMinimumWidth(card_width + 40)
+            grid.setMinimumHeight(min(max(size + 260, 420), 900))
+            grid.setMaximumHeight(min(max(size + 360, 520), 1000))
+            grid.set_posts([row])
+
+            self.thumbnail_preview_card = grid
+            self.thumbnail_preview_host_layout.addWidget(grid, alignment=Qt.AlignLeft)
+            self.thumbnail_preview_text.setText(
+                f"Echte Preview-Ansicht mit ThumbnailGrid: Thumbnail {size}px, "
+                f"Kartenbreite ca. {card_width}px. Beispielpost: {post_id}."
+            )
+        else:
+            placeholder = QLabel(
+                f"Kein lokaler Beispielpost für ID {post_id}.\n"
+                "In Custom (Expert) laden/aktualisieren."
+            )
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setMinimumSize(min(max(260, card_width), 760), 180)
+            placeholder.setWordWrap(True)
+            placeholder.setStyleSheet(
+                "QLabel {"
+                " border: 1px dashed #777;"
+                " border-radius: 8px;"
+                " background: #202020;"
+                " color: #dddddd;"
+                " padding: 12px;"
+                "}"
+            )
+            self.thumbnail_preview_card = placeholder
+            self.thumbnail_preview_host_layout.addWidget(placeholder, alignment=Qt.AlignLeft)
+            self.thumbnail_preview_text.setText(
+                f"Preview-Karte noch nicht lokal geladen. Ziel: Thumbnail {size}px, "
+                f"Kartenbreite ca. {card_width}px."
+            )
+
+    def _clear_thumbnail_preview_card(self) -> None:
+        widget = self.thumbnail_preview_card
+        self.thumbnail_preview_card = None
+        if widget is None:
+            return
+        self.thumbnail_preview_host_layout.removeWidget(widget)
+        widget.setParent(None)
+        widget.deleteLater()
+
+    def _current_preview_sample_post_id(self) -> int:
+        if hasattr(self, "preview_sample_post_id_spin"):
+            return int(self.preview_sample_post_id_spin.value())
+        try:
+            return int(self.runtime_value("gui.preview_sample_post_id", 1) or 1)
+        except Exception:
+            return 1
+
+    def on_preview_sample_post_id_changed(self) -> None:
+        post_id = self._current_preview_sample_post_id()
+        self.set_runtime_value("gui.preview_sample_post_id", post_id)
+        self.update_thumbnail_preview()
+
+    def fetch_preview_sample_post(self) -> None:
+        post_id = self._current_preview_sample_post_id()
+        self.preview_sample_fetch_button.setEnabled(False)
+        self.preview_sample_status_label.setText(f"Lade Beispielpost {post_id}…")
+        try:
+            fetch_config = copy.deepcopy(self.config)
+            # Aktuelle Formularwerte nutzen, auch wenn sie noch nicht gespeichert sind.
+            for key, value in self.collect_values().items():
+                self._set_nested_value(fetch_config, key, value)
+
+            service = PostImportService(fetch_config, self.db)
+            post = service.api.get_post(post_id)
+            service.store_post(post)
+            thumbnail_path = service.thumbnail_cache.cache_thumbnail(post, force=True)
+            if thumbnail_path:
+                service.set_thumbnail_path(post_id, thumbnail_path)
+
+            self.set_setting("gui.preview_sample_post_id", post_id)
+            self.set_runtime_value("gui.preview_sample_post_id", post_id)
+            self.db.commit()
+            self.refresh_raw_settings()
+            self.preview_sample_status_label.setText(
+                f"Beispielpost {post_id} geladen. Thumbnail: {thumbnail_path or 'nicht verfügbar'}"
+            )
+            self.update_thumbnail_preview()
+        except Exception as exc:
+            self.preview_sample_status_label.setText(f"Fehler beim Laden von Beispielpost {post_id}: {exc}")
+            QMessageBox.critical(self, "Beispielpost laden", str(exc))
+        finally:
+            self.preview_sample_fetch_button.setEnabled(True)
+
+    def _set_nested_value(self, target: dict[str, Any], dotted_key: str, value: Any) -> None:
+        parts = dotted_key.split(".")
+        if not parts:
+            return
+        current: Any = target
+        for part in parts[:-1]:
+            child = current.get(part) if isinstance(current, dict) else None
+            if not isinstance(child, dict):
+                child = {}
+                current[part] = child
+            current = child
+        if isinstance(current, dict):
+            current[parts[-1]] = value
+
+    def preview_card_options_from_form(self) -> dict[str, bool]:
+        if not hasattr(self, "preview_card_checkboxes"):
+            return {key: True for key in PREVIEW_CARD_OPTION_KEYS}
+        return {key: checkbox.isChecked() for key, checkbox in self.preview_card_checkboxes.items()}
+
+    def preview_tag_display_mode_from_form(self) -> str:
+        if not hasattr(self, "preview_tag_display_mode_combo"):
+            return "raw"
+        value = str(self.preview_tag_display_mode_combo.currentData() or "raw")
+        return value if value in {"raw", "structured"} else "raw"
+
+    def set_preview_tag_display_mode_to_form(self, mode: Any) -> None:
+        if not hasattr(self, "preview_tag_display_mode_combo"):
+            return
+        value = str(mode or "raw")
+        index = self.preview_tag_display_mode_combo.findData(value)
+        if index < 0:
+            index = self.preview_tag_display_mode_combo.findData("raw")
+        self.preview_tag_display_mode_combo.blockSignals(True)
+        self.preview_tag_display_mode_combo.setCurrentIndex(max(0, index))
+        self.preview_tag_display_mode_combo.blockSignals(False)
+
+    def set_preview_card_options_to_form(self, options: dict[str, Any] | None) -> None:
+        if not hasattr(self, "preview_card_checkboxes"):
+            return
+        configured = options or {}
+        for key, checkbox in self.preview_card_checkboxes.items():
+            checkbox.blockSignals(True)
+            checkbox.setChecked(bool(configured.get(key, True)))
+            checkbox.blockSignals(False)
 
     def toggle_api_key_visibility(self, visible: bool) -> None:
         self.api_key_edit.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
@@ -455,6 +798,7 @@ class ConfigTab(QWidget):
     def reload_from_sql(self) -> None:
         self.apply_sql_settings_to_runtime()
         self.reload_from_runtime()
+        self.on_thumbnail_preset_changed()
         self.refresh_raw_settings()
 
     def reload_from_runtime(self) -> None:
@@ -471,15 +815,25 @@ class ConfigTab(QWidget):
         self.api_key_edit.setText(str(self.runtime_value("api_key", "") or ""))
         self.search_tags_edit.setText(str(self.runtime_value("search_tags", "order:id_desc")))
         self.saved_search_extra_tags_edit.setText(str(self.runtime_value("saved_search_extra_tags", "")))
-        self.use_saved_searches_checkbox.setChecked(bool(self.runtime_value("use_saved_searches", False)))
         self.limit_spin.setValue(int(self.runtime_value("limit", 100)))
         self.max_posts_per_query_spin.setValue(int(self.runtime_value("max_posts_per_query", 500)))
         self.max_total_posts_spin.setValue(int(self.runtime_value("max_total_posts", 1000)))
 
-        self.thumbnail_size_spin.setValue(int(self.runtime_value("gui.thumbnail_size", 340)))
+        thumbnail_size = int(self.runtime_value("gui.thumbnail_size", 340))
+        self.thumbnail_size_spin.setValue(thumbnail_size)
+        preset_key = self._thumbnail_preset_for_size(thumbnail_size)
+        preset_index = self.thumbnail_preset_combo.findData(preset_key)
+        if preset_index >= 0:
+            self.thumbnail_preset_combo.setCurrentIndex(preset_index)
+        self.on_thumbnail_preset_changed()
         self.thumbnail_min_spin.setValue(int(self.runtime_value("gui.thumbnail_size_min", 120)))
         self.thumbnail_max_spin.setValue(int(self.runtime_value("gui.thumbnail_size_max", 700)))
         self.card_width_extra_spin.setValue(int(self.runtime_value("gui.card_width_extra", 100)))
+        preview_card_config = self.runtime_value("gui.preview_card", {}) or {}
+        self.set_preview_card_options_to_form(preview_card_config)
+        self.set_preview_tag_display_mode_to_form(preview_card_config.get("tag_display_mode", "raw") if isinstance(preview_card_config, dict) else "raw")
+        if hasattr(self, "preview_sample_post_id_spin"):
+            self.preview_sample_post_id_spin.setValue(int(self.runtime_value("gui.preview_sample_post_id", 1) or 1))
 
         default_view = str(self.runtime_value("viewer.default_view", "worklist"))
         index = self.viewer_default_view_combo.findData(default_view)
@@ -536,7 +890,7 @@ class ConfigTab(QWidget):
             "api_key": self.api_key_edit.text().strip() or None,
             "search_tags": self.search_tags_edit.text().strip(),
             "saved_search_extra_tags": self.saved_search_extra_tags_edit.text().strip(),
-            "use_saved_searches": self.use_saved_searches_checkbox.isChecked(),
+            "use_saved_searches": False,
             "limit": int(self.limit_spin.value()),
             "max_posts_per_query": int(self.max_posts_per_query_spin.value()),
             "max_total_posts": int(self.max_total_posts_spin.value()),
@@ -545,6 +899,9 @@ class ConfigTab(QWidget):
             "gui.thumbnail_size_min": int(self.thumbnail_min_spin.value()),
             "gui.thumbnail_size_max": int(self.thumbnail_max_spin.value()),
             "gui.card_width_extra": int(self.card_width_extra_spin.value()),
+            "gui.preview_sample_post_id": int(self.preview_sample_post_id_spin.value()),
+            "gui.preview_card.tag_display_mode": self.preview_tag_display_mode_from_form(),
+            **{f"gui.preview_card.{key}": value for key, value in self.preview_card_options_from_form().items()},
 
             "viewer.default_view": str(self.viewer_default_view_combo.currentData()),
             "viewer.auto_advance_after_save": self.auto_advance_after_save_checkbox.isChecked(),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import sqlite3
 import webbrowser
 from typing import Any
@@ -25,6 +26,38 @@ from app.core.database import Database
 
 
 TERMINAL_STATUSES = {"rejected", "already_known", "saved"}
+
+
+RATING_LABELS: dict[str, str] = {
+    "g": "General",
+    "s": "Sensitive",
+    "q": "Questionable",
+    "e": "Explicit",
+}
+
+RATING_COLORS: dict[str, str] = {
+    "g": "#7fd67f",
+    "s": "#ffd166",
+    "q": "#ff9f43",
+    "e": "#ff6b6b",
+}
+
+DEFAULT_PREVIEW_CARD_OPTIONS: dict[str, bool] = {
+    "show_id": True,
+    "show_rating": True,
+    "show_score": True,
+    "show_parent": True,
+    "show_status": True,
+    "show_recommendation": True,
+    "show_category": True,
+    "show_path": True,
+    "show_tags": True,
+    "show_tag_general": True,
+    "show_tag_character": True,
+    "show_tag_meta": True,
+    "show_tag_copyright": True,
+    "show_tag_artist": True,
+}
 
 STATUS_TEXT: dict[str, str] = {
     "new": "Neu",
@@ -82,6 +115,44 @@ def clear_cached_pixmap_for_path(path_text: str) -> None:
     for key in list(PIXMAP_CACHE.keys()):
         if key[0] == path:
             PIXMAP_CACHE.pop(key, None)
+
+
+def read_preview_card_options(gui_config: dict[str, Any]) -> dict[str, bool]:
+    options = dict(DEFAULT_PREVIEW_CARD_OPTIONS)
+    configured = gui_config.get("preview_card", {}) or {}
+    if isinstance(configured, dict):
+        for key in options:
+            if key in configured:
+                options[key] = bool(configured.get(key))
+    return options
+
+
+def rating_label_and_color(rating: Any) -> tuple[str, str]:
+    code = str(rating or "").strip().lower()
+    return (RATING_LABELS.get(code, code.upper() if code else "?"), RATING_COLORS.get(code, "#dddddd"))
+
+
+def read_preview_tag_display_mode(gui_config: dict[str, Any]) -> str:
+    preview_card = gui_config.get("preview_card", {}) or {}
+    mode = str(preview_card.get("tag_display_mode", "raw") or "raw").strip().lower()
+    if mode not in {"raw", "structured"}:
+        return "raw"
+    return mode
+
+
+def prettify_danbooru_tag(tag: str) -> str:
+    text = str(tag or "").strip().replace("_", " ")
+    if not text:
+        return ""
+    # str.title() ist hier absichtlich simpel: Danbooru-Tags sind technisch,
+    # keine druckfertigen Buchtitel. Für die Preview reicht lesbarer Text.
+    return text.title()
+
+
+def split_tag_text(value: Any) -> list[str]:
+    if not value:
+        return []
+    return [part for part in str(value).split() if part]
 
 
 class ThumbnailGrid(QScrollArea):
@@ -705,6 +776,8 @@ class ThumbnailCard(QFrame):
         self.card_width_extra = int(gui_config.get("card_width_extra", 100))
         self.status_colors = read_status_colors(gui_config)
         self.border_widths = read_border_widths(gui_config)
+        self.preview_options = read_preview_card_options(gui_config)
+        self.tag_display_mode = read_preview_tag_display_mode(gui_config)
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setLineWidth(2)
@@ -722,6 +795,7 @@ class ThumbnailCard(QFrame):
         self.layout.addWidget(self.image_label, alignment=Qt.AlignCenter)
 
         self.title_label = QLabel()
+        self.title_label.setTextFormat(Qt.RichText)
         self.title_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.layout.addWidget(self.title_label)
 
@@ -804,18 +878,17 @@ class ThumbnailCard(QFrame):
         pixmap = self.load_pixmap()
         self.image_label.setPixmap(pixmap)
 
-        rating = self.value("rating") or "?"
-        score = self.value("score") if self.value("score") is not None else "-"
-        parent = self.value("parent_id") if self.value("parent_id") is not None else "-"
-        child_marker = " | Childs" if self.value("has_children") else ""
-
-        self.title_label.setText(
-            f"ID {self.post_id}\nRating: {rating} | Score: {score}\nParent: {parent}{child_marker}"
-        )
+        self.update_title_label()
 
         status = self.value("status") or "new"
         self.current_status = str(status)
-        self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+        if self.preview_options.get("show_status", True):
+            self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+            self.status_label.show()
+        else:
+            self.status_label.clear()
+            self.status_label.hide()
+
         self.update_recommendation_label()
 
         category = str(self.value("preview_category_name") or "_unmatched")
@@ -829,7 +902,7 @@ class ThumbnailCard(QFrame):
         if child_count:
             relation_parts.append(f"{child_count} Child(s) bekannt")
 
-        if relation_parts:
+        if self.preview_options.get("show_parent", True) and relation_parts:
             self.relation_label.setText("Verwandt: " + ", ".join(relation_parts))
             self.relation_label.show()
         else:
@@ -837,20 +910,122 @@ class ThumbnailCard(QFrame):
             self.relation_label.hide()
 
         final_path = self.value("final_file_path") or self.value("final_directory") or ""
-        if final_path:
+        if self.preview_options.get("show_path", True) and final_path:
             self.path_label.setText(f"Pfad: {final_path}")
             self.path_label.show()
         else:
             self.path_label.clear()
             self.path_label.hide()
 
-        tags = self.value("tags") or ""
-        compact_tags = self.compact_tags(str(tags))
-        self.tags_label.setText(compact_tags)
+        self.update_tags_label()
 
         self.apply_status_style(status)
 
+    def update_title_label(self) -> None:
+        lines: list[str] = []
+
+        if self.preview_options.get("show_id", True):
+            lines.append(f"ID {self.post_id}")
+
+        rating_score_parts: list[str] = []
+        if self.preview_options.get("show_rating", True):
+            rating_text, rating_color = rating_label_and_color(self.value("rating"))
+            rating_score_parts.append(
+                f'<span style="color:{rating_color}; font-weight:600;">{html.escape(rating_text)}</span>'
+            )
+        if self.preview_options.get("show_score", True):
+            score = self.value("score") if self.value("score") is not None else "-"
+            rating_score_parts.append(f"Score: {html.escape(str(score))}")
+        if rating_score_parts:
+            lines.append(" | ".join(rating_score_parts))
+
+        if self.preview_options.get("show_parent", True):
+            parent = self.value("parent_id") if self.value("parent_id") is not None else "-"
+            child_marker = " | Childs" if self.value("has_children") else ""
+            lines.append(f"Parent: {html.escape(str(parent))}{html.escape(child_marker)}")
+
+        if lines:
+            self.title_label.setText("<br>".join(lines))
+            self.title_label.show()
+        else:
+            self.title_label.clear()
+            self.title_label.hide()
+
+    def update_tags_label(self) -> None:
+        if not self.preview_options.get("show_tags", True):
+            self.tags_label.clear()
+            self.tags_label.hide()
+            return
+
+        typed_order: list[tuple[str, str, str]] = [
+            ("artist", "show_tag_artist", "Artist"),
+            ("character", "show_tag_character", "Character"),
+            ("copyright", "show_tag_copyright", "Copyright"),
+            ("general", "show_tag_general", "General"),
+            ("meta", "show_tag_meta", "Meta"),
+        ]
+
+        typed_tags: dict[str, list[str]] = {}
+        for tag_type, option_key, _label in typed_order:
+            if not self.preview_options.get(option_key, True):
+                continue
+            typed_tags[tag_type] = split_tag_text(self.value(f"tags_{tag_type}"))
+
+        if self.tag_display_mode == "structured":
+            lines: list[str] = []
+            for tag_type, _option_key, label in typed_order:
+                tags = typed_tags.get(tag_type, [])
+                if not tags:
+                    continue
+                pretty_tags = [prettify_danbooru_tag(tag) for tag in tags]
+                pretty_tags = [tag for tag in pretty_tags if tag]
+                if pretty_tags:
+                    lines.append(f"{label}: {', '.join(pretty_tags)}")
+
+            if lines:
+                self.tags_label.setMaximumHeight(170 if self.thumbnail_size >= 260 else 130)
+                self.tags_label.setText("\n".join(lines))
+                self.tags_label.show()
+                return
+
+            # Wenn keine typisierten Tags vorhanden sind und alle Tagtypen aktiv sind,
+            # fallen wir auf Raw zurück. Alte Datenbankzeilen sollen nicht plötzlich so tun,
+            # als hätten sie nie Tags gehabt. Schon genug Theater hier.
+
+        parts: list[str] = []
+        for tag_type, _option_key, _label in typed_order:
+            parts.extend(typed_tags.get(tag_type, []))
+
+        if not parts:
+            # Fallback für alte Row-Objekte ohne tags_<type>. Wenn alle Typen aktiv sind,
+            # kann die alte Gesamttagliste trotzdem noch angezeigt werden. Sonst lieber leer
+            # statt falsche Typfilter vorzutäuschen. Wir sind hier nicht im Wahrsagerzelt.
+            all_type_options = [
+                "show_tag_copyright",
+                "show_tag_character",
+                "show_tag_artist",
+                "show_tag_general",
+                "show_tag_meta",
+            ]
+            if all(self.preview_options.get(key, True) for key in all_type_options):
+                parts = str(self.value("tags") or "").split()
+
+        compact_tags = self.compact_tags(" ".join(parts))
+        if compact_tags:
+            self.tags_label.setMaximumHeight(90)
+            self.tags_label.setText(compact_tags)
+            self.tags_label.show()
+        else:
+            self.tags_label.clear()
+            self.tags_label.hide()
+
     def update_recommendation_label(self) -> None:
+        if not self.preview_options.get("show_recommendation", True):
+            self.recommendation_label.clear()
+            self.recommendation_label.hide()
+            return
+        self.recommendation_label.show()
+
         try:
             score = float(self.value("recommendation_score", self.value("local_score", 0.0)) or 0.0)
         except (TypeError, ValueError):
@@ -889,15 +1064,26 @@ class ThumbnailCard(QFrame):
 
     def apply_external_status(self, status: str) -> None:
         self.current_status = status
-        self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+        if self.preview_options.get("show_status", True):
+            self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+            self.status_label.show()
+        else:
+            self.status_label.clear()
+            self.status_label.hide()
         self.apply_status_style(status)
 
     def apply_external_category(self, category_name: str, source: str = "manual") -> None:
         self.current_category = category_name or "_unmatched"
         self.current_category_source = source or "auto"
 
+        if not self.preview_options.get("show_category", True):
+            self.category_label.clear()
+            self.category_label.hide()
+            return
+
         source_label = "manuell" if self.current_category_source == "manual" else "auto"
         self.category_label.setText(f"Kategorie: {self.current_category} ({source_label})")
+        self.category_label.show()
 
         if self.current_category_source == "manual":
             self.category_label.setStyleSheet(

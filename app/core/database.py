@@ -815,7 +815,37 @@ class Database:
                                 ELSE 9
                             END,
                             pt.tag
-                    ) AS tags
+                    ) AS tags,
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id AND pt.tag_type = 'general'
+                        ORDER BY pt.tag
+                    ) AS tags_general,
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id AND pt.tag_type = 'character'
+                        ORDER BY pt.tag
+                    ) AS tags_character,
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id AND pt.tag_type = 'copyright'
+                        ORDER BY pt.tag
+                    ) AS tags_copyright,
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id AND pt.tag_type = 'artist'
+                        ORDER BY pt.tag
+                    ) AS tags_artist,
+                    (
+                        SELECT GROUP_CONCAT(pt.tag, ' ')
+                        FROM post_tags pt
+                        WHERE pt.post_id = p.id AND pt.tag_type = 'meta'
+                        ORDER BY pt.tag
+                    ) AS tags_meta
                 FROM posts p
                 {where_sql}
                 ORDER BY p.id DESC
@@ -986,6 +1016,36 @@ class Database:
                         END,
                         pt.tag
                 ) AS tags,
+                (
+                    SELECT GROUP_CONCAT(pt.tag, ' ')
+                    FROM post_tags pt
+                    WHERE pt.post_id = p.id AND pt.tag_type = 'general'
+                    ORDER BY pt.tag
+                ) AS tags_general,
+                (
+                    SELECT GROUP_CONCAT(pt.tag, ' ')
+                    FROM post_tags pt
+                    WHERE pt.post_id = p.id AND pt.tag_type = 'character'
+                    ORDER BY pt.tag
+                ) AS tags_character,
+                (
+                    SELECT GROUP_CONCAT(pt.tag, ' ')
+                    FROM post_tags pt
+                    WHERE pt.post_id = p.id AND pt.tag_type = 'copyright'
+                    ORDER BY pt.tag
+                ) AS tags_copyright,
+                (
+                    SELECT GROUP_CONCAT(pt.tag, ' ')
+                    FROM post_tags pt
+                    WHERE pt.post_id = p.id AND pt.tag_type = 'artist'
+                    ORDER BY pt.tag
+                ) AS tags_artist,
+                (
+                    SELECT GROUP_CONCAT(pt.tag, ' ')
+                    FROM post_tags pt
+                    WHERE pt.post_id = p.id AND pt.tag_type = 'meta'
+                    ORDER BY pt.tag
+                ) AS tags_meta,
                 (
                     SELECT stars
                     FROM post_reviews pr
