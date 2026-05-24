@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from app.core.database import Database
 from app.core.category_engine import build_category_match_groups
+from app.core.recommendation_engine import RecommendationEngine
 from app.gui.image_viewer import ImageViewerWindow
 from app.gui.icon_utils import ensure_app_icon
 from app.gui.fetch_tab import TagQueryLineEdit
@@ -95,6 +96,8 @@ SORT_LABELS: dict[str, str] = {
     "id_asc": "Post-ID: älteste zuerst",
     "score_desc": "Danbooru-Score: hoch → niedrig",
     "score_asc": "Danbooru-Score: niedrig → hoch",
+    "recommendation_desc": "Vorauswahl: hoch → niedrig",
+    "recommendation_asc": "Vorauswahl: niedrig → hoch",
     "personal_desc": "Persönliches Rating: hoch → niedrig",
     "personal_asc": "Persönliches Rating: niedrig → hoch",
     "rating": "Danbooru-Rating: general → explicit",
@@ -130,6 +133,7 @@ class PreviewWindow(QMainWindow):
         self.config = config
         self.db = db
         self.final_save_service = FinalSaveService(config, db)
+        self.recommendation_engine = RecommendationEngine(db)
         self.current_limit = int((config.get("gui", {}) or {}).get("preview_limit", 100))
         self.current_offset = 0
 
@@ -569,6 +573,7 @@ class PreviewWindow(QMainWindow):
         for row in rows:
             data = dict(row)
             tags_text = str(data.get("tags") or "")
+            tags = {tag for tag in tags_text.split() if tag}
 
             assigned_category = data.get("assigned_category_name")
             assigned_source = data.get("assigned_category_source")
@@ -580,21 +585,52 @@ class PreviewWindow(QMainWindow):
                 data["preview_category_name"] = self.suggest_category_from_tags(tags_text)
                 data["preview_category_source"] = "auto"
 
+            recommendation = self.recommendation_engine.score_tags(tags)
+            data["local_score"] = recommendation.score
+            data["recommendation_score"] = recommendation.score
+            data["recommendation_positive"] = ", ".join(recommendation.positive)
+            data["recommendation_negative"] = ", ".join(recommendation.negative)
+            data["recommendation_ignored_count"] = len(recommendation.ignored)
+            data["recommendation_used_count"] = recommendation.used_count
+
+            # Until a later LLM scorer exists, final_score mirrors the local
+            # recommendation value when no explicit final_score was persisted.
+            if data.get("final_score") is None:
+                data["final_score"] = recommendation.score
+
             enriched.append(data)
 
         return enriched
 
     def sort_preview_rows_in_python(self, rows: list[dict[str, Any]], sort_key: str) -> list[dict[str, Any]]:
-        if sort_key != "category":
-            return rows
+        if sort_key == "category":
+            return sorted(
+                rows,
+                key=lambda row: (
+                    str(row.get("preview_category_name") or "_unmatched").lower(),
+                    -int(row.get("id") or 0),
+                ),
+            )
 
-        return sorted(
-            rows,
-            key=lambda row: (
-                str(row.get("preview_category_name") or "_unmatched").lower(),
-                -int(row.get("id") or 0),
-            ),
-        )
+        if sort_key == "recommendation_desc":
+            return sorted(
+                rows,
+                key=lambda row: (
+                    -float(row.get("recommendation_score") or 0.0),
+                    -int(row.get("id") or 0),
+                ),
+            )
+
+        if sort_key == "recommendation_asc":
+            return sorted(
+                rows,
+                key=lambda row: (
+                    float(row.get("recommendation_score") or 0.0),
+                    -int(row.get("id") or 0),
+                ),
+            )
+
+        return rows
 
     def category_matches_filter(self, row: dict[str, Any], category_filter: str) -> bool:
         if category_filter == "__all__":
@@ -779,7 +815,7 @@ class PreviewWindow(QMainWindow):
             sort_key = self.selected_sort_key()
             self.current_limit = int(self.limit_spin.value())
 
-            python_sorted = sort_key == "category"
+            python_sorted = sort_key in {"category", "recommendation_desc", "recommendation_asc"}
             internal_limit = self.current_limit if category_filter == "__all__" and not python_sorted else max(self.current_limit * 5, 2000)
 
             candidates = self.fetch_preview_posts_by_statuses(

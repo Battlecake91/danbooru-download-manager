@@ -693,6 +693,11 @@ class ThumbnailCard(QFrame):
         self.status_label = QLabel()
         self.layout.addWidget(self.status_label)
 
+        self.recommendation_label = QLabel()
+        self.recommendation_label.setWordWrap(True)
+        self.recommendation_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.layout.addWidget(self.recommendation_label)
+
         self.category_label = QLabel()
         self.category_label.setWordWrap(True)
         self.category_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -776,6 +781,7 @@ class ThumbnailCard(QFrame):
         status = self.value("status") or "new"
         self.current_status = str(status)
         self.status_label.setText(f"Status: {STATUS_TEXT.get(status, status)}")
+        self.update_recommendation_label()
 
         category = str(self.value("preview_category_name") or "_unmatched")
         category_source = str(self.value("preview_category_source") or "auto")
@@ -808,6 +814,43 @@ class ThumbnailCard(QFrame):
         self.tags_label.setText(compact_tags)
 
         self.apply_status_style(status)
+
+    def update_recommendation_label(self) -> None:
+        try:
+            score = float(self.value("recommendation_score", self.value("local_score", 0.0)) or 0.0)
+        except (TypeError, ValueError):
+            score = 0.0
+
+        positive = str(self.value("recommendation_positive") or "")
+        negative = str(self.value("recommendation_negative") or "")
+        used_count = int(self.value("recommendation_used_count") or 0)
+        ignored_count = int(self.value("recommendation_ignored_count") or 0)
+
+        if score == 0.0 and not positive and not negative:
+            self.recommendation_label.setText("Vorauswahl: 0")
+            self.recommendation_label.setToolTip("Keine verwertbaren Tag-Scores für die Vorauswahl.")
+        else:
+            score_text = f"+{score:g}" if score > 0 else f"{score:g}"
+            self.recommendation_label.setText(f"Vorauswahl: {score_text}")
+            tooltip_parts = [f"Vorauswahl-Score: {score_text}", f"Genutzte Tags: {used_count}"]
+            if positive:
+                tooltip_parts.append("Positiv: " + positive)
+            if negative:
+                tooltip_parts.append("Negativ: " + negative)
+            if ignored_count:
+                tooltip_parts.append(f"Ignorierte Tags: {ignored_count}")
+            self.recommendation_label.setToolTip("\n".join(tooltip_parts))
+
+        if score >= 5.0:
+            self.recommendation_label.setStyleSheet("QLabel { color: #9be77d; font-weight: bold; }")
+        elif score > 0.0:
+            self.recommendation_label.setStyleSheet("QLabel { color: #cde9a6; }")
+        elif score <= -5.0:
+            self.recommendation_label.setStyleSheet("QLabel { color: #ff8a80; font-weight: bold; }")
+        elif score < 0.0:
+            self.recommendation_label.setStyleSheet("QLabel { color: #ffb4a8; }")
+        else:
+            self.recommendation_label.setStyleSheet("QLabel { color: #aaaaaa; }")
 
     def apply_external_status(self, status: str) -> None:
         self.current_status = status
