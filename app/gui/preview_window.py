@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QLineEdit,
+    QHBoxLayout,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -170,18 +171,23 @@ class PreviewWindow(QMainWindow):
         self.setAutoFillBackground(True)
         self.setStyleSheet("QMainWindow { background: #151515; }")
 
-        self.toolbar = QToolBar("Preview")
-        self.toolbar.setMovable(False)
-        self.addToolBar(Qt.TopToolBarArea, self.toolbar)
+        self.toolbar_actions = QToolBar("Preview Aktionen")
+        self.toolbar_actions.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, self.toolbar_actions)
 
         self.reload_button = QPushButton("Neu laden")
         self.reload_button.clicked.connect(self.reload_posts)
-        self.toolbar.addWidget(self.reload_button)
+        self.toolbar_actions.addWidget(self.reload_button)
 
         self.reload_thumbnails_button = QPushButton("Thumbnail neu laden")
         self.reload_thumbnails_button.setToolTip("Lädt die Thumbnails der ausgewählten Posts neu. Hilft gegen graue Platzhalter, dieser digitale Schimmel.")
         self.reload_thumbnails_button.clicked.connect(self.reload_selected_thumbnails)
-        self.toolbar.addWidget(self.reload_thumbnails_button)
+        self.toolbar_actions.addWidget(self.reload_thumbnails_button)
+
+        self.final_save_button = QPushButton("Speichern")
+        self.final_save_button.setToolTip("Final speichern (F)")
+        self.final_save_button.clicked.connect(self.final_save_selected_posts)
+        self.toolbar_actions.addWidget(self.final_save_button)
 
         self.fetch_status_label = QLabel("Fetch läuft…")
         self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
@@ -190,59 +196,48 @@ class PreviewWindow(QMainWindow):
             "border-radius: 6px; color: #ffd166; background: rgba(214, 160, 0, 0.12); }"
         )
         self.fetch_status_label.setVisible(False)
-        self.toolbar.addWidget(self.fetch_status_label)
+        self.toolbar_actions.addSeparator()
+        self.toolbar_actions.addWidget(self.fetch_status_label)
 
-        self.final_save_button = QPushButton("Final speichern (F)")
-        self.final_save_button.clicked.connect(self.final_save_selected_posts)
-        self.toolbar.addWidget(self.final_save_button)
+        self.addToolBarBreak(Qt.TopToolBarArea)
+        self.toolbar_filters = QToolBar("Preview Filter")
+        self.toolbar_filters.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, self.toolbar_filters)
 
-        self.toolbar.addSeparator()
-
-        self.toolbar.addWidget(QLabel("Ansicht: "))
+        self.toolbar_filters.addWidget(QLabel("Ansicht: "))
         self.view_mode = QComboBox()
         for view_mode, label in VIEW_LABELS.items():
             self.view_mode.addItem(label, view_mode)
 
         self.view_mode.setCurrentIndex(self.view_mode.findData("filtered"))
         self.view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
-        self.toolbar.addWidget(self.view_mode)
+        self.toolbar_filters.addWidget(self.view_mode)
 
-        self.toolbar.addSeparator()
+        self.toolbar_filters.addSeparator()
 
-        self.toolbar.addWidget(QLabel("Status: "))
+        self.toolbar_filters.addWidget(QLabel("Status: "))
 
         self.all_status_checkbox = QCheckBox("Alle")
         self.all_status_checkbox.setChecked(False)
         self.all_status_checkbox.stateChanged.connect(self.on_all_status_changed)
-        self.toolbar.addWidget(self.all_status_checkbox)
+        self.toolbar_filters.addWidget(self.all_status_checkbox)
 
         for status in STATUS_ORDER:
             checkbox = QCheckBox(STATUS_LABELS[status])
             checkbox.setChecked(status in DEFAULT_VISIBLE_STATUSES)
             checkbox.stateChanged.connect(self.on_status_checkbox_changed)
             self.status_checkboxes[status] = checkbox
-            self.toolbar.addWidget(checkbox)
+            self.toolbar_filters.addWidget(checkbox)
 
-        self.toolbar.addSeparator()
+        self.toolbar_filters.addSeparator()
 
-        self.toolbar.addWidget(QLabel("Kategorie: "))
+        self.toolbar_filters.addWidget(QLabel("Kategorie: "))
         self.category_filter = QComboBox()
-        # Kategorie ist ein Filter: Änderung erst mit "Neu laden" anwenden.
+        self.category_filter.setMinimumWidth(180)
         self.category_filter.currentIndexChanged.connect(self.on_passive_filter_changed)
-        self.toolbar.addWidget(self.category_filter)
+        self.toolbar_filters.addWidget(self.category_filter)
 
-        self.toolbar.addSeparator()
-
-        self.toolbar.addWidget(QLabel("Sortierung: "))
-        self.sort_combo = QComboBox()
-        for sort_key, sort_label in SORT_LABELS.items():
-            self.sort_combo.addItem(sort_label, sort_key)
-        self.sort_combo.setCurrentIndex(self.sort_combo.findData("id_desc"))
-        # Sortierung ebenfalls passiv, damit Filtersetzen nicht sofort neu rendert.
-        self.sort_combo.currentIndexChanged.connect(self.on_passive_filter_changed)
-        self.toolbar.addWidget(self.sort_combo)
-
-        self.toolbar.addSeparator()
+        self.toolbar_filters.addSeparator()
 
         self.recommendation_filter_checkbox = QCheckBox("Vorauswahl ≥")
         self.recommendation_filter_checkbox.setToolTip(
@@ -250,7 +245,7 @@ class PreviewWindow(QMainWindow):
             "Ausgeschaltet bedeutet: kein Score-Filter."
         )
         self.recommendation_filter_checkbox.stateChanged.connect(self.on_passive_filter_changed)
-        self.toolbar.addWidget(self.recommendation_filter_checkbox)
+        self.toolbar_filters.addWidget(self.recommendation_filter_checkbox)
 
         self.recommendation_min_spin = QDoubleSpinBox()
         self.recommendation_min_spin.setRange(-10.0, 10.0)
@@ -263,29 +258,43 @@ class PreviewWindow(QMainWindow):
             "wenn die Checkbox links aktiv ist."
         )
         self.recommendation_min_spin.valueChanged.connect(self.on_passive_filter_changed)
-        self.toolbar.addWidget(self.recommendation_min_spin)
+        self.toolbar_filters.addWidget(self.recommendation_min_spin)
 
-        self.toolbar.addSeparator()
+        self.toolbar_filters.addSeparator()
 
-        self.toolbar.addWidget(QLabel("Suche: "))
+        self.toolbar_filters.addWidget(QLabel("Suche: "))
         self.search_edit = TagQueryLineEdit()
         self.search_edit.setPlaceholderText("Exakte Tags suchen, z. B. brown_eyes -red_hair")
         self.search_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.search_edit.returnPressed.connect(self.reload_posts)
-        self.search_edit.setMinimumWidth(260)
-        self.toolbar.addWidget(self.search_edit)
+        self.search_edit.setMinimumWidth(280)
+        self.toolbar_filters.addWidget(self.search_edit)
 
         self.search_button = QPushButton("Suchen")
         self.search_button.clicked.connect(self.reload_posts)
-        self.toolbar.addWidget(self.search_button)
+        self.toolbar_filters.addWidget(self.search_button)
 
         self.clear_search_button = QPushButton("Leeren")
         self.clear_search_button.clicked.connect(self.clear_search)
-        self.toolbar.addWidget(self.clear_search_button)
+        self.toolbar_filters.addWidget(self.clear_search_button)
 
-        self.toolbar.addSeparator()
+        self.addToolBarBreak(Qt.TopToolBarArea)
+        self.toolbar_sort = QToolBar("Preview Sortierung")
+        self.toolbar_sort.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, self.toolbar_sort)
 
-        self.toolbar.addWidget(QLabel("Limit: "))
+        self.toolbar_sort.addWidget(QLabel("Sortierung: "))
+        self.sort_combo = QComboBox()
+        self.sort_combo.setMinimumWidth(240)
+        for sort_key, sort_label in SORT_LABELS.items():
+            self.sort_combo.addItem(sort_label, sort_key)
+        self.sort_combo.setCurrentIndex(self.sort_combo.findData("id_desc"))
+        self.sort_combo.currentIndexChanged.connect(self.on_passive_filter_changed)
+        self.toolbar_sort.addWidget(self.sort_combo)
+
+        self.toolbar_sort.addSeparator()
+
+        self.toolbar_sort.addWidget(QLabel("Limit: "))
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(50, 5000)
         self.limit_spin.setSingleStep(50)
@@ -293,11 +302,11 @@ class PreviewWindow(QMainWindow):
         self.limit_spin.setKeyboardTracking(False)
         self.limit_spin.lineEdit().returnPressed.connect(self.reload_posts)
         self.limit_spin.valueChanged.connect(self.on_passive_filter_changed)
-        self.toolbar.addWidget(self.limit_spin)
+        self.toolbar_sort.addWidget(self.limit_spin)
 
-        self.toolbar.addSeparator()
+        self.toolbar_sort.addSeparator()
 
-        self.toolbar.addWidget(QLabel("Thumbnail: "))
+        self.toolbar_sort.addWidget(QLabel("Thumbnail: "))
         self.thumbnail_size_spin = QSpinBox()
         self.thumbnail_size_spin.setRange(
             int(gui_config.get("thumbnail_size_min", 120)),
@@ -308,7 +317,7 @@ class PreviewWindow(QMainWindow):
         self.thumbnail_size_spin.setValue(int(gui_config.get("thumbnail_size", 280)))
         self.thumbnail_size_spin.setKeyboardTracking(False)
         self.thumbnail_size_spin.valueChanged.connect(self.on_thumbnail_size_changed)
-        self.toolbar.addWidget(self.thumbnail_size_spin)
+        self.toolbar_sort.addWidget(self.thumbnail_size_spin)
 
         self.main_widget = QWidget()
         self.main_widget.setAutoFillBackground(True)
@@ -735,15 +744,11 @@ class PreviewWindow(QMainWindow):
             except (TypeError, ValueError):
                 scores.append(0.0)
 
-        positive = sum(1 for score in scores if score > 0.0)
-        negative = sum(1 for score in scores if score < 0.0)
-        neutral = len(scores) - positive - negative
         best = max(scores) if scores else 0.0
         worst = min(scores) if scores else 0.0
         average = sum(scores) / len(scores) if scores else 0.0
         return (
-            f"Vorauswahl: +{positive} / 0:{neutral} / -{negative} | "
-            f"Ø {average:+.1f} | Best {best:+.1f} | Worst {worst:+.1f}"
+            f"Vorauswahl: Best {best:+.1f} | Worst {worst:+.1f} | Average {average:+.1f}"
         )
 
     def assign_category_to_posts(self, post_ids: list[int], category_name: str) -> None:
@@ -870,7 +875,8 @@ class PreviewWindow(QMainWindow):
 
     def on_passive_filter_changed(self, *_args) -> None:
         self._filters_dirty = True
-        self.status_bar.showMessage("Filter geändert. Klicke auf Neu laden oder drücke Enter im Such-/Limit-Feld.", 4000)
+        self.status_bar.showMessage("Filter geändert. Preview lädt automatisch neu…", 3000)
+        self.schedule_reload()
 
     def schedule_reload(self, *_args) -> None:
         if self._applying_viewer_query:
@@ -919,8 +925,26 @@ class PreviewWindow(QMainWindow):
             sort_key = self.selected_sort_key()
             self.current_limit = int(self.limit_spin.value())
 
-            python_sorted = sort_key in {"category", "recommendation_desc", "recommendation_asc"}
-            internal_limit = self.current_limit if category_filter == "__all__" and not python_sorted else max(self.current_limit * 5, 2000)
+            base_total = self.count_preview_posts_by_statuses(
+                statuses=statuses,
+                text_filter=text_filter,
+            )
+
+            python_filtered_or_sorted = (
+                category_filter != "__all__"
+                or recommendation_minimum is not None
+                or sort_key in {"category", "recommendation_desc", "recommendation_asc"}
+            )
+
+            # Kategorie und Vorauswahl werden aktuell in Python berechnet. Dafür brauchen
+            # wir mehr als nur die sichtbaren 50 Zeilen, sonst wäre "Angezeigt: 50/256"
+            # wieder eine hübsche Lüge mit UI-Rahmen. Obergrenze verhindert, dass eine
+            # riesige DB den Previewer als Geisel nimmt.
+            analysis_cap = 10000
+            if python_filtered_or_sorted:
+                internal_limit = max(self.current_limit, min(base_total, analysis_cap))
+            else:
+                internal_limit = self.current_limit
 
             candidates = self.fetch_preview_posts_by_statuses(
                 statuses=statuses,
@@ -939,7 +963,10 @@ class PreviewWindow(QMainWindow):
             filtered = self.sort_preview_rows_in_python(filtered, sort_key)
 
             posts = filtered[: self.current_limit]
-            total = len(filtered)
+            total_filtered = len(filtered) if python_filtered_or_sorted else base_total
+            total_suffix = ""
+            if python_filtered_or_sorted and base_total > internal_limit:
+                total_suffix = "+"
 
             self.grid.set_posts(posts)
             self._has_loaded_once = True
@@ -952,13 +979,14 @@ class PreviewWindow(QMainWindow):
                 if recommendation_minimum is not None
                 else "Vorauswahl: alle"
             )
-            score_summary = self.preview_score_summary(filtered)
+            score_summary = self.preview_score_summary(filtered if python_filtered_or_sorted else enriched)
 
             self.info_label.setText(
+                f"Angezeigt: {len(posts)}/{total_filtered}{total_suffix} | "
+                f"Basis-Treffer: {base_total} | "
                 f"Ansicht: {VIEW_LABELS.get(self.selected_view_mode(), self.selected_view_mode())} | "
-                f"Angezeigt: {len(posts)} / Treffer im geladenen Bereich: {total} | "
-                f"Status: {status_text} | Kategorie: {category_text} | "
-                f"{recommendation_filter_text} | "
+                f"Status: {status_text}\n"
+                f"Kategorie: {category_text} | {recommendation_filter_text} | "
                 f"Sortierung: {self.sort_combo.currentText()} | "
                 f"Thumbnail: {self.grid.thumbnail_size}px\n"
                 f"{score_summary}"
@@ -1071,6 +1099,25 @@ class PreviewWindow(QMainWindow):
             where_sql = "WHERE " + " AND ".join(where_parts)
 
         return where_sql, parameters
+
+    def count_preview_posts_by_statuses(
+        self,
+        statuses: list[str],
+        text_filter: str | None,
+    ) -> int:
+        where_sql, parameters = self.build_preview_where(statuses, text_filter)
+        row = self.db.execute(
+            f"""
+            SELECT COUNT(DISTINCT p.id) AS total
+            FROM posts p
+            LEFT JOIN post_reviews pr ON pr.post_id = p.id
+            {where_sql}
+            """,
+            parameters,
+        ).fetchone()
+        if row is None:
+            return 0
+        return int(row["total"] or 0)
 
     def fetch_preview_posts_by_statuses(
         self,

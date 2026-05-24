@@ -11,6 +11,7 @@ from typing import Any, Callable
 from PySide6.QtCore import Qt, QRectF, Signal, QTimer
 from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QAbstractItemView,
     QCheckBox,
     QComboBox,
@@ -799,6 +800,10 @@ class ImageViewerWindow(QMainWindow):
             self.write_viewer_performance_log(post_id, metrics)
 
     def populate_tag_lists(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
+        self.tags_widget.show_loading_message("Lade Tags…")
+        self.statusBar().showMessage("Lade Tags…")
+        QApplication.processEvents()
+
         started_at = time.perf_counter()
         typed_tags = typed_tags_for_post(self.db, post_id)
         self.perf_add(metrics, "tags_typed", started_at)
@@ -820,6 +825,7 @@ class ImageViewerWindow(QMainWindow):
             tag_metadata=tag_metadata,
         )
         self.perf_add(metrics, "tags_widget_ui", started_at)
+        self.statusBar().showMessage("Tags geladen.", 2000)
 
 
     def toggle_related_posts_visible(self) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from PySide6.QtWidgets import QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.database import Database
 from app.gui.fetch_tab import FetchTab
@@ -83,11 +83,30 @@ class AppWindow(QMainWindow):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(24, 24, 24, 24)
         label = QLabel(f"{title} wird erst beim Öffnen geladen.")
+        label.setObjectName("lazyTabPlaceholderLabel")
         label.setWordWrap(True)
         label.setStyleSheet("color: #9aa0a6; font-size: 14px;")
         layout.addWidget(label)
         layout.addStretch(1)
         return widget
+
+    def _set_lazy_tab_loading_message(self, key: str, title: str) -> None:
+        placeholder = self._tab_widgets.get(key)
+        if placeholder is None:
+            return
+
+        label = placeholder.findChild(QLabel, "lazyTabPlaceholderLabel")
+        if label is None:
+            return
+
+        label.setText(f"Lade {title}…")
+        label.setStyleSheet(
+            "color: #ffd166; font-size: 15px; font-weight: bold;"
+        )
+        self.statusBar().showMessage(f"Lade {title}…")
+        placeholder.update()
+        self.tabs.update()
+        QApplication.processEvents()
 
     def _add_lazy_tab(self, key: str, title: str) -> None:
         placeholder = self._make_placeholder(title)
@@ -113,6 +132,7 @@ class AppWindow(QMainWindow):
 
         index = self._tab_indices[key]
         title = self.tabs.tabText(index)
+        self._set_lazy_tab_loading_message(key, title)
         self._startup_log(f"Lazy tab create: {key} begin")
         widget = factory()
         self._startup_log(f"Lazy tab create: {key} end")
@@ -128,6 +148,7 @@ class AppWindow(QMainWindow):
             self.tabs.blockSignals(signals_blocked)
         self._tab_widgets[key] = widget
         self._rebuild_tab_indices()
+        self.statusBar().showMessage(f"{title} geladen.", 3000)
         return widget
 
     def _is_placeholder(self, key: str, widget: QWidget) -> bool:

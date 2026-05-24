@@ -206,6 +206,22 @@ class TypedTagListWidget(QWidget):
         )
         return list_widget
 
+
+    def show_loading_message(self, message: str = "Lade Tags…") -> None:
+        self.setUpdatesEnabled(False)
+        try:
+            for tag_type, list_widget in self.lists.items():
+                list_widget.clear()
+                if tag_type == "general":
+                    item = QListWidgetItem(message)
+                    item.setFlags(Qt.NoItemFlags)
+                    item.setForeground(QColor("#ffd166"))
+                    list_widget.addItem(item)
+            self._autosize_lists()
+        finally:
+            self.setUpdatesEnabled(True)
+        self.update()
+
     def set_typed_tags(
         self,
         typed_tags: dict[str, list[str]],

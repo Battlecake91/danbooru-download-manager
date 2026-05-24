@@ -1,7 +1,6 @@
-api key and username in konfig
 llm feature
-splashscreen
 better previewer buttons (zu breit alles)
 Importer sollte auch nach Post-ID suchen
 Importer sollte Thumbnails nachladen
+Konfig-Tab für GUI sollte Einstellungen links neben Preview haben
 
