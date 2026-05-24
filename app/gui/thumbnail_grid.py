@@ -470,20 +470,19 @@ class ThumbnailGrid(QScrollArea):
         self.update()
         self.build_finished.emit(len(self.items))
 
-    def on_card_thumbnail_reload_requested(self, post_id: int) -> None:
+    def post_ids_for_card_action(self, post_id: int) -> list[int]:
         if post_id in self.selected_ids and len(self.selected_ids) > 1:
-            post_ids = self.selected_or_current_post_ids()
-        else:
-            post_ids = [int(post_id)]
-        self.thumbnail_reload_requested.emit(post_ids)
+            return self.selected_or_current_post_ids()
+        return [int(post_id)]
+
+    def on_card_thumbnail_reload_requested(self, post_id: int) -> None:
+        self.thumbnail_reload_requested.emit(self.post_ids_for_card_action(post_id))
+
+    def on_card_final_save_requested(self, post_id: int) -> None:
+        self.final_save_requested.emit(self.post_ids_for_card_action(post_id))
 
     def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:
-        if post_id in self.selected_ids and len(self.selected_ids) > 1:
-            post_ids = self.selected_or_current_post_ids()
-        else:
-            post_ids = [int(post_id)]
-
-        self.category_assign_requested.emit(post_ids, category_name)
+        self.category_assign_requested.emit(self.post_ids_for_card_action(post_id), category_name)
 
     def relayout(self) -> None:
         was_updates_enabled = self.updatesEnabled()
@@ -715,11 +714,7 @@ class ThumbnailGrid(QScrollArea):
         self.apply_status_to_post_ids(self.selected_or_current_post_ids(), status)
 
     def on_card_status_change_requested(self, post_id: int, status: str) -> None:
-        if post_id in self.selected_ids and len(self.selected_ids) > 1:
-            post_ids = self.selected_or_current_post_ids()
-        else:
-            post_ids = [int(post_id)]
-        self.apply_status_to_post_ids(post_ids, status)
+        self.apply_status_to_post_ids(self.post_ids_for_card_action(post_id), status)
 
     def apply_status_to_post_ids(self, post_ids: list[int], status: str) -> None:
         clean_ids = []
@@ -869,6 +864,16 @@ class ThumbnailCard(QFrame):
                 bool(modifiers & Qt.ShiftModifier),
             )
             event.accept()
+            return
+
+        if event.button() == Qt.RightButton:
+            # Rechtsklick auf einen bereits markierten Post darf die Auswahl nicht
+            # zerstören. Rechtsklick auf einen unmarkierten Post setzt dagegen
+            # diesen einen Post als Ziel. Ja, wie Dateimanager seit Jahrzehnten,
+            # diese Hexerei mussten wir der GUI erst erklären.
+            if not self.is_selected:
+                self.clicked.emit(self.post_id, False, False)
+            super().mousePressEvent(event)
             return
 
         super().mousePressEvent(event)

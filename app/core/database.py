@@ -5,6 +5,7 @@ import secrets
 import shlex
 import shutil
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -117,8 +118,12 @@ class Database:
         self.connection: sqlite3.Connection | None = None
 
     def connect(self) -> None:
-        self.connection = sqlite3.connect(self.path)
+        # timeout/busy_timeout verhindern, dass zwei GUI-/Worker-Verbindungen
+        # bei kurzer Last sofort gegeneinander verlieren. SQLite kann WAL, aber
+        # Zauberei ist es nicht. Ein bisschen Geduld muss man ihm leider beibringen.
+        self.connection = sqlite3.connect(self.path, timeout=30.0)
         self.connection.row_factory = sqlite3.Row
+        self.execute("PRAGMA busy_timeout = 30000")
         self.execute("PRAGMA foreign_keys = ON")
         self.execute("PRAGMA journal_mode = WAL")
 
@@ -127,19 +132,53 @@ class Database:
             self.connection.close()
             self.connection = None
 
+    def _is_database_locked_error(self, exc: sqlite3.OperationalError) -> bool:
+        text = str(exc).lower()
+        return "database is locked" in text or "database table is locked" in text
+
+    def _lock_retry_delays(self) -> tuple[float, ...]:
+        # Insgesamt knapp 12 Sekunden zusätzlich zu sqlite busy_timeout. Das ist
+        # lang genug für Preview-Reloads, aber kurz genug, um echte Deadlocks nicht
+        # als meditative Übung zu tarnen.
+        return (0.05, 0.10, 0.20, 0.35, 0.50, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0)
+
     def execute(self, sql: str, parameters: Iterable[Any] = ()) -> sqlite3.Cursor:
         if self.connection is None:
             raise RuntimeError("Datenbank ist nicht verbunden")
-        return self.connection.execute(sql, tuple(parameters))
+        params = tuple(parameters)
+        for delay in self._lock_retry_delays():
+            try:
+                return self.connection.execute(sql, params)
+            except sqlite3.OperationalError as exc:
+                if not self._is_database_locked_error(exc):
+                    raise
+                time.sleep(delay)
+        return self.connection.execute(sql, params)
 
     def executemany(self, sql: str, rows: Iterable[Iterable[Any]]) -> sqlite3.Cursor:
         if self.connection is None:
             raise RuntimeError("Datenbank ist nicht verbunden")
-        return self.connection.executemany(sql, rows)
+        materialized_rows = [tuple(row) for row in rows]
+        for delay in self._lock_retry_delays():
+            try:
+                return self.connection.executemany(sql, materialized_rows)
+            except sqlite3.OperationalError as exc:
+                if not self._is_database_locked_error(exc):
+                    raise
+                time.sleep(delay)
+        return self.connection.executemany(sql, materialized_rows)
 
     def commit(self) -> None:
         if self.connection is None:
             raise RuntimeError("Datenbank ist nicht verbunden")
+        for delay in self._lock_retry_delays():
+            try:
+                self.connection.commit()
+                return
+            except sqlite3.OperationalError as exc:
+                if not self._is_database_locked_error(exc):
+                    raise
+                time.sleep(delay)
         self.connection.commit()
 
     def initialize_schema(self) -> None:

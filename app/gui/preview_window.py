@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import sqlite3
 import traceback
 from pathlib import Path
 from typing import Any
@@ -968,6 +969,18 @@ class PreviewWindow(QMainWindow):
                 self.hide_preview_loading()
                 self.status_bar.showMessage("Preview geladen: keine Treffer", 5000)
 
+        except sqlite3.OperationalError as exc:
+            if "database is locked" in str(exc).lower() or "database table is locked" in str(exc).lower():
+                self.show_preview_loading(
+                    "Datenbank ist gerade beschäftigt. Fetch oder Speichern läuft noch – "
+                    "bitte gleich erneut laden."
+                )
+                self.loading_bar.setRange(0, 1)
+                self.loading_bar.setValue(0)
+                self.status_bar.showMessage("Datenbank ist gesperrt. Preview wartet auf den nächsten Reload.", 8000)
+                self._reload_pending = True
+            else:
+                raise
         finally:
             self._is_reloading = False
 
