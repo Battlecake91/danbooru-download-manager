@@ -423,6 +423,18 @@ class Database:
         self.execute("CREATE INDEX IF NOT EXISTS idx_posts_file_size ON posts(file_size)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_posts_resolution ON posts(image_width, image_height)")
 
+        # Viewer hot path: category influence and tag display metadata need these
+        # joins constantly. Without them SQLite gets to cosplay as a space heater
+        # on every image switch.
+        self.execute("CREATE INDEX IF NOT EXISTS idx_post_tags_tag_post ON post_tags(tag, post_id)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_post_tags_post_tag ON post_tags(post_id, tag)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_post_categories_post_category ON post_categories(post_id, category_id)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_post_categories_category_post ON post_categories(category_id, post_id)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_post_reviews_post ON post_reviews(post_id)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_tag_scores_tag ON tag_scores(tag)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_tag_aliases_original ON tag_aliases(original_tag)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_filename_excluded_tags_tag ON filename_excluded_tags(tag)")
+
     def add_column_if_missing(self, table_name: str, column_name: str, declaration: str) -> None:
         columns = self.execute(f"PRAGMA table_info({table_name})").fetchall()
         existing = {str(row["name"]) for row in columns}
@@ -1419,6 +1431,82 @@ class Database:
                 parameters,
             ).fetchall()
         )
+
+
+    def fetch_tag_display_metadata(self, tags: Iterable[str]) -> dict[str, dict[str, Any]]:
+        """Return cheap per-tag metadata for viewer display and influence scoring.
+
+        ``fetch_tag_metadata`` intentionally computes historical aggregates such
+        as saved/rejected counts and average ratings. That is useful in the tag
+        tab, but far too expensive for every image switch in the viewer. This
+        fast path only reads direct tag settings plus alias/LLM identity data.
+        Heavy historical fields are returned as neutral placeholders so the
+        existing widgets can keep using one metadata shape.
+        """
+        clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+        if not clean_tags:
+            return {}
+
+        placeholders = ", ".join("?" for _ in clean_tags)
+        score_rows = self.execute(
+            f"""
+            SELECT
+                tag,
+                manual_score,
+                COALESCE(computed_score, 0) AS stored_computed_score,
+                COALESCE(scoring_excluded, 0) AS scoring_excluded,
+                COALESCE(ignore_category_influence, 0) AS ignore_category_influence,
+                COALESCE(ignore_recommendation_score, 0) AS ignore_recommendation_score,
+                COALESCE(ignore_llm_input, 0) AS ignore_llm_input,
+                average_rating
+            FROM tag_scores
+            WHERE tag IN ({placeholders})
+            """,
+            clean_tags,
+        ).fetchall()
+        score_by_tag = {str(row["tag"] or ""): row for row in score_rows}
+
+        excluded_rows = self.execute(
+            f"""
+            SELECT tag
+            FROM filename_excluded_tags
+            WHERE tag IN ({placeholders})
+            """,
+            clean_tags,
+        ).fetchall()
+        filename_excluded = {str(row["tag"] or "") for row in excluded_rows}
+
+        identities = self.build_tag_identities(clean_tags)
+        result: dict[str, dict[str, Any]] = {}
+        for tag in clean_tags:
+            row = score_by_tag.get(tag)
+            identity = identities.get(normalize_tag_token(tag), {})
+            scoring_excluded = bool(row["scoring_excluded"]) if row is not None else False
+            manual_score = row["manual_score"] if row is not None else None
+            stored_computed_score = row["stored_computed_score"] if row is not None else 0.0
+            computed_score = 0.0 if scoring_excluded else float(stored_computed_score or 0.0)
+            effective_score = 0.0 if scoring_excluded else (manual_score if manual_score is not None else computed_score)
+            result[tag] = {
+                "canonical_tag": identity.get("canonical_tag", tag),
+                "llm_token": identity.get("llm_token", ""),
+                "score": effective_score,
+                "manual_score": manual_score,
+                "computed_score": computed_score,
+                "stored_computed_score": stored_computed_score,
+                "scoring_excluded": scoring_excluded,
+                "ignore_category_influence": bool(row["ignore_category_influence"]) if row is not None else False,
+                "ignore_recommendation_score": bool(row["ignore_recommendation_score"]) if row is not None else False,
+                "ignore_llm_input": bool(row["ignore_llm_input"]) if row is not None else False,
+                "filename_excluded": tag in filename_excluded,
+                "average_rating": row["average_rating"] if row is not None else None,
+                "rating_count": 0,
+                "saved_count": 0,
+                "rejected_count": 0,
+                "post_count": 0,
+            }
+        return result
+
+
 
 
     def fetch_tag_metadata(self, tags: Iterable[str]) -> dict[str, dict[str, Any]]:

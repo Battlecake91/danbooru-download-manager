@@ -132,6 +132,43 @@ class CategoryEngine:
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         self.config = config
         self.db = db
+        self._category_influence_rows_by_tag: dict[str, list[dict[str, Any]]] = {}
+        self._category_influence_aliases: dict[str, str] | None = None
+
+    def clear_category_influence_cache(self) -> None:
+        """Drop cached influence statistics.
+
+        This is intentionally small and safe to call after category/tag-score
+        maintenance. The viewer benefits from caching, but nobody wants stale
+        hints after a bulk edit. Well, nobody sane.
+        """
+        self._category_influence_rows_by_tag.clear()
+        self._category_influence_aliases = None
+
+    def _tag_aliases_for_influence(self) -> dict[str, str]:
+        if self._category_influence_aliases is None:
+            self._category_influence_aliases = self.db.list_tag_alias_map()
+        return self._category_influence_aliases
+
+    def _category_tag_hits_cached(self, tags: set[str]) -> list[dict[str, Any]]:
+        clean_tags = {normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))}
+        if not clean_tags:
+            return []
+
+        missing_tags = sorted(tag for tag in clean_tags if tag not in self._category_influence_rows_by_tag)
+        if missing_tags:
+            for tag in missing_tags:
+                self._category_influence_rows_by_tag[tag] = []
+            for row in self.db.fetch_category_tag_hits(missing_tags):
+                tag = normalize_tag_token(str(row["tag"] or ""))
+                if not tag:
+                    continue
+                self._category_influence_rows_by_tag.setdefault(tag, []).append({key: row[key] for key in row.keys()})
+
+        rows: list[dict[str, Any]] = []
+        for tag in clean_tags:
+            rows.extend(self._category_influence_rows_by_tag.get(tag, []))
+        return rows
 
     def list_categories(self) -> list[CategoryMatch]:
         rows = self.db.list_categories_full()
@@ -261,7 +298,7 @@ class CategoryEngine:
         if not clean_tags:
             return []
 
-        tag_metadata_for_current = self.db.fetch_tag_metadata(clean_tags)
+        tag_metadata_for_current = self.db.fetch_tag_display_metadata(clean_tags)
         ignored_current_tags = {
             tag
             for tag, metadata in tag_metadata_for_current.items()
@@ -271,7 +308,7 @@ class CategoryEngine:
         if not effective_clean_tags:
             return []
 
-        aliases = self.db.list_tag_alias_map()
+        aliases = self._tag_aliases_for_influence()
         canonical_tags = {canonicalize_tag(tag, aliases) for tag in effective_clean_tags}
         canonical_tags.discard("")
         if not canonical_tags:
@@ -285,11 +322,11 @@ class CategoryEngine:
                 candidate_original_tags.add(original)
                 candidate_original_tags.add(alias)
 
-        rows = self.db.fetch_category_tag_hits(candidate_original_tags)
+        rows = self._category_tag_hits_cached(candidate_original_tags)
         if not rows:
             return []
 
-        tag_metadata = self.db.fetch_tag_metadata(candidate_original_tags)
+        tag_metadata = self.db.fetch_tag_display_metadata(candidate_original_tags)
         category_scores: dict[int, dict[str, Any]] = {}
         canonical_seen_by_category: dict[int, set[str]] = {}
 

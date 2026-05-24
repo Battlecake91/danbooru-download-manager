@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any, Callable
@@ -283,6 +284,8 @@ class ImageViewerWindow(QMainWindow):
         viewer_config = config.get("viewer", {}) or {}
         self.auto_advance_after_save = bool(viewer_config.get("auto_advance_after_save", True))
         self.auto_advance_after_reject = bool(viewer_config.get("auto_advance_after_reject", True))
+        self.viewer_perf_config = viewer_config.get("performance", {}) or {}
+        self.viewer_perf_log_path = Path(config.get("work_dir", ".")) / "logs" / "viewer_performance.log"
 
         self.setWindowTitle("Danbooru Manager - Bildbetrachter")
         self.setWindowIcon(ensure_app_icon(config))
@@ -296,6 +299,14 @@ class ImageViewerWindow(QMainWindow):
         self.fit_checkbox.setChecked(bool(viewer_config.get("fit_to_window", True)))
         self.fit_checkbox.stateChanged.connect(self.refresh_image)
         self.toolbar.addWidget(self.fit_checkbox)
+
+        self.performance_checkbox = QCheckBox("Perf")
+        self.performance_checkbox.setChecked(bool(self.viewer_perf_config.get("enabled", False)))
+        self.performance_checkbox.setToolTip(
+            f"Viewer-Performance messen und nach {self.viewer_perf_log_path} schreiben. "
+            "Hilft beim Finden langsamer Bildwechsel, weil Raten nur Astrologie mit Tastatur ist."
+        )
+        self.toolbar.addWidget(self.performance_checkbox)
 
         self.toolbar.addSeparator()
 
@@ -598,7 +609,66 @@ class ImageViewerWindow(QMainWindow):
             return self.post_ids[self.current_index]
         return None
 
+    def viewer_performance_enabled(self) -> bool:
+        checkbox = getattr(self, "performance_checkbox", None)
+        if checkbox is not None:
+            return bool(checkbox.isChecked())
+        return bool(self.viewer_perf_config.get("enabled", False))
+
+    def perf_add(self, metrics: dict[str, float] | None, key: str, started_at: float) -> None:
+        if metrics is not None:
+            metrics[key] = metrics.get(key, 0.0) + ((time.perf_counter() - started_at) * 1000.0)
+
+    def write_viewer_performance_log(self, post_id: int, metrics: dict[str, float]) -> None:
+        total_ms = metrics.get("total", 0.0)
+        threshold_ms = float(self.viewer_perf_config.get("threshold_ms", 0) or 0)
+        if threshold_ms > 0 and total_ms < threshold_ms:
+            return
+
+        ordered_keys = [
+            "total",
+            "get_post_detail",
+            "get_related_posts",
+            "related_local_paths",
+            "header_status_rating",
+            "update_related_posts",
+            "category_suggest",
+            "category_assigned",
+            "category_influence",
+            "category_list",
+            "category_combo_ui",
+            "final_path_preview",
+            "tags_typed",
+            "tags_filename_exclude",
+            "tags_metadata",
+            "tags_widget_ui",
+            "ensure_image_path",
+            "qpixmap_load",
+            "refresh_image",
+        ]
+        parts = [f"post={post_id}"]
+        for key in ordered_keys:
+            if key in metrics:
+                parts.append(f"{key}={metrics[key]:.1f}ms")
+        for key, value in metrics.items():
+            if key not in ordered_keys:
+                parts.append(f"{key}={value:.1f}ms")
+
+        line = "[PERF][viewer] " + " ".join(parts)
+        try:
+            self.viewer_perf_log_path.parent.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            with self.viewer_perf_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{timestamp}] {line}\n")
+        except Exception:
+            pass
+        print(line, flush=True)
+
     def load_current_post(self) -> None:
+        perf_enabled = self.viewer_performance_enabled()
+        metrics: dict[str, float] | None = {} if perf_enabled else None
+        total_started_at = time.perf_counter()
+
         post_id = self.current_post_id_value()
         if post_id is None:
             return
@@ -606,14 +676,22 @@ class ImageViewerWindow(QMainWindow):
         self.current_post_id = post_id
         self.last_saved_path = None
 
+        started_at = time.perf_counter()
         row = self.db.get_post_detail(post_id)
+        self.perf_add(metrics, "get_post_detail", started_at)
         if row is None:
             return
 
+        started_at = time.perf_counter()
         related = self.db.get_related_posts(post_id)
-        related_total_count = len(related)
-        related_local_count = sum(1 for related_row in related if self.local_path_for_post(int(related_row["id"])))
+        self.perf_add(metrics, "get_related_posts", started_at)
 
+        related_total_count = len(related)
+        started_at = time.perf_counter()
+        related_local_count = sum(1 for related_row in related if self.local_path_for_post(int(related_row["id"])))
+        self.perf_add(metrics, "related_local_paths", started_at)
+
+        started_at = time.perf_counter()
         self.setWindowTitle(f"Danbooru Manager - Bildbetrachter - {post_id}")
 
         rating_html_value = rating_html(row["rating"])
@@ -658,15 +736,23 @@ class ImageViewerWindow(QMainWindow):
         stars = row["stars"]
         self.personal_stars_widget.set_rating(stars)
         self.update_personal_rating_label()
+        self.perf_add(metrics, "header_status_rating", started_at)
 
+        started_at = time.perf_counter()
         self.update_related_posts(post_id, related)
-        self.update_category_controls(post_id)
+        self.perf_add(metrics, "update_related_posts", started_at)
 
-        self.populate_tag_lists(post_id)
+        self.update_category_controls(post_id, metrics)
 
+        self.populate_tag_lists(post_id, metrics)
+
+        started_at = time.perf_counter()
         image_path = self.ensure_image_path(post_id, row)
+        self.perf_add(metrics, "ensure_image_path", started_at)
         if image_path:
+            started_at = time.perf_counter()
             pixmap = QPixmap(str(image_path))
+            self.perf_add(metrics, "qpixmap_load", started_at)
             if not pixmap.isNull():
                 self.current_pixmap = pixmap
             else:
@@ -676,16 +762,36 @@ class ImageViewerWindow(QMainWindow):
             self.current_pixmap = None
             self.image_label.setText("Keine lokale Bilddatei und Download fehlgeschlagen.")
 
+        started_at = time.perf_counter()
         self.refresh_image()
+        self.perf_add(metrics, "refresh_image", started_at)
 
-    def populate_tag_lists(self, post_id: int) -> None:
+        if metrics is not None:
+            metrics["total"] = (time.perf_counter() - total_started_at) * 1000.0
+            self.write_viewer_performance_log(post_id, metrics)
+
+    def populate_tag_lists(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
+        started_at = time.perf_counter()
         typed_tags = typed_tags_for_post(self.db, post_id)
+        self.perf_add(metrics, "tags_typed", started_at)
+
         all_tags = [tag for tags in typed_tags.values() for tag in tags]
+
+        started_at = time.perf_counter()
+        filename_excluded_tags = self.db.filename_excluded_tag_set()
+        self.perf_add(metrics, "tags_filename_exclude", started_at)
+
+        started_at = time.perf_counter()
+        tag_metadata = self.db.fetch_tag_display_metadata(all_tags)
+        self.perf_add(metrics, "tags_metadata", started_at)
+
+        started_at = time.perf_counter()
         self.tags_widget.set_typed_tags(
             typed_tags,
-            filename_excluded_tags=self.db.filename_excluded_tag_set(),
-            tag_metadata=self.db.fetch_tag_metadata(all_tags),
+            filename_excluded_tags=filename_excluded_tags,
+            tag_metadata=tag_metadata,
         )
+        self.perf_add(metrics, "tags_widget_ui", started_at)
 
 
     def toggle_related_posts_visible(self) -> None:
@@ -838,21 +944,32 @@ class ImageViewerWindow(QMainWindow):
 
         os.startfile(folder)
 
-    def update_category_controls(self, post_id: int) -> None:
+    def update_category_controls(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
+        started_at = time.perf_counter()
         suggested = self.final_save_service.suggest_category(post_id)
+        self.perf_add(metrics, "category_suggest", started_at)
         self.suggested_category_name = suggested.name
+
+        started_at = time.perf_counter()
         assigned = self.db.get_assigned_category_for_post(post_id)
+        self.perf_add(metrics, "category_assigned", started_at)
         assigned_name = str(assigned["name"]) if assigned is not None else None
         assigned_source = str(assigned["assignment_source"] or "manual") if assigned is not None else None
 
         self.category_combo.blockSignals(True)
         self.category_combo.clear()
 
+        started_at = time.perf_counter()
         influences = self.final_save_service.category_engine.category_influence_for_post(post_id)
+        self.perf_add(metrics, "category_influence", started_at)
         self.category_influence_by_name = {entry.name: entry.score for entry in influences}
         top_influence_name = influences[0].name if influences else None
 
+        started_at = time.perf_counter()
         categories = self.final_save_service.list_categories()
+        self.perf_add(metrics, "category_list", started_at)
+
+        started_at = time.perf_counter()
         for category in categories:
             label = category.name
             suffixes: list[str] = []
@@ -880,7 +997,8 @@ class ImageViewerWindow(QMainWindow):
             if top_influence_name and top_influence_name != suggested.name:
                 influence_text = f" | Tag-Hinweis: {top_influence_name}"
             self.category_label.setText(f"Kategorie: Vorschlag {suggested.name}{influence_text}")
-        self.update_final_path_preview()
+        self.perf_add(metrics, "category_combo_ui", started_at)
+        self.update_final_path_preview(metrics)
 
     def selected_category(self) -> CategoryMatch | None:
         name = self.category_combo.currentData()
@@ -907,16 +1025,19 @@ class ImageViewerWindow(QMainWindow):
             category = self.selected_category()
             if category is not None and category.id is not None:
                 self.db.assign_post_category(self.current_post_id, category.id, "manual")
+                self.final_save_service.category_engine.clear_category_influence_cache()
                 self.category_label.setText("Kategorie: gesetzt (manual)")
                 self.status_changed.emit(self.current_post_id, str(self.db.get_post_detail(self.current_post_id)["status"] or "new"))
         self.update_final_path_preview()
 
-    def update_final_path_preview(self) -> None:
+    def update_final_path_preview(self, metrics: dict[str, float] | None = None) -> None:
         if self.current_post_id is None:
             return
 
         category = self.selected_category()
+        started_at = time.perf_counter()
         preview = self.final_save_service.final_path_preview_details(self.current_post_id, category)
+        self.perf_add(metrics, "final_path_preview", started_at)
 
         if preview:
             final_preview, details = preview
@@ -1402,6 +1523,7 @@ class ImageViewerWindow(QMainWindow):
         kwargs[flag_name] = value
         for tag in tags:
             self.db.set_tag_scoring_flags(tag, **kwargs)
+        self.final_save_service.category_engine.clear_category_influence_cache()
 
         if self.current_post_id is not None:
             self.populate_tag_lists(self.current_post_id)
@@ -1415,6 +1537,7 @@ class ImageViewerWindow(QMainWindow):
                 ignore_recommendation_score=value,
                 ignore_llm_input=value,
             )
+        self.final_save_service.category_engine.clear_category_influence_cache()
 
         if self.current_post_id is not None:
             self.populate_tag_lists(self.current_post_id)
@@ -1466,6 +1589,10 @@ class ImageViewerWindow(QMainWindow):
             return
 
         self.db.set_tag_alias(tag, text.strip())
+        self.final_save_service.category_engine.clear_category_influence_cache()
+        if self.current_post_id is not None:
+            self.populate_tag_lists(self.current_post_id)
+            self.update_category_controls(self.current_post_id)
 
     def edit_tag_score(self, tag: str) -> None:
         current_value = 0.0
@@ -1492,6 +1619,10 @@ class ImageViewerWindow(QMainWindow):
             return
 
         self.db.set_tag_manual_score(tag, value)
+        self.final_save_service.category_engine.clear_category_influence_cache()
+        if self.current_post_id is not None:
+            self.populate_tag_lists(self.current_post_id)
+            self.update_category_controls(self.current_post_id)
 
     def copy_single_tag_from_item(self, item: QListWidgetItem) -> None:
         tag = str(item.data(Qt.UserRole) or item.text())
