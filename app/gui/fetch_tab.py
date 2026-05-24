@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
-from app.services.post_import_service import PostImportService
+from app.services.post_import_service import FetchProgress, PostImportService
 
 
 RATING_FILTERS: list[tuple[str, str]] = [
@@ -46,6 +46,7 @@ class FetchWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
     log = Signal(str)
+    progress = Signal(object)
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
@@ -64,7 +65,7 @@ class FetchWorker(QObject):
             worker_db.connect()
             worker_db.initialize_schema()
 
-            service = PostImportService(self.config, worker_db)
+            service = PostImportService(self.config, worker_db, progress_callback=self.progress.emit)
             result = service.fetch_and_store()
 
             self.log.emit("Fetch abgeschlossen.")
@@ -334,6 +335,12 @@ class FetchTab(QWidget):
         self.progress_bar.setFormat("Fetch läuft…")
         self.button_row.addWidget(self.progress_bar, stretch=1)
 
+        self.fetch_progress_label = QLabel("")
+        self.fetch_progress_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.fetch_progress_label.setStyleSheet("QLabel { color: #cccccc; }")
+        self.fetch_progress_label.setVisible(False)
+        self.button_row.addWidget(self.fetch_progress_label, stretch=2)
+
         self.button_row.addStretch(1)
         self.main_layout.addLayout(self.button_row)
 
@@ -560,7 +567,12 @@ class FetchTab(QWidget):
         self.fetch_button.setEnabled(False)
         self.save_preset_button.setEnabled(False)
         self.delete_preset_button.setEnabled(False)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Fetch startet…")
         self.progress_bar.setVisible(True)
+        self.fetch_progress_label.setText("Bereite Queries vor…")
+        self.fetch_progress_label.setVisible(True)
         self.log_text.append("Starte Fetch...")
         self.fetch_started.emit()
 
@@ -570,6 +582,7 @@ class FetchTab(QWidget):
 
         self.thread.started.connect(self.worker.run)
         self.worker.log.connect(self.log_text.append)
+        self.worker.progress.connect(self.on_fetch_progress)
         self.worker.finished.connect(self.on_fetch_finished)
         self.worker.failed.connect(self.on_fetch_failed)
 
@@ -579,12 +592,41 @@ class FetchTab(QWidget):
 
         self.thread.start()
 
+
+    def on_fetch_progress(self, progress: object) -> None:
+        if not isinstance(progress, FetchProgress):
+            return
+
+        planned_total = max(1, int(progress.planned_total or 1))
+        seen_total = max(0, int(progress.seen_total or 0))
+        self.progress_bar.setRange(0, planned_total)
+        self.progress_bar.setValue(min(seen_total, planned_total))
+
+        query_index = int(progress.query_index or 0)
+        query_total = int(progress.query_total or 0)
+        query_text = progress.query.strip()
+        query_part = f"Query {query_index}/{query_total}" if query_total else "Query …"
+        post_part = f"Post {seen_total}/{planned_total}"
+        known_part = f"Bekannt: {int(progress.known_posts or 0)}"
+        inserted_part = f"Neu: {int(progress.inserted_posts or 0)}"
+        thumb_part = f"Thumbs: {int(progress.cached_thumbnails or 0)}"
+
+        self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
+
+        detail = f"{query_part} | {post_part} | {known_part} | {inserted_part} | {thumb_part}"
+        if query_text:
+            detail += f" | {query_text[:90]}"
+        self.fetch_progress_label.setText(detail)
+        self.fetch_progress_label.setToolTip(query_text)
+        self.fetch_progress_label.setVisible(True)
+
     def on_fetch_finished(self, result: object) -> None:
         self.log_text.append(f"Fetch fertig: {result}")
         self.fetch_button.setEnabled(True)
         self.save_preset_button.setEnabled(True)
         self.delete_preset_button.setEnabled(True)
         self.progress_bar.setVisible(False)
+        self.fetch_progress_label.setVisible(False)
         self.fetch_finished.emit()
         self.reload_tag_suggestions()
         self.open_preview_requested.emit()
@@ -596,6 +638,7 @@ class FetchTab(QWidget):
         self.save_preset_button.setEnabled(True)
         self.delete_preset_button.setEnabled(True)
         self.progress_bar.setVisible(False)
+        self.fetch_progress_label.setVisible(False)
         self.fetch_failed_signal.emit()
         QMessageBox.critical(self, "Fetch fehlgeschlagen", traceback_text)
 

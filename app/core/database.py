@@ -1128,6 +1128,35 @@ class Database:
         self.commit()
 
     def set_post_status(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
+        self._set_post_status_no_commit(post_id, status, config)
+        self.refresh_tag_statistics_for_post(post_id)
+        self.commit()
+
+    def set_post_statuses(self, post_ids: list[int], status: str, config: dict[str, Any] | None = None) -> None:
+        clean_ids = []
+        seen: set[int] = set()
+        for post_id in post_ids:
+            post_id_int = int(post_id)
+            if post_id_int in seen:
+                continue
+            seen.add(post_id_int)
+            clean_ids.append(post_id_int)
+
+        if not clean_ids:
+            return
+
+        if status not in ALL_ALLOWED_STATUSES:
+            raise ValueError(f"Ungültiger Status: {status}")
+
+        for post_id in clean_ids:
+            self._set_post_status_no_commit(post_id, status, config)
+
+        for post_id in clean_ids:
+            self.refresh_tag_statistics_for_post(post_id)
+
+        self.commit()
+
+    def _set_post_status_no_commit(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
         if status not in ALL_ALLOWED_STATUSES:
             raise ValueError(f"Ungültiger Status: {status}")
 
@@ -1170,8 +1199,6 @@ class Database:
             """,
             parameters,
         )
-        self.refresh_tag_statistics_for_post(post_id)
-        self.commit()
 
     def move_thumbnail_to_bucket(self, post_id: int, target_dir: Path) -> str | None:
         row = self.execute(

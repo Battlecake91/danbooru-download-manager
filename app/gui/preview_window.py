@@ -297,6 +297,7 @@ class PreviewWindow(QMainWindow):
 
         self.grid = ThumbnailGrid(self.db, self.config)
         self.grid.status_changed.connect(self.on_status_changed)
+        self.grid.statuses_changed.connect(self.on_statuses_changed)
         self.grid.request_reload.connect(self.schedule_reload)
         self.grid.open_viewer_requested.connect(self.open_viewer)
         self.grid.final_save_requested.connect(self.final_save_posts)
@@ -1194,6 +1195,11 @@ class PreviewWindow(QMainWindow):
 
         self.grid.update_card_status(post_id, status)
         self.status_bar.showMessage(f"Post {post_id} → {STATUS_LABELS.get(status, status)}")
+
+
+    def on_statuses_changed(self, post_ids: list[int], status: str) -> None:
+        count = len(post_ids)
+        self.status_bar.showMessage(f"{count} Post(s) → {STATUS_LABELS.get(status, status)}")
 
     def open_viewer(self, post_id: int) -> None:
         post_id = int(post_id)

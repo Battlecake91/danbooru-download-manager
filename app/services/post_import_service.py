@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from app.core.database import Database
 from app.danbooru.api import DanbooruApi, build_search_queries
@@ -20,12 +20,37 @@ class FetchResult:
     cached_thumbnails: int = 0
 
 
+@dataclass
+class FetchProgress:
+    query_index: int = 0
+    query_total: int = 0
+    query: str = ""
+    seen_total: int = 0
+    planned_total: int = 0
+    seen_for_query: int = 0
+    planned_for_query: int = 0
+    inserted_posts: int = 0
+    known_posts: int = 0
+    cached_thumbnails: int = 0
+    phase: str = "running"
+
+
 class PostImportService:
-    def __init__(self, config: dict[str, Any], db: Database) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        db: Database,
+        progress_callback: Callable[[FetchProgress], None] | None = None,
+    ) -> None:
         self.config = config
         self.db = db
         self.api = DanbooruApi(config)
         self.thumbnail_cache = ThumbnailCache(config, self.api.session)
+        self.progress_callback = progress_callback
+
+    def emit_progress(self, progress: FetchProgress) -> None:
+        if self.progress_callback is not None:
+            self.progress_callback(progress)
 
     def fetch_and_store(self) -> FetchResult:
         self.db.sync_static_config(self.config)
@@ -39,16 +64,41 @@ class PostImportService:
         max_total_posts = int(self.config.get("max_total_posts", 500))
         max_posts_per_query = int(self.config.get("max_posts_per_query", 200))
         limit = int(self.config.get("limit", 100))
+        planned_total = max(1, min(max_total_posts, len(queries) * max_posts_per_query))
 
         total_seen = 0
 
-        for query in queries:
+        self.emit_progress(
+            FetchProgress(
+                query_total=len(queries),
+                planned_total=planned_total,
+                planned_for_query=max_posts_per_query,
+                phase="start",
+            )
+        )
+
+        for query_index, query in enumerate(queries, start=1):
             if total_seen >= max_total_posts:
                 break
 
-            LOGGER.info("Lade Query: %s", query)
+            LOGGER.info("Lade Query %s/%s: %s", query_index, len(queries), query)
             page = None
             seen_for_query = 0
+            self.emit_progress(
+                FetchProgress(
+                    query_index=query_index,
+                    query_total=len(queries),
+                    query=query,
+                    seen_total=total_seen,
+                    planned_total=planned_total,
+                    seen_for_query=seen_for_query,
+                    planned_for_query=max_posts_per_query,
+                    inserted_posts=result.inserted_posts,
+                    known_posts=result.updated_posts,
+                    cached_thumbnails=result.cached_thumbnails,
+                    phase="query",
+                )
+            )
 
             while seen_for_query < max_posts_per_query and total_seen < max_total_posts:
                 page_data = self.api.get_posts(query, limit=limit, page=page)
@@ -77,11 +127,39 @@ class PostImportService:
                             self.set_thumbnail_path(int(post["id"]), thumbnail_path)
                             result.cached_thumbnails += 1
 
+                    self.emit_progress(
+                        FetchProgress(
+                            query_index=query_index,
+                            query_total=len(queries),
+                            query=query,
+                            seen_total=total_seen,
+                            planned_total=planned_total,
+                            seen_for_query=seen_for_query,
+                            planned_for_query=max_posts_per_query,
+                            inserted_posts=result.inserted_posts,
+                            known_posts=result.updated_posts,
+                            cached_thumbnails=result.cached_thumbnails,
+                            phase="post",
+                        )
+                    )
+
                 if not page_data.next_page:
                     break
 
                 page = page_data.next_page
 
+        self.emit_progress(
+            FetchProgress(
+                query_index=min(len(queries), result.queries),
+                query_total=len(queries),
+                seen_total=total_seen,
+                planned_total=planned_total,
+                inserted_posts=result.inserted_posts,
+                known_posts=result.updated_posts,
+                cached_thumbnails=result.cached_thumbnails,
+                phase="done",
+            )
+        )
         return result
 
     def get_status(self, post_id: int) -> str:

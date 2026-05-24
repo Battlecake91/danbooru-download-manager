@@ -86,6 +86,7 @@ def clear_cached_pixmap_for_path(path_text: str) -> None:
 
 class ThumbnailGrid(QScrollArea):
     status_changed = Signal(int, str)
+    statuses_changed = Signal(list, str)
     request_reload = Signal()
     open_viewer_requested = Signal(int)
     final_save_requested = Signal(list)
@@ -331,6 +332,7 @@ class ThumbnailGrid(QScrollArea):
                 for row in batch:
                     card = ThumbnailCard(self.db, self.config, row, self.thumbnail_size)
                     card.status_changed.connect(self.status_changed.emit)
+                    card.status_change_requested.connect(self.on_card_status_change_requested)
                     card.request_reload.connect(self.request_reload.emit)
                     card.clicked.connect(self.on_card_clicked)
                     card.double_clicked.connect(self.open_viewer_requested.emit)
@@ -619,12 +621,44 @@ class ThumbnailGrid(QScrollArea):
         return [card] if card else []
 
     def apply_status_to_selection(self, status: str) -> None:
-        cards = self.selected_or_current_cards()
-        if not cards:
+        self.apply_status_to_post_ids(self.selected_or_current_post_ids(), status)
+
+    def on_card_status_change_requested(self, post_id: int, status: str) -> None:
+        if post_id in self.selected_ids and len(self.selected_ids) > 1:
+            post_ids = self.selected_or_current_post_ids()
+        else:
+            post_ids = [int(post_id)]
+        self.apply_status_to_post_ids(post_ids, status)
+
+    def apply_status_to_post_ids(self, post_ids: list[int], status: str) -> None:
+        clean_ids = []
+        seen: set[int] = set()
+        for post_id in post_ids:
+            post_id_int = int(post_id)
+            if post_id_int in seen:
+                continue
+            seen.add(post_id_int)
+            clean_ids.append(post_id_int)
+
+        if not clean_ids:
             return
 
-        for card in cards:
-            card.set_status(status, emit_reload=False)
+        self.db.set_post_statuses(clean_ids, status, self.config)
+
+        id_set = set(clean_ids)
+        was_updates_enabled = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
+        try:
+            for card in self.items:
+                if card.post_id in id_set:
+                    card.apply_external_status(status)
+        finally:
+            self.setUpdatesEnabled(was_updates_enabled)
+
+        if len(clean_ids) == 1:
+            self.status_changed.emit(clean_ids[0], status)
+        else:
+            self.statuses_changed.emit(clean_ids, status)
 
     def status_for_key(self, key: int) -> str | None:
         mapping = {
@@ -639,6 +673,7 @@ class ThumbnailGrid(QScrollArea):
 
 class ThumbnailCard(QFrame):
     status_changed = Signal(int, str)
+    status_change_requested = Signal(int, str)
     request_reload = Signal()
     clicked = Signal(int, bool, bool)
     double_clicked = Signal(int)
@@ -1007,7 +1042,7 @@ class ThumbnailCard(QFrame):
 
         for label, status in actions:
             action = QAction(label, self)
-            action.triggered.connect(lambda checked=False, s=status: self.set_status(s, emit_reload=False))
+            action.triggered.connect(lambda checked=False, s=status: self.status_change_requested.emit(self.post_id, s))
             menu.addAction(action)
 
         menu.exec(self.mapToGlobal(position))
