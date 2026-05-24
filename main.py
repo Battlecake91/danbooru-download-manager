@@ -59,6 +59,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Debug-Logging aktivieren",
     )
+    parser.add_argument(
+        "--debug-startup",
+        action="store_true",
+        help="Startzeit-Markierungen ausgeben und Lazy-Tab-Erzeugung protokollieren",
+    )
     return parser.parse_args()
 
 
@@ -70,6 +75,7 @@ def main() -> int:
     env_path = Path(args.env_file)
 
     config = load_config(config_path, env_path)
+    config["debug_startup"] = bool(args.debug_startup)
     ensure_runtime_dirs(config)
 
     db = Database(Path(config["database_file"]))
