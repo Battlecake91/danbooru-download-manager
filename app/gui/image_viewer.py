@@ -289,6 +289,7 @@ class ImageViewerWindow(QMainWindow):
         self._tag_context_menu: QMenu | None = None
         self._related_context_menu: QMenu | None = None
         self.related_list_expanded = False
+        self._related_viewers: list[ImageViewerWindow] = []
         self.max_score_in_view = self.calculate_max_score_in_view()
 
         viewer_config = config.get("viewer", {}) or {}
@@ -320,7 +321,7 @@ class ImageViewerWindow(QMainWindow):
 
         self.toolbar.addSeparator()
 
-        self.final_save_button = QPushButton("Final speichern [F]")
+        self.final_save_button = QPushButton("Speichern [F]")
         self.final_save_button.clicked.connect(self.final_save_current_post)
         self.toolbar.addWidget(self.final_save_button)
 
@@ -341,6 +342,11 @@ class ImageViewerWindow(QMainWindow):
         self.open_local_image_button = QPushButton("Lokales Bild öffnen")
         self.open_local_image_button.clicked.connect(self.open_current_local_image)
         self.toolbar.addWidget(self.open_local_image_button)
+
+        self.delete_final_file_button = QPushButton("Lokale Datei löschen")
+        self.delete_final_file_button.setToolTip("Löscht die lokal gespeicherte Datei und leert den lokalen Pfad in der DB.")
+        self.delete_final_file_button.clicked.connect(self.delete_current_final_file)
+        self.toolbar.addWidget(self.delete_final_file_button)
 
         self.toolbar.addSeparator()
 
@@ -392,20 +398,22 @@ class ImageViewerWindow(QMainWindow):
         self.personal_stars_widget.rating_changed.connect(self.set_personal_rating)
         self.below_image_controls.addWidget(self.personal_stars_widget)
 
-        self.below_image_controls.addStretch(1)
+        self.below_image_controls.addSpacing(28)
 
         self.prev_button = QPushButton("< Vorheriges")
+        self.prev_button.setFixedWidth(118)
         self.prev_button.clicked.connect(self.previous_post)
         self.below_image_controls.addWidget(self.prev_button)
 
         self.footer_label = QLabel()
         self.footer_label.setAlignment(Qt.AlignCenter)
         self.footer_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.footer_label.setMinimumWidth(190)
+        self.footer_label.setFixedWidth(230)
         self.footer_label.setStyleSheet("QLabel { font-size: 22px; font-weight: bold; padding: 4px 10px; }")
         self.below_image_controls.addWidget(self.footer_label)
 
         self.next_button = QPushButton("Nächstes >")
+        self.next_button.setFixedWidth(118)
         self.next_button.clicked.connect(self.next_post)
         self.below_image_controls.addWidget(self.next_button)
 
@@ -505,7 +513,7 @@ class ImageViewerWindow(QMainWindow):
 
         self.hint_label = QLabel(
             "Hotkeys: ←/→ blättern | 1-5 oder Sternklick persönliches Rating | "
-            "H High Potential | F final speichern | Entf ablehnen oder markierte Tags ausschließen | "
+            "H High Potential | F speichern | Entf ablehnen oder markierte Tags ausschließen | "
             "N neu | O Originalpost | Tags markieren + Rechtsklick für Tag-Aktionen | "
             "Parent/Child: Doppelklick lokal öffnen, Rechtsklick für Lokal/Remote"
         )
@@ -727,7 +735,7 @@ class ImageViewerWindow(QMainWindow):
             f"ID {post_id} - {rating_html_value} - Score: {score_value if score_value is not None else '-'} "
             f"&nbsp;&nbsp;|&nbsp;&nbsp; Parent: {parent_text} "
             f"&nbsp;&nbsp;|&nbsp;&nbsp; Parent/Child bekannt: {related_total_count} "
-            f"| final gespeichert: {related_local_count}"
+            f"| lokal gespeichert: {related_local_count}"
         )
         self.footer_label.setText(f"Position {self.current_index + 1} / {len(self.post_ids)}")
 
@@ -739,7 +747,7 @@ class ImageViewerWindow(QMainWindow):
             if related_local_count:
                 self.related_warning_label.setText(
                     f"⚠ Parent/Child-Posts vorhanden: {related_total_count} bekannt, "
-                    f"{related_local_count} lokal final gespeichert. Anklicken zum Anzeigen."
+                    f"{related_local_count} lokal gespeichert. Anklicken zum Anzeigen."
                 )
             else:
                 self.related_warning_label.setText(
@@ -756,7 +764,9 @@ class ImageViewerWindow(QMainWindow):
         status = row["status"] or "new"
         self.status_chips.set_status(status)
         self.final_save_button.setEnabled(True)
-        self.open_local_image_button.setEnabled(self.local_path_for_post(post_id) is not None)
+        local_current_path = self.local_path_for_post(post_id)
+        self.open_local_image_button.setEnabled(local_current_path is not None)
+        self.delete_final_file_button.setEnabled(bool(row["final_file_path"]))
 
         stars = row["stars"]
         self.personal_stars_widget.set_rating(stars)
@@ -906,12 +916,12 @@ class ImageViewerWindow(QMainWindow):
         if not post_id:
             return
 
-        local_path = self.local_path_for_post(int(post_id))
-        if local_path is not None:
-            self.open_local_path(local_path)
+        post_id_int = int(post_id)
+        if self.local_path_for_post(post_id_int) is not None:
+            self.open_related_in_viewer(post_id_int)
             return
 
-        webbrowser.open(self.build_post_url(int(post_id)))
+        webbrowser.open(self.build_post_url(post_id_int))
 
     def open_related_context_menu(self, position) -> None:  # noqa: ANN001
         item = self.related_list.itemAt(position)
@@ -928,7 +938,12 @@ class ImageViewerWindow(QMainWindow):
         menu = QMenu(self)
         self._related_context_menu = menu
 
-        local_action = QAction("Lokal öffnen", menu)
+        viewer_action = QAction("In separatem Viewer öffnen", menu)
+        viewer_action.setEnabled(local_path is not None)
+        viewer_action.triggered.connect(lambda checked=False, pid=post_id: self.open_related_in_viewer(pid))
+        menu.addAction(viewer_action)
+
+        local_action = QAction("Lokale Datei im System öffnen", menu)
         local_action.setEnabled(local_path is not None)
         local_action.triggered.connect(
             lambda checked=False, p=local_path: self.open_local_path(p) if p is not None else None
@@ -962,6 +977,43 @@ class ImageViewerWindow(QMainWindow):
             menu.addAction(copy_local_action)
 
         menu.popup(self.related_list.viewport().mapToGlobal(position))
+
+    def open_related_in_viewer(self, post_id: int) -> None:
+        post_id = int(post_id)
+        if self.local_path_for_post(post_id) is None:
+            QMessageBox.information(
+                self,
+                "Parent/Child öffnen",
+                f"Post {post_id} hat keinen lokalen finalen Pfad. Öffne den Originalpost im Browser.",
+            )
+            webbrowser.open(self.build_post_url(post_id))
+            return
+
+        related_ids = [post_id]
+        try:
+            related = self.db.get_related_posts(post_id)
+            for row in related:
+                rid = int(row["id"])
+                if rid not in related_ids and self.local_path_for_post(rid) is not None:
+                    related_ids.append(rid)
+        except Exception:
+            pass
+
+        viewer = ImageViewerWindow(self.config, self.db, related_ids, post_id)
+        viewer.status_changed.connect(self.status_changed.emit)
+        viewer.query_requested.connect(self.query_requested.emit)
+        viewer.destroyed.connect(lambda *_args, v=viewer: self._forget_related_viewer(v))
+        self._related_viewers.append(viewer)
+        viewer.resize(1350, 900)
+        viewer.show()
+        viewer.raise_()
+        viewer.activateWindow()
+
+    def _forget_related_viewer(self, viewer: "ImageViewerWindow") -> None:
+        try:
+            self._related_viewers.remove(viewer)
+        except ValueError:
+            pass
 
     def open_local_path(self, path: Path) -> None:
         if not path.exists():
@@ -1309,19 +1361,19 @@ class ImageViewerWindow(QMainWindow):
 
         if existing_path is not None:
             message = (
-                "Dieser Post hat bereits einen finalen lokalen Zielpfad.\n\n"
+                "Dieser Post hat bereits einen lokalen Zielpfad.\n\n"
                 f"{existing_path}\n\n"
-                "Mit Danbooru-file_url neu laden und final überschreiben/neu speichern?"
+                "Mit Danbooru-file_url neu laden und lokal überschreiben/neu speichern?"
             )
             if not existing_is_local:
                 message = (
-                    "Für diesen Post ist ein finaler Zielpfad in der DB eingetragen, "
+                    "Für diesen Post ist ein lokaler Zielpfad in der DB eingetragen, "
                     "die Datei fehlt aber lokal.\n\n"
                     f"{existing_path}\n\n"
                     "Original erneut laden und Zielpfad reparieren?"
                 )
 
-            answer = QMessageBox.question(self, "Finaldatei ersetzen", message)
+            answer = QMessageBox.question(self, "Lokale Datei ersetzen", message)
             if answer != QMessageBox.StandardButton.Yes:
                 return
             overwrite_existing = True
@@ -1349,6 +1401,46 @@ class ImageViewerWindow(QMainWindow):
             self.next_post()
         else:
             self.load_current_post()
+
+    def delete_current_final_file(self) -> None:
+        if self.current_post_id is None:
+            return
+
+        post_id = self.current_post_id
+        row = self.db.get_post_detail(post_id)
+        if row is None or not row["final_file_path"]:
+            QMessageBox.information(self, "Lokale Datei löschen", "Für diesen Post ist kein lokaler Speicherpfad eingetragen.")
+            return
+
+        path = Path(str(row["final_file_path"]))
+        answer = QMessageBox.question(
+            self,
+            "Lokale Datei löschen",
+            (
+                "Diese lokal gespeicherte Datei wirklich löschen?\n\n"
+                f"Post {post_id}\n{path}\n\n"
+                "Der DB-Eintrag bleibt erhalten, aber der lokale Dateipfad wird geleert."
+            ),
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            if path.exists():
+                if not path.is_file():
+                    raise RuntimeError("Pfad ist keine Datei")
+                path.unlink()
+            new_status = "new" if str(row["status"] or "") == "saved" else None
+            self.db.clear_post_final_file_path(post_id, new_status=new_status)
+            if new_status:
+                self.status_chips.set_status(new_status)
+                self.status_changed.emit(post_id, new_status)
+            self.final_path_label.setText("Lokale Datei gelöscht; lokaler Pfad wurde geleert.")
+            self.open_local_image_button.setEnabled(False)
+            self.delete_final_file_button.setEnabled(False)
+            self.load_current_post()
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Lokale Datei löschen fehlgeschlagen", str(exc))
 
     def refetch_current_post(self) -> None:
         if self.current_post_id is None:
@@ -1819,7 +1911,7 @@ class ImageViewerWindow(QMainWindow):
 
         path = self.local_path_for_post(self.current_post_id)
         if path is None:
-            QMessageBox.information(self, "Kein lokales Bild", "Für diesen Post existiert keine lokal final gespeicherte Datei.")
+            QMessageBox.information(self, "Kein lokales Bild", "Für diesen Post existiert keine lokal gespeicherte Datei.")
             return
 
         self.open_local_path(path)

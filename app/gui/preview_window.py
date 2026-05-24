@@ -28,9 +28,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QStackedWidget,
-    QDialog,
-    QDialogButtonBox,
-    QTextEdit,
 )
 
 from app.core.database import Database
@@ -43,7 +40,6 @@ from app.gui.thumbnail_grid import ThumbnailGrid
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
-from app.services.llm_payload_service import LLMPayloadService
 
 
 def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
@@ -140,137 +136,6 @@ SQL_SORT_ORDER: dict[str, str] = {
 }
 
 
-class LLMPayloadDialog(QDialog):
-    def __init__(self, payload_text: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("LLM-Payload")
-        self.resize(900, 650)
-
-        layout = QVBoxLayout(self)
-
-        info = QLabel(
-            "Diese Payload ist nur die vorbereitete Eingabe. Sie wird noch nicht automatisch an einen Anbieter gesendet."
-        )
-        info.setWordWrap(True)
-        layout.addWidget(info)
-
-        self.payload_edit = QTextEdit()
-        self.payload_edit.setPlainText(payload_text)
-        self.payload_edit.setReadOnly(True)
-        layout.addWidget(self.payload_edit, stretch=1)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        copy_button = buttons.addButton("In Zwischenablage kopieren", QDialogButtonBox.ActionRole)
-        copy_button.clicked.connect(self.copy_payload)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def copy_payload(self) -> None:
-        QApplication.clipboard().setText(self.payload_edit.toPlainText())
-
-
-class LastLLMPayloadsDialog(QDialog):
-    def __init__(self, payloads: list[dict[str, Any]], summary: dict[str, Any] | None = None, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.payloads = payloads
-        self.summary = summary or {}
-        self.setWindowTitle("Letzte Fetch-LLM-Payloads")
-        self.resize(980, 720)
-
-        layout = QVBoxLayout(self)
-
-        self.summary_label = QLabel(self.build_summary_text())
-        self.summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.summary_label.setWordWrap(True)
-        layout.addWidget(self.summary_label)
-
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Payload:"))
-        self.payload_combo = QComboBox()
-        for index, payload in enumerate(self.payloads, start=1):
-            post_ids = self.payload_post_ids(payload)
-            preview_ids = ", ".join(str(post_id) for post_id in post_ids[:5])
-            if len(post_ids) > 5:
-                preview_ids += ", ..."
-            self.payload_combo.addItem(f"{index}/{len(self.payloads)} · {len(post_ids)} Posts · {preview_ids}", index - 1)
-        self.payload_combo.currentIndexChanged.connect(self.update_payload_view)
-        row.addWidget(self.payload_combo, stretch=1)
-        layout.addLayout(row)
-
-        self.payload_info = QLabel("")
-        self.payload_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.payload_info.setWordWrap(True)
-        layout.addWidget(self.payload_info)
-
-        self.payload_edit = QTextEdit()
-        self.payload_edit.setReadOnly(True)
-        layout.addWidget(self.payload_edit, stretch=1)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        copy_current_button = buttons.addButton("Aktuelle Payload kopieren", QDialogButtonBox.ActionRole)
-        copy_all_button = buttons.addButton("Alle Payloads kopieren", QDialogButtonBox.ActionRole)
-        copy_current_button.clicked.connect(self.copy_current_payload)
-        copy_all_button.clicked.connect(self.copy_all_payloads)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-        self.update_payload_view()
-
-    @staticmethod
-    def payload_post_ids(payload: dict[str, Any]) -> list[int]:
-        ids: list[int] = []
-        posts = payload.get("posts", [])
-        if not isinstance(posts, list):
-            return ids
-        for post in posts:
-            if not isinstance(post, dict):
-                continue
-            try:
-                ids.append(int(post.get("post_id")))
-            except Exception:
-                continue
-        return ids
-
-    def build_summary_text(self) -> str:
-        if not self.summary:
-            return "Keine Batch-Zusammenfassung gespeichert. Nur die Payloads selbst sind vorhanden."
-        return (
-            f"Eingang: {int(self.summary.get('input_posts', 0) or 0)} Posts · "
-            f"Kandidaten: {int(self.summary.get('candidate_posts', 0) or 0)} · "
-            f"Übersprungen: {int(self.summary.get('skipped_posts', 0) or 0)} · "
-            f"Batches: {int(self.summary.get('batches_total', 0) or 0)} · "
-            f"Payloads: {int(self.summary.get('payloads_prepared', 0) or 0)}"
-        )
-
-    def selected_payload(self) -> dict[str, Any] | None:
-        if not self.payloads:
-            return None
-        index = self.payload_combo.currentData()
-        try:
-            return self.payloads[int(index)]
-        except Exception:
-            return self.payloads[0]
-
-    def update_payload_view(self, *_args: Any) -> None:
-        payload = self.selected_payload()
-        if payload is None:
-            self.payload_info.setText("Keine Payload vorhanden.")
-            self.payload_edit.clear()
-            return
-        post_ids = self.payload_post_ids(payload)
-        batch = payload.get("batch", {}) if isinstance(payload.get("batch"), dict) else {}
-        self.payload_info.setText(
-            f"Batch {batch.get('index', self.payload_combo.currentIndex() + 1)}/{batch.get('total', len(self.payloads))} · "
-            f"Posts: {len(post_ids)} · IDs: {', '.join(str(post_id) for post_id in post_ids)}"
-        )
-        self.payload_edit.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
-
-    def copy_current_payload(self) -> None:
-        QApplication.clipboard().setText(self.payload_edit.toPlainText())
-
-    def copy_all_payloads(self) -> None:
-        QApplication.clipboard().setText(json.dumps(self.payloads, ensure_ascii=False, indent=2))
-
 
 class PreviewWindow(QMainWindow):
     def __init__(self, config: dict[str, Any], db: Database) -> None:
@@ -280,7 +145,6 @@ class PreviewWindow(QMainWindow):
         self.db = db
         self.final_save_service = FinalSaveService(config, db)
         self.recommendation_engine = RecommendationEngine(db)
-        self.llm_payload_service = LLMPayloadService(config, db)
         self.current_limit = int((config.get("gui", {}) or {}).get("preview_limit", 100))
         self.current_offset = 0
 
@@ -327,23 +191,10 @@ class PreviewWindow(QMainWindow):
         self.toolbar_actions.addWidget(self.reload_thumbnails_button)
 
         self.final_save_button = QPushButton("Speichern")
-        self.final_save_button.setToolTip("Final speichern (F)")
+        self.final_save_button.setToolTip("Speichern (F)")
         self.final_save_button.clicked.connect(self.final_save_selected_posts)
         self.toolbar_actions.addWidget(self.final_save_button)
 
-        self.llm_payload_button = QPushButton("LLM-Payload")
-        self.llm_payload_button.setToolTip(
-            "Erzeugt die LLM-Eingabe für die ausgewählten Posts, ohne sie automatisch zu senden."
-        )
-        self.llm_payload_button.clicked.connect(self.show_llm_payload_for_selection)
-        self.toolbar_actions.addWidget(self.llm_payload_button)
-
-        self.last_llm_payloads_button = QPushButton("Letzte LLM-Payloads")
-        self.last_llm_payloads_button.setToolTip(
-            "Zeigt die zuletzt nach einem Fetch vorbereiteten LLM-Batch-Payloads samt Post-IDs."
-        )
-        self.last_llm_payloads_button.clicked.connect(self.show_last_fetch_llm_payloads)
-        self.toolbar_actions.addWidget(self.last_llm_payloads_button)
 
         self.fetch_status_label = QLabel("Fetch läuft…")
         self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
@@ -503,6 +354,7 @@ class PreviewWindow(QMainWindow):
         self.grid.request_reload.connect(self.schedule_reload)
         self.grid.open_viewer_requested.connect(self.open_viewer)
         self.grid.final_save_requested.connect(self.final_save_posts)
+        self.grid.final_delete_requested.connect(self.delete_final_files_for_posts)
         self.grid.category_assign_requested.connect(self.assign_category_to_posts)
         self.grid.thumbnail_reload_requested.connect(self.reload_thumbnails_for_posts)
         self.grid.build_started.connect(self.on_grid_build_started)
@@ -721,77 +573,6 @@ class PreviewWindow(QMainWindow):
 
 
 
-    # -------------------------------------------------------------------------
-    # LLM-Payload / erste Integrationsstufe
-    # -------------------------------------------------------------------------
-
-    def show_llm_payload_for_selection(self) -> None:
-        cards = self.grid.selected_or_current_cards()
-        if not cards:
-            self.status_bar.showMessage("LLM-Payload: kein Post ausgewählt.", 4000)
-            return
-
-        post_ids = [int(card.post_id) for card in cards]
-        try:
-            payload = self.llm_payload_service.build_payload_for_posts(post_ids)
-        except sqlite3.OperationalError as exc:
-            if "database is locked" in str(exc).lower() or "database table is locked" in str(exc).lower():
-                QMessageBox.information(
-                    self,
-                    "LLM-Payload",
-                    "Die Datenbank ist gerade beschäftigt. Fetch oder Speichern läuft vermutlich noch.",
-                )
-                return
-            raise
-        except Exception as exc:
-            QMessageBox.critical(self, "LLM-Payload", str(exc))
-            return
-
-        dialog = LLMPayloadDialog(json.dumps(payload, ensure_ascii=False, indent=2), self)
-        dialog.exec()
-
-    def show_last_fetch_llm_payloads(self) -> None:
-        raw_payloads = self.db.get_app_setting("llm.last_fetch_payloads", "[]") or "[]"
-        raw_summary = self.db.get_app_setting("llm.last_fetch_payload_summary", "{}") or "{}"
-        try:
-            payloads_data = json.loads(raw_payloads)
-            summary_data = json.loads(raw_summary)
-        except Exception as exc:
-            QMessageBox.critical(self, "Letzte LLM-Payloads", f"Gespeicherte Payloads konnten nicht gelesen werden:\n{exc}")
-            return
-
-        if isinstance(payloads_data, dict):
-            payloads = [payloads_data]
-        elif isinstance(payloads_data, list):
-            payloads = [payload for payload in payloads_data if isinstance(payload, dict)]
-        else:
-            payloads = []
-
-        summary = summary_data if isinstance(summary_data, dict) else {}
-
-        if not payloads:
-            if summary:
-                info = (
-                    f"Eingang: {int(summary.get('input_posts', 0) or 0)} Posts\n"
-                    f"Kandidaten: {int(summary.get('candidate_posts', 0) or 0)}\n"
-                    f"Übersprungen: {int(summary.get('skipped_posts', 0) or 0)}\n"
-                    f"Batches: {int(summary.get('batches_total', 0) or 0)}\n"
-                    f"Payloads: {int(summary.get('payloads_prepared', 0) or 0)}"
-                )
-                reason = str(summary.get("skipped_reason", "") or "")
-                if reason:
-                    info += f"\n\nHinweis: {reason}"
-            else:
-                info = (
-                    "Es sind keine Fetch-LLM-Payloads gespeichert. Starte einen Fetch mit aktivierter LLM-Batch-Vorbereitung. "
-                    "Ja, die Software versteckt die Beweise sonst hervorragend."
-                )
-            QMessageBox.information(self, "Letzte LLM-Payloads", info)
-            return
-
-        dialog = LastLLMPayloadsDialog(payloads, summary, self)
-        dialog.exec()
-
     # Kategorie-Filter / Kategorie-Vorschlag
     # -------------------------------------------------------------------------
 
@@ -945,6 +726,45 @@ class PreviewWindow(QMainWindow):
             )
 
         return rows
+
+    def preview_relation_group_key(self, row: dict[str, Any]) -> int:
+        try:
+            parent_id = row.get("parent_id")
+            return int(parent_id) if parent_id is not None else int(row.get("id") or 0)
+        except Exception:
+            return int(row.get("id") or 0)
+
+    def group_related_preview_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep Parent/Child posts adjacent while preserving the chosen sort order by first hit.
+
+        This only groups rows that are already in the fetched/filtered result set. It avoids the
+        classic review annoyance where a child shows up 20 cards later and pretends to be new.
+        """
+        if len(rows) < 2:
+            return rows
+
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        order: list[int] = []
+        for row in rows:
+            key = self.preview_relation_group_key(row)
+            if key not in grouped:
+                grouped[key] = []
+                order.append(key)
+            grouped[key].append(row)
+
+        result: list[dict[str, Any]] = []
+        for key in order:
+            group = grouped[key]
+            if len(group) > 1:
+                group = sorted(
+                    group,
+                    key=lambda row: (
+                        0 if int(row.get("id") or 0) == key else 1,
+                        -int(row.get("id") or 0),
+                    ),
+                )
+            result.extend(group)
+        return result
 
     def category_matches_filter(self, row: dict[str, Any], category_filter: str) -> bool:
         if category_filter == "__all__":
@@ -1209,6 +1029,7 @@ class PreviewWindow(QMainWindow):
                 and self.recommendation_matches_filter(row, recommendation_minimum)
             ]
             filtered = self.sort_preview_rows_in_python(filtered, sort_key)
+            filtered = self.group_related_preview_rows(filtered)
 
             posts = filtered[: self.current_limit]
             total_filtered = len(filtered) if python_filtered_or_sorted else base_total
@@ -1573,7 +1394,7 @@ class PreviewWindow(QMainWindow):
         return post
 
     # -------------------------------------------------------------------------
-    # Final speichern aus Preview
+    # Speichern aus Preview
     # -------------------------------------------------------------------------
 
     def final_save_selected_posts(self) -> None:
@@ -1582,7 +1403,7 @@ class PreviewWindow(QMainWindow):
 
     def final_save_posts(self, post_ids: list[int]) -> None:
         if not post_ids:
-            self.status_bar.showMessage("Final speichern: keine Posts ausgewählt.")
+            self.status_bar.showMessage("Speichern: keine Posts ausgewählt.")
             return
 
         saved: list[str] = []
@@ -1620,8 +1441,80 @@ class PreviewWindow(QMainWindow):
         if failed:
             QMessageBox.warning(
                 self,
-                "Final speichern",
+                "Speichern",
                 summary + "\n\nFehler:\n" + "\n".join(failed[:10]),
+            )
+
+    def delete_final_files_for_posts(self, post_ids: list[int]) -> None:
+        clean_ids = []
+        seen: set[int] = set()
+        for post_id in post_ids:
+            post_id_int = int(post_id)
+            if post_id_int in seen:
+                continue
+            seen.add(post_id_int)
+            clean_ids.append(post_id_int)
+
+        if not clean_ids:
+            self.status_bar.showMessage("Lokale Datei löschen: kein Post ausgewählt.", 4000)
+            return
+
+        rows = []
+        missing = []
+        for post_id in clean_ids:
+            row = self.db.get_post_detail(post_id)
+            final_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
+            if final_path is None:
+                missing.append(f"{post_id}: kein lokaler Pfad")
+                continue
+            rows.append((post_id, row, final_path))
+
+        if not rows:
+            QMessageBox.information(
+                self,
+                "Lokale Datei löschen",
+                "Für die Auswahl ist kein lokaler Speicherpfad eingetragen.\n" + "\n".join(missing[:10]),
+            )
+            return
+
+        preview_lines = [f"{post_id}: {path}" for post_id, _row, path in rows[:12]]
+        if len(rows) > 12:
+            preview_lines.append(f"... und {len(rows) - 12} weitere")
+
+        answer = QMessageBox.question(
+            self,
+            "Lokale Dateien löschen",
+            (
+                "Diese lokale Datei bzw. diese lokalen Dateien werden gelöscht.\n"
+                "Die DB-Einträge bleiben erhalten, aber die lokalen Dateipfade werden geleert.\n\n"
+                + "\n".join(preview_lines)
+            ),
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted = 0
+        failed: list[str] = []
+        for post_id, row, path in rows:
+            try:
+                if path.exists():
+                    if not path.is_file():
+                        raise RuntimeError("Pfad ist keine Datei")
+                    path.unlink()
+                new_status = "new" if str(row["status"] or "") == "saved" else None
+                self.db.clear_post_final_file_path(post_id, new_status=new_status)
+                deleted += 1
+                self.grid.update_card_status(post_id, new_status or str(row["status"] or "new"))
+            except Exception as exc:  # noqa: BLE001
+                failed.append(f"{post_id}: {exc}")
+
+        self.schedule_reload()
+        self.status_bar.showMessage(f"Lokale Dateien gelöscht: {deleted}, Fehler: {len(failed)}", 8000)
+        if failed:
+            QMessageBox.warning(
+                self,
+                "Lokale Dateien löschen",
+                f"Gelöscht: {deleted}\nFehler: {len(failed)}\n\n" + "\n".join(failed[:12]),
             )
 
     # -------------------------------------------------------------------------

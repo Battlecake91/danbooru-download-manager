@@ -181,6 +181,7 @@ class ThumbnailGrid(QScrollArea):
     request_reload = Signal()
     open_viewer_requested = Signal(int)
     final_save_requested = Signal(list)
+    final_delete_requested = Signal(list)
     category_assign_requested = Signal(list, str)
     thumbnail_reload_requested = Signal(list)
     build_started = Signal(int)
@@ -428,6 +429,7 @@ class ThumbnailGrid(QScrollArea):
                     card.clicked.connect(self.on_card_clicked)
                     card.double_clicked.connect(self.open_viewer_requested.emit)
                     card.final_save_requested.connect(lambda post_id: self.final_save_requested.emit([int(post_id)]))
+                    card.final_delete_requested.connect(self.on_card_final_delete_requested)
                     card.category_assign_requested.connect(self.on_card_category_assign_requested)
                     card.thumbnail_reload_requested.connect(self.on_card_thumbnail_reload_requested)
                     self.items.append(card)
@@ -480,6 +482,9 @@ class ThumbnailGrid(QScrollArea):
 
     def on_card_final_save_requested(self, post_id: int) -> None:
         self.final_save_requested.emit(self.post_ids_for_card_action(post_id))
+
+    def on_card_final_delete_requested(self, post_id: int) -> None:
+        self.final_delete_requested.emit(self.post_ids_for_card_action(post_id))
 
     def on_card_category_assign_requested(self, post_id: int, category_name: str) -> None:
         self.category_assign_requested.emit(self.post_ids_for_card_action(post_id), category_name)
@@ -764,6 +769,7 @@ class ThumbnailCard(QFrame):
     clicked = Signal(int, bool, bool)
     double_clicked = Signal(int)
     final_save_requested = Signal(int)
+    final_delete_requested = Signal(int)
     category_assign_requested = Signal(int, str)
     thumbnail_reload_requested = Signal(int)
 
@@ -922,14 +928,20 @@ class ThumbnailCard(QFrame):
         self.apply_external_category(category, category_source)
 
         relation_parts = []
+        parent_id = self.value("parent_id")
+        if parent_id is not None:
+            relation_parts.append("Teil einer Parent/Child-Gruppe")
         if int(self.value("known_parent_loaded") or 0):
-            relation_parts.append("Parent bekannt")
+            relation_parts.append("Parent lokal/DB bekannt")
         child_count = int(self.value("known_child_count") or 0)
+        has_children = bool(self.value("has_children"))
         if child_count:
             relation_parts.append(f"{child_count} Child(s) bekannt")
+        elif has_children:
+            relation_parts.append("hat Child-Posts")
 
         if self.preview_options.get("show_parent", True) and relation_parts:
-            self.relation_label.setText("Verwandt: " + ", ".join(relation_parts))
+            self.relation_label.setText("⚠ Verwandt: " + ", ".join(relation_parts))
             self.relation_label.show()
         else:
             self.relation_label.clear()
@@ -1212,9 +1224,14 @@ class ThumbnailCard(QFrame):
         reload_thumbnail_action.triggered.connect(lambda: self.thumbnail_reload_requested.emit(self.post_id))
         menu.addAction(reload_thumbnail_action)
 
-        final_save_action = QAction("Final speichern (F)", self)
+        final_save_action = QAction("Speichern (F)", self)
         final_save_action.triggered.connect(lambda: self.final_save_requested.emit(self.post_id))
         menu.addAction(final_save_action)
+
+        final_delete_action = QAction("Lokale Datei löschen", self)
+        final_delete_action.setEnabled(bool(self.value("final_file_path")))
+        final_delete_action.triggered.connect(lambda: self.final_delete_requested.emit(self.post_id))
+        menu.addAction(final_delete_action)
 
         category_menu = QMenu("Kategorie setzen", self)
         category_names = self.db.list_category_names()

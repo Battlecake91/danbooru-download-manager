@@ -1554,6 +1554,34 @@ class Database:
         ).fetchone()
 
 
+
+    def clear_post_final_file_path(self, post_id: int, new_status: str | None = None) -> None:
+        """Clear the saved/final file reference after the local final file was deleted."""
+        if new_status:
+            self.execute(
+                """
+                UPDATE posts
+                SET final_file_path = NULL,
+                    final_directory = NULL,
+                    saved_at = NULL,
+                    status = ?
+                WHERE id = ?
+                """,
+                (str(new_status), int(post_id)),
+            )
+        else:
+            self.execute(
+                """
+                UPDATE posts
+                SET final_file_path = NULL,
+                    final_directory = NULL,
+                    saved_at = NULL
+                WHERE id = ?
+                """,
+                (int(post_id),),
+            )
+        self.commit()
+
     def delete_post_record(self, post_id: int) -> None:
         """Remove one post and dependent DB rows, but do not delete image files."""
         self.execute("DELETE FROM post_reviews WHERE post_id = ?", (post_id,))

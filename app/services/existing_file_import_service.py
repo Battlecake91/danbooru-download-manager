@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+
+import requests
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +24,8 @@ IMAGE_EXTENSIONS = {
 }
 
 MD5_RE = re.compile(r"(?<![0-9a-fA-F])([0-9a-fA-F]{32})(?![0-9a-fA-F])")
+POST_ID_HINT_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:post|postid|post_id|id|danbooru)[_-]?(\d{4,12})(?!\d)")
+POST_ID_FALLBACK_RE = re.compile(r"(?<!\d)(\d{5,12})(?!\d)")
 
 
 @dataclass
@@ -33,6 +37,8 @@ class ExistingFileImportProgress:
     target_path: str = ""
     md5_hash: str = ""
     post_id: int | None = None
+    identifier_kind: str = ""
+    identifier_value: str = ""
     imported: int = 0
     updated: int = 0
     renamed: int = 0
@@ -111,12 +117,18 @@ class ExistingFileImportService:
 
         for index, path in enumerate(files, start=1):
             md5_hash = extract_md5_from_filename(path.name)
+            post_id_from_name = extract_post_id_from_filename(path.name)
+            identifier_kind = "md5" if md5_hash else ("post_id" if post_id_from_name is not None else "")
+            identifier_value = md5_hash or (str(post_id_from_name) if post_id_from_name is not None else "")
             base_progress = ExistingFileImportProgress(
                 phase="file",
                 current=index,
                 total=len(files),
                 path=str(path),
                 md5_hash=md5_hash or "",
+                post_id=post_id_from_name,
+                identifier_kind=identifier_kind,
+                identifier_value=identifier_value,
                 imported=result.imported_posts,
                 updated=result.updated_posts,
                 renamed=result.renamed_files,
@@ -127,21 +139,27 @@ class ExistingFileImportService:
                 errors=result.errors,
             )
 
-            if not md5_hash:
+            if not md5_hash and post_id_from_name is None:
                 result.skipped_no_md5 += 1
                 base_progress.phase = "skip"
                 base_progress.skipped_no_md5 = result.skipped_no_md5
-                base_progress.message = f"Übersprungen, kein MD5 im Dateinamen: {path.name}"
+                base_progress.message = f"Übersprungen, keine Post-ID und kein MD5 im Dateinamen: {path.name}"
                 self.emit_progress(base_progress)
                 continue
 
             try:
-                post = self.api.get_post_by_md5(md5_hash)
+                if md5_hash:
+                    post = self.api.get_post_by_md5(md5_hash)
+                    lookup_description = f"MD5 {md5_hash}"
+                else:
+                    post = self.get_post_by_id_or_none(int(post_id_from_name))
+                    lookup_description = f"Post-ID {post_id_from_name}"
+
                 if post is None:
                     result.not_found += 1
                     base_progress.phase = "not_found"
                     base_progress.not_found = result.not_found
-                    base_progress.message = f"Kein Danbooru-Post für MD5 {md5_hash}: {path.name}"
+                    base_progress.message = f"Kein Danbooru-Post für {lookup_description}: {path.name}"
                     self.emit_progress(base_progress)
                     continue
 
@@ -163,8 +181,10 @@ class ExistingFileImportService:
                             current=index,
                             total=len(files),
                             path=str(path),
-                            md5_hash=md5_hash,
+                            md5_hash=md5_hash or "",
                             post_id=post_id,
+                            identifier_kind=identifier_kind,
+                            identifier_value=identifier_value,
                             imported=result.imported_posts,
                             updated=result.updated_posts,
                             renamed=result.renamed_files,
@@ -222,8 +242,10 @@ class ExistingFileImportService:
                         total=len(files),
                         path=str(current_path),
                         target_path=str(current_path),
-                        md5_hash=md5_hash,
+                        md5_hash=md5_hash or "",
                         post_id=post_id,
+                        identifier_kind=identifier_kind,
+                        identifier_value=identifier_value,
                         imported=result.imported_posts,
                         updated=result.updated_posts,
                         renamed=result.renamed_files,
@@ -243,7 +265,10 @@ class ExistingFileImportService:
                         current=index,
                         total=len(files),
                         path=str(path),
-                        md5_hash=md5_hash,
+                        md5_hash=md5_hash or "",
+                        post_id=post_id_from_name,
+                        identifier_kind=identifier_kind,
+                        identifier_value=identifier_value,
                         imported=result.imported_posts,
                         updated=result.updated_posts,
                         renamed=result.renamed_files,
@@ -273,6 +298,16 @@ class ExistingFileImportService:
             )
         )
         return result
+
+
+    def get_post_by_id_or_none(self, post_id: int) -> dict[str, Any] | None:
+        try:
+            return self.api.get_post(int(post_id))
+        except requests.HTTPError as exc:
+            response = getattr(exc, "response", None)
+            if response is not None and response.status_code == 404:
+                return None
+            raise
 
     def rename_saved_files_for_category(self, category_id: int) -> ExistingFileImportResult:
         category = self.category_match_for_id(category_id)
@@ -543,6 +578,24 @@ def extract_md5_from_filename(filename: str) -> str | None:
     if not match:
         return None
     return match.group(1).lower()
+
+
+def extract_post_id_from_filename(filename: str) -> int | None:
+    # Bevorzugt explizite Muster wie post_123456 oder id-123456.
+    # Fallback: eine alleinstehende 5- bis 12-stellige Zahl. Ja, das kann
+    # theoretisch ein Datum sein. Darum steht im Importer jetzt auch ein gelber
+    # Warnhinweis, statt so zu tun, als könnten Dateinamen Gedanken lesen.
+    for regex in (POST_ID_HINT_RE, POST_ID_FALLBACK_RE):
+        match = regex.search(filename)
+        if not match:
+            continue
+        try:
+            value = int(match.group(1))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+    return None
 
 
 def unique_path(path: Path) -> Path:

@@ -117,12 +117,22 @@ class ImportTab(QWidget):
         self.main_layout = QVBoxLayout(self)
 
         self.info_label = QLabel(
-            "Importer für bereits heruntergeladene Dateien. Der MD5-Hash wird aus dem Dateinamen gelesen, "
+            "Importer für bereits heruntergeladene Dateien. Der MD5-Hash oder die Post-ID wird aus dem Dateinamen gelesen, "
             "der Danbooru-Post wird nachgeladen und als gespeichert in die Datenbank übernommen. "
             "Optional werden Dateien direkt im bestehenden Ordner nach dem aktuellen Dateinamensschema umbenannt."
         )
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
+
+        self.warning_label = QLabel(
+            "⚠ Achtung: Der Import kann nur funktionieren, wenn die Danbooru-Post-ID oder der MD5-Hash im Dateinamen steht."
+        )
+        self.warning_label.setWordWrap(True)
+        self.warning_label.setStyleSheet(
+            "QLabel { background: #fff4c2; color: #4f3600; border: 1px solid #d6a800; "
+            "border-radius: 6px; padding: 8px; font-weight: bold; }"
+        )
+        self.main_layout.addWidget(self.warning_label)
 
         self.import_group = QGroupBox("Importquelle")
         self.import_layout = QFormLayout(self.import_group)
@@ -420,7 +430,7 @@ class ImportTab(QWidget):
         self.progress_label.setText(
             f"Datei {current}/{total} | Importiert: {progress.imported} | Aktualisiert: {progress.updated} | "
             f"Repariert: {progress.repaired} | Umbenannt: {progress.renamed} | "
-            f"Vorhanden übersprungen: {progress.skipped_existing} | Ohne MD5: {progress.skipped_no_md5} | "
+            f"Vorhanden übersprungen: {progress.skipped_existing} | Ohne ID/MD5: {progress.skipped_no_md5} | "
             f"Nicht gefunden: {progress.not_found} | Fehler: {progress.errors}"
         )
         if progress.message:
@@ -440,7 +450,7 @@ class ImportTab(QWidget):
             f"  Umbenannt: {getattr(result, 'renamed_files', 0)}\n"
             f"  Name bereits aktuell/übersprungen: {getattr(result, 'skipped_rename', 0)}\n"
             f"  Vorhanden übersprungen: {getattr(result, 'skipped_existing', 0)}\n"
-            f"  Ohne MD5: {getattr(result, 'skipped_no_md5', 0)}\n"
+            f"  Ohne ID/MD5: {getattr(result, 'skipped_no_md5', 0)}\n"
             f"  Nicht gefunden: {getattr(result, 'not_found', 0)}\n"
             f"  Fehler: {getattr(result, 'errors', 0)}"
         )

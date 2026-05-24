@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -23,6 +24,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QFileDialog,
+    QDialog,
+    QDialogButtonBox,
     QTabWidget,
     QSizePolicy,
 )
@@ -31,6 +34,7 @@ from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
 from app.gui.thumbnail_grid import ThumbnailGrid
 from app.services.post_import_service import PostImportService
+from app.services.llm_payload_service import LLMPayloadService
 
 
 SECRET_SETTING_KEYS = {"api_key"}
@@ -86,6 +90,139 @@ PREVIEW_TAG_DISPLAY_MODES = [
 
 def is_secret_setting_key(key: str) -> bool:
     return key in SECRET_SETTING_KEYS or key.endswith(".api_key") or key.endswith("_api_key")
+
+
+class LLMPayloadDialog(QDialog):
+    def __init__(self, payload_text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("LLM-Payload Debug")
+        self.resize(900, 650)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "Debug-Payload: Diese Eingabe wird hier nur angezeigt und nicht gesendet. "
+            "Wenn sie aussieht wie ein JSON-Monster, liegt das daran, dass sie eins ist."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.payload_edit = QTextEdit()
+        self.payload_edit.setPlainText(payload_text)
+        self.payload_edit.setReadOnly(True)
+        layout.addWidget(self.payload_edit, stretch=1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        copy_button = buttons.addButton("In Zwischenablage kopieren", QDialogButtonBox.ActionRole)
+        copy_button.clicked.connect(self.copy_payload)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def copy_payload(self) -> None:
+        QApplication.clipboard().setText(self.payload_edit.toPlainText())
+
+
+class LastLLMPayloadsDialog(QDialog):
+    def __init__(self, payloads: list[dict[str, Any]], summary: dict[str, Any] | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.payloads = payloads
+        self.summary = summary or {}
+        self.setWindowTitle("Letzte Fetch-LLM-Payloads")
+        self.resize(980, 720)
+
+        layout = QVBoxLayout(self)
+
+        self.summary_label = QLabel(self.build_summary_text())
+        self.summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Payload:"))
+        self.payload_combo = QComboBox()
+        for index, payload in enumerate(self.payloads, start=1):
+            post_ids = self.payload_post_ids(payload)
+            preview_ids = ", ".join(str(post_id) for post_id in post_ids[:5])
+            if len(post_ids) > 5:
+                preview_ids += ", ..."
+            self.payload_combo.addItem(f"{index}/{len(self.payloads)} · {len(post_ids)} Posts · {preview_ids}", index - 1)
+        self.payload_combo.currentIndexChanged.connect(self.update_payload_view)
+        row.addWidget(self.payload_combo, stretch=1)
+        layout.addLayout(row)
+
+        self.payload_info = QLabel("")
+        self.payload_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.payload_info.setWordWrap(True)
+        layout.addWidget(self.payload_info)
+
+        self.payload_edit = QTextEdit()
+        self.payload_edit.setReadOnly(True)
+        layout.addWidget(self.payload_edit, stretch=1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        copy_current_button = buttons.addButton("Aktuelle Payload kopieren", QDialogButtonBox.ActionRole)
+        copy_all_button = buttons.addButton("Alle Payloads kopieren", QDialogButtonBox.ActionRole)
+        copy_current_button.clicked.connect(self.copy_current_payload)
+        copy_all_button.clicked.connect(self.copy_all_payloads)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.update_payload_view()
+
+    @staticmethod
+    def payload_post_ids(payload: dict[str, Any]) -> list[int]:
+        ids: list[int] = []
+        posts = payload.get("posts", [])
+        if not isinstance(posts, list):
+            return ids
+        for post in posts:
+            if not isinstance(post, dict):
+                continue
+            try:
+                ids.append(int(post.get("post_id")))
+            except Exception:
+                continue
+        return ids
+
+    def build_summary_text(self) -> str:
+        if not self.summary:
+            return "Keine Batch-Zusammenfassung gespeichert. Nur die Payloads selbst sind vorhanden."
+        return (
+            f"Eingang: {int(self.summary.get('input_posts', 0) or 0)} Posts · "
+            f"Kandidaten: {int(self.summary.get('candidate_posts', 0) or 0)} · "
+            f"Übersprungen: {int(self.summary.get('skipped_posts', 0) or 0)} · "
+            f"Batches: {int(self.summary.get('batches_total', 0) or 0)} · "
+            f"Payloads: {int(self.summary.get('payloads_prepared', 0) or 0)}"
+        )
+
+    def selected_payload(self) -> dict[str, Any] | None:
+        if not self.payloads:
+            return None
+        index = self.payload_combo.currentData()
+        try:
+            return self.payloads[int(index)]
+        except Exception:
+            return self.payloads[0]
+
+    def update_payload_view(self, *_args: Any) -> None:
+        payload = self.selected_payload()
+        if payload is None:
+            self.payload_info.setText("Keine Payload vorhanden.")
+            self.payload_edit.clear()
+            return
+        post_ids = self.payload_post_ids(payload)
+        batch = payload.get("batch", {}) if isinstance(payload.get("batch"), dict) else {}
+        self.payload_info.setText(
+            f"Batch {batch.get('index', self.payload_combo.currentIndex() + 1)}/{batch.get('total', len(self.payloads))} · "
+            f"Posts: {len(post_ids)} · IDs: {', '.join(str(post_id) for post_id in post_ids)}"
+        )
+        self.payload_edit.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    def copy_current_payload(self) -> None:
+        QApplication.clipboard().setText(self.payload_edit.toPlainText())
+
+    def copy_all_payloads(self) -> None:
+        QApplication.clipboard().setText(json.dumps(self.payloads, ensure_ascii=False, indent=2))
 
 
 class ConfigTab(QWidget):
@@ -526,8 +663,8 @@ class ConfigTab(QWidget):
         self.llm_include_legend_checkbox.setChecked(bool(llm_config.get("include_tag_legend", False)))
 
         llm_help = QLabel(
-            "Erste Integrationsstufe: Der Previewer kann fuer markierte Posts eine LLM-Payload erzeugen und anzeigen. "
-            "Gesendet wird je nach Backend automatisch nach dem Fetch oder manuell im Previewer. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
+            "LLM-Debug ist hier in der Konfiguration gesammelt: Beispiel-Payload und letzte Fetch-Payloads. "
+            "Gesendet wird je nach Backend automatisch nach dem Fetch. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
             "Kategorien werden separat anonymisiert und vor dem Speichern wieder zurueckgemappt. "
             "API-Keys koennen direkt lokal gespeichert oder per Umgebungsvariable gelesen werden. "
             "Der Salt bleibt lokal in app_settings. Hashes sind Pseudonymisierung, kein magischer Tarnumhang."
@@ -563,6 +700,19 @@ class ConfigTab(QWidget):
         self.scoring_llm_form.addRow("Kategorie-Hash-Laenge:", self.llm_category_hash_length_spin)
         self.scoring_llm_form.addRow("", self.llm_include_category_legend_checkbox)
         self.scoring_llm_form.addRow("", self.llm_include_legend_checkbox)
+
+        self.llm_debug_buttons_row = QHBoxLayout()
+        self.llm_sample_payload_button = QPushButton("LLM-Payload Beispielpost")
+        self.llm_sample_payload_button.setToolTip("Erzeugt eine Debug-Payload für die GUI-Vorschau-Beispielpost-ID. Es wird nichts gesendet.")
+        self.llm_sample_payload_button.clicked.connect(self.show_llm_payload_for_sample_post)
+        self.llm_debug_buttons_row.addWidget(self.llm_sample_payload_button)
+
+        self.last_llm_payloads_button = QPushButton("Letzte Fetch-LLM-Payloads")
+        self.last_llm_payloads_button.setToolTip("Zeigt die zuletzt nach einem Fetch vorbereiteten LLM-Batch-Payloads samt Post-IDs.")
+        self.last_llm_payloads_button.clicked.connect(self.show_last_fetch_llm_payloads)
+        self.llm_debug_buttons_row.addWidget(self.last_llm_payloads_button)
+        self.llm_debug_buttons_row.addStretch(1)
+        self.scoring_llm_form.addRow("LLM-Debug:", self.llm_debug_buttons_row)
         self.scoring_llm_form.addRow("", llm_help)
 
         self.scoring_layout.addWidget(self.scoring_llm_group)
@@ -850,6 +1000,77 @@ class ConfigTab(QWidget):
             checkbox.blockSignals(True)
             checkbox.setChecked(bool(configured.get(key, True)))
             checkbox.blockSignals(False)
+
+
+    def _config_with_form_values(self) -> dict[str, Any]:
+        config = copy.deepcopy(self.config)
+        values = self.collect_values()
+        for key, value in values.items():
+            target = config
+            parts = key.split(".")
+            for part in parts[:-1]:
+                current = target.get(part)
+                if not isinstance(current, dict):
+                    current = {}
+                    target[part] = current
+                target = current
+            target[parts[-1]] = value
+        return config
+
+    def show_llm_payload_for_sample_post(self) -> None:
+        post_id = int(self.preview_sample_post_id_spin.value())
+        try:
+            payload_config = self._config_with_form_values()
+            payload = LLMPayloadService(payload_config, self.db).build_payload_for_posts([post_id])
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "LLM-Payload Beispielpost",
+                f"Payload fuer Post {post_id} konnte nicht erzeugt werden:\n{exc}",
+            )
+            return
+
+        dialog = LLMPayloadDialog(json.dumps(payload, ensure_ascii=False, indent=2), self)
+        dialog.exec()
+
+    def show_last_fetch_llm_payloads(self) -> None:
+        raw_payloads = self.db.get_app_setting("llm.last_fetch_payloads", "[]") or "[]"
+        raw_summary = self.db.get_app_setting("llm.last_fetch_payload_summary", "{}") or "{}"
+        try:
+            payloads_data = json.loads(raw_payloads)
+            summary_data = json.loads(raw_summary)
+        except Exception as exc:
+            QMessageBox.critical(self, "Letzte LLM-Payloads", f"Gespeicherte Payloads konnten nicht gelesen werden:\n{exc}")
+            return
+
+        if isinstance(payloads_data, dict):
+            payloads = [payloads_data]
+        elif isinstance(payloads_data, list):
+            payloads = [payload for payload in payloads_data if isinstance(payload, dict)]
+        else:
+            payloads = []
+
+        summary = summary_data if isinstance(summary_data, dict) else {}
+
+        if not payloads:
+            if summary:
+                info = (
+                    f"Eingang: {int(summary.get('input_posts', 0) or 0)} Posts\n"
+                    f"Kandidaten: {int(summary.get('candidate_posts', 0) or 0)}\n"
+                    f"Uebersprungen: {int(summary.get('skipped_posts', 0) or 0)}\n"
+                    f"Batches: {int(summary.get('batches_total', 0) or 0)}\n"
+                    f"Payloads: {int(summary.get('payloads_prepared', 0) or 0)}"
+                )
+                reason = str(summary.get("skipped_reason", "") or "")
+                if reason:
+                    info += f"\n\nHinweis: {reason}"
+            else:
+                info = "Es sind keine Fetch-LLM-Payloads gespeichert. Starte einen Fetch mit aktivierter LLM-Batch-Vorbereitung."
+            QMessageBox.information(self, "Letzte LLM-Payloads", info)
+            return
+
+        dialog = LastLLMPayloadsDialog(payloads, summary, self)
+        dialog.exec()
 
     def toggle_api_key_visibility(self, visible: bool) -> None:
         self.api_key_edit.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
