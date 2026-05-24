@@ -91,6 +91,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
         "enabled": False,
         "backend": "none",
+        "endpoint_url": "",
+        "model": "",
+        "api_key_env": "LLM_API_KEY",
+        "request_timeout_seconds": 60,
+        "max_posts_per_request": 20,
+        "max_tags_per_post": 80,
+        "system_prompt": "",
         "tag_aliases": {},
         "tag_export_mode": "hashed_alias",
         "hash_prefix": "tag_",
@@ -226,9 +233,21 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("filename.hash_length muss >= 1 sein")
 
     llm = config.get("llm", {}) or {}
+    backend = str(llm.get("backend", "none")).lower()
+    if backend not in {"none", "openai_compatible", "local"}:
+        raise ValueError("llm.backend muss none, openai_compatible oder local sein")
+    llm["backend"] = backend
+
     tag_export_mode = str(llm.get("tag_export_mode", "hashed_alias")).lower()
     if tag_export_mode not in {"original", "alias", "hashed_alias"}:
         raise ValueError("llm.tag_export_mode muss original, alias oder hashed_alias sein")
     llm["tag_export_mode"] = tag_export_mode
+
     if int(llm.get("hash_length", 12)) < 4:
         raise ValueError("llm.hash_length muss >= 4 sein")
+    if int(llm.get("request_timeout_seconds", 60)) < 1:
+        raise ValueError("llm.request_timeout_seconds muss >= 1 sein")
+    if int(llm.get("max_posts_per_request", 20)) < 1:
+        raise ValueError("llm.max_posts_per_request muss >= 1 sein")
+    if int(llm.get("max_tags_per_post", 80)) < 1:
+        raise ValueError("llm.max_tags_per_post muss >= 1 sein")

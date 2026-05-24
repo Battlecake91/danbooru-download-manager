@@ -388,6 +388,50 @@ class ConfigTab(QWidget):
         self.scoring_ignore_excluded_checkbox = QCheckBox("Scoring-Ausschluesse ignorieren")
         self.scoring_ignore_excluded_checkbox.setChecked(bool(scoring_config.get("ignore_scoring_excluded_tags", True)))
 
+        self.llm_enabled_checkbox = QCheckBox("LLM-Integration aktivieren")
+        self.llm_enabled_checkbox.setChecked(bool(llm_config.get("enabled", False)))
+
+        self.llm_backend_combo = QComboBox()
+        for value, label in [
+            ("none", "Kein Anbieter / nur Payload bauen"),
+            ("openai_compatible", "OpenAI-kompatibler Chat-Endpunkt"),
+            ("local", "Lokaler LLM-Endpunkt"),
+        ]:
+            self.llm_backend_combo.addItem(label, value)
+        backend_index = self.llm_backend_combo.findData(str(llm_config.get("backend", "none")))
+        if backend_index >= 0:
+            self.llm_backend_combo.setCurrentIndex(backend_index)
+
+        self.llm_endpoint_url_edit = QLineEdit(str(llm_config.get("endpoint_url", "") or ""))
+        self.llm_endpoint_url_edit.setPlaceholderText("z. B. http://localhost:11434/... oder OpenAI-kompatibler /chat/completions Endpunkt")
+
+        self.llm_model_edit = QLineEdit(str(llm_config.get("model", "") or ""))
+        self.llm_model_edit.setPlaceholderText("Modellname, z. B. lokal konfigurierter Modellbezeichner")
+
+        self.llm_api_key_env_edit = QLineEdit(str(llm_config.get("api_key_env", "LLM_API_KEY") or "LLM_API_KEY"))
+        self.llm_api_key_env_edit.setPlaceholderText("Name der Umgebungsvariable, nicht der Key selbst")
+
+        self.llm_timeout_spin = QSpinBox()
+        self.llm_timeout_spin.setRange(1, 600)
+        self.llm_timeout_spin.setValue(int(llm_config.get("request_timeout_seconds", 60)))
+        self.llm_timeout_spin.setSuffix(" s")
+        self.llm_timeout_spin.setKeyboardTracking(False)
+
+        self.llm_max_posts_spin = QSpinBox()
+        self.llm_max_posts_spin.setRange(1, 200)
+        self.llm_max_posts_spin.setValue(int(llm_config.get("max_posts_per_request", 20)))
+        self.llm_max_posts_spin.setKeyboardTracking(False)
+
+        self.llm_max_tags_spin = QSpinBox()
+        self.llm_max_tags_spin.setRange(1, 500)
+        self.llm_max_tags_spin.setValue(int(llm_config.get("max_tags_per_post", 80)))
+        self.llm_max_tags_spin.setKeyboardTracking(False)
+
+        self.llm_system_prompt_edit = QTextEdit()
+        self.llm_system_prompt_edit.setPlainText(str(llm_config.get("system_prompt", "") or ""))
+        self.llm_system_prompt_edit.setPlaceholderText("Leer lassen fuer Standard-Prompt. Erwartet wird eine kurze JSON-Entscheidung pro Post.")
+        self.llm_system_prompt_edit.setMinimumHeight(90)
+
         self.llm_tag_export_mode_combo = QComboBox()
         for value, label in [
             ("original", "Original-Tags (Klartext)"),
@@ -410,13 +454,23 @@ class ConfigTab(QWidget):
         self.llm_include_legend_checkbox.setChecked(bool(llm_config.get("include_tag_legend", False)))
 
         llm_help = QLabel(
-            "Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
+            "Erste Integrationsstufe: Der Previewer kann fuer markierte Posts eine LLM-Payload erzeugen und anzeigen. "
+            "Gesendet wird noch nichts automatisch. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
             "Der Salt bleibt lokal in app_settings. Hashes sind Pseudonymisierung, kein magischer Tarnumhang."
         )
         llm_help.setWordWrap(True)
 
         self.scoring_llm_form.addRow("Scoring:", self.scoring_aliases_checkbox)
         self.scoring_llm_form.addRow("", self.scoring_ignore_excluded_checkbox)
+        self.scoring_llm_form.addRow("LLM:", self.llm_enabled_checkbox)
+        self.scoring_llm_form.addRow("Backend:", self.llm_backend_combo)
+        self.scoring_llm_form.addRow("Endpoint:", self.llm_endpoint_url_edit)
+        self.scoring_llm_form.addRow("Modell:", self.llm_model_edit)
+        self.scoring_llm_form.addRow("API-Key Env:", self.llm_api_key_env_edit)
+        self.scoring_llm_form.addRow("Timeout:", self.llm_timeout_spin)
+        self.scoring_llm_form.addRow("Posts/Request:", self.llm_max_posts_spin)
+        self.scoring_llm_form.addRow("Tags/Post:", self.llm_max_tags_spin)
+        self.scoring_llm_form.addRow("System-Prompt:", self.llm_system_prompt_edit)
         self.scoring_llm_form.addRow("LLM-Export:", self.llm_tag_export_mode_combo)
         self.scoring_llm_form.addRow("Hash-Prefix:", self.llm_hash_prefix_edit)
         self.scoring_llm_form.addRow("Hash-Laenge:", self.llm_hash_length_spin)
@@ -872,6 +926,17 @@ class ConfigTab(QWidget):
 
         self.scoring_aliases_checkbox.setChecked(bool(self.runtime_value("scoring.use_aliases_for_scoring", True)))
         self.scoring_ignore_excluded_checkbox.setChecked(bool(self.runtime_value("scoring.ignore_scoring_excluded_tags", True)))
+        self.llm_enabled_checkbox.setChecked(bool(self.runtime_value("llm.enabled", False)))
+        backend_index = self.llm_backend_combo.findData(str(self.runtime_value("llm.backend", "none")))
+        if backend_index >= 0:
+            self.llm_backend_combo.setCurrentIndex(backend_index)
+        self.llm_endpoint_url_edit.setText(str(self.runtime_value("llm.endpoint_url", "") or ""))
+        self.llm_model_edit.setText(str(self.runtime_value("llm.model", "") or ""))
+        self.llm_api_key_env_edit.setText(str(self.runtime_value("llm.api_key_env", "LLM_API_KEY") or "LLM_API_KEY"))
+        self.llm_timeout_spin.setValue(int(self.runtime_value("llm.request_timeout_seconds", 60)))
+        self.llm_max_posts_spin.setValue(int(self.runtime_value("llm.max_posts_per_request", 20)))
+        self.llm_max_tags_spin.setValue(int(self.runtime_value("llm.max_tags_per_post", 80)))
+        self.llm_system_prompt_edit.setPlainText(str(self.runtime_value("llm.system_prompt", "") or ""))
         mode_index = self.llm_tag_export_mode_combo.findData(str(self.runtime_value("llm.tag_export_mode", "hashed_alias")))
         if mode_index >= 0:
             self.llm_tag_export_mode_combo.setCurrentIndex(mode_index)
@@ -934,6 +999,15 @@ class ConfigTab(QWidget):
 
             "scoring.use_aliases_for_scoring": self.scoring_aliases_checkbox.isChecked(),
             "scoring.ignore_scoring_excluded_tags": self.scoring_ignore_excluded_checkbox.isChecked(),
+            "llm.enabled": self.llm_enabled_checkbox.isChecked(),
+            "llm.backend": str(self.llm_backend_combo.currentData()),
+            "llm.endpoint_url": self.llm_endpoint_url_edit.text().strip(),
+            "llm.model": self.llm_model_edit.text().strip(),
+            "llm.api_key_env": self.llm_api_key_env_edit.text().strip() or "LLM_API_KEY",
+            "llm.request_timeout_seconds": int(self.llm_timeout_spin.value()),
+            "llm.max_posts_per_request": int(self.llm_max_posts_spin.value()),
+            "llm.max_tags_per_post": int(self.llm_max_tags_spin.value()),
+            "llm.system_prompt": self.llm_system_prompt_edit.toPlainText().strip(),
             "llm.tag_export_mode": str(self.llm_tag_export_mode_combo.currentData()),
             "llm.hash_prefix": self.llm_hash_prefix_edit.text().strip() or "tag_",
             "llm.hash_length": int(self.llm_hash_length_spin.value()),

@@ -28,6 +28,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QStackedWidget,
+    QDialog,
+    QDialogButtonBox,
+    QTextEdit,
 )
 
 from app.core.database import Database
@@ -40,6 +43,7 @@ from app.gui.thumbnail_grid import ThumbnailGrid
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
+from app.services.llm_payload_service import LLMPayloadService
 
 
 def parse_preview_search_terms(search_text: str) -> tuple[list[str], list[str]]:
@@ -132,6 +136,35 @@ SQL_SORT_ORDER: dict[str, str] = {
 }
 
 
+class LLMPayloadDialog(QDialog):
+    def __init__(self, payload_text: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("LLM-Payload")
+        self.resize(900, 650)
+
+        layout = QVBoxLayout(self)
+
+        info = QLabel(
+            "Diese Payload ist nur die vorbereitete Eingabe. Sie wird noch nicht automatisch an einen Anbieter gesendet."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.payload_edit = QTextEdit()
+        self.payload_edit.setPlainText(payload_text)
+        self.payload_edit.setReadOnly(True)
+        layout.addWidget(self.payload_edit, stretch=1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        copy_button = buttons.addButton("In Zwischenablage kopieren", QDialogButtonBox.ActionRole)
+        copy_button.clicked.connect(self.copy_payload)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def copy_payload(self) -> None:
+        QApplication.clipboard().setText(self.payload_edit.toPlainText())
+
+
 class PreviewWindow(QMainWindow):
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         super().__init__()
@@ -140,6 +173,7 @@ class PreviewWindow(QMainWindow):
         self.db = db
         self.final_save_service = FinalSaveService(config, db)
         self.recommendation_engine = RecommendationEngine(db)
+        self.llm_payload_service = LLMPayloadService(config, db)
         self.current_limit = int((config.get("gui", {}) or {}).get("preview_limit", 100))
         self.current_offset = 0
 
@@ -189,6 +223,13 @@ class PreviewWindow(QMainWindow):
         self.final_save_button.setToolTip("Final speichern (F)")
         self.final_save_button.clicked.connect(self.final_save_selected_posts)
         self.toolbar_actions.addWidget(self.final_save_button)
+
+        self.llm_payload_button = QPushButton("LLM-Payload")
+        self.llm_payload_button.setToolTip(
+            "Erzeugt die LLM-Eingabe für die ausgewählten Posts, ohne sie automatisch zu senden."
+        )
+        self.llm_payload_button.clicked.connect(self.show_llm_payload_for_selection)
+        self.toolbar_actions.addWidget(self.llm_payload_button)
 
         self.fetch_status_label = QLabel("Fetch läuft…")
         self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
@@ -565,7 +606,36 @@ class PreviewWindow(QMainWindow):
         QTimer.singleShot(80, self.reload_posts)
 
 
+
     # -------------------------------------------------------------------------
+    # LLM-Payload / erste Integrationsstufe
+    # -------------------------------------------------------------------------
+
+    def show_llm_payload_for_selection(self) -> None:
+        cards = self.grid.selected_or_current_cards()
+        if not cards:
+            self.status_bar.showMessage("LLM-Payload: kein Post ausgewählt.", 4000)
+            return
+
+        post_ids = [int(card.post_id) for card in cards]
+        try:
+            payload = self.llm_payload_service.build_payload_for_posts(post_ids)
+        except sqlite3.OperationalError as exc:
+            if "database is locked" in str(exc).lower() or "database table is locked" in str(exc).lower():
+                QMessageBox.information(
+                    self,
+                    "LLM-Payload",
+                    "Die Datenbank ist gerade beschäftigt. Fetch oder Speichern läuft vermutlich noch.",
+                )
+                return
+            raise
+        except Exception as exc:
+            QMessageBox.critical(self, "LLM-Payload", str(exc))
+            return
+
+        dialog = LLMPayloadDialog(json.dumps(payload, ensure_ascii=False, indent=2), self)
+        dialog.exec()
+
     # Kategorie-Filter / Kategorie-Vorschlag
     # -------------------------------------------------------------------------
 
