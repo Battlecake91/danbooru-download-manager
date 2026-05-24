@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.services.llm_batch_service import LLMBatchPreselectionService
 from app.services.post_import_service import FetchProgress, PostImportService
 
 
@@ -67,6 +68,23 @@ class FetchWorker(QObject):
 
             service = PostImportService(self.config, worker_db, progress_callback=self.progress.emit)
             result = service.fetch_and_store()
+
+            llm_ids = list(getattr(result, "inserted_post_ids", []) or [])
+            if not llm_ids:
+                llm_ids = list(getattr(result, "fetched_post_ids", []) or [])
+            llm_service = LLMBatchPreselectionService(self.config, worker_db, log_callback=self.log.emit)
+            llm_result = llm_service.run_for_post_ids(llm_ids)
+            result.llm_input_posts = llm_result.input_posts
+            result.llm_candidate_posts = llm_result.candidate_posts
+            result.llm_skipped_posts = llm_result.skipped_posts
+            result.llm_batches_total = llm_result.batches_total
+            result.llm_payloads_prepared = llm_result.payloads_prepared
+            result.llm_batch_summaries = llm_result.batch_summaries
+            result.llm_requests_sent = llm_result.requests_sent
+            result.llm_decisions_received = llm_result.decisions_received
+            result.llm_decisions_saved = llm_result.decisions_saved
+            result.llm_skipped_reason = llm_result.skipped_reason
+            result.llm_errors = llm_result.errors
 
             self.log.emit("Fetch abgeschlossen.")
             self.finished.emit(result)
@@ -769,16 +787,44 @@ class FetchTab(QWidget):
         else:
             query_line = "Queries: ?"
 
-        return "\n".join(
-            [
-                "Fetch-Zusammenfassung:",
-                f"  {query_line}",
-                f"  Posts geprüft: {seen_posts}",
-                f"  Neu/unbekannt: {inserted_posts}" + (f" / Ziel {target_unknown_total} ({target_unknown_per_query} pro Query)" if target_unknown_per_query > 0 else ""),
-                f"  Bekannt/aktualisiert: {known_posts}",
-                f"  Thumbnails geladen/aktualisiert: {cached_thumbnails}",
-            ]
-        )
+        lines = [
+            "Fetch-Zusammenfassung:",
+            f"  {query_line}",
+            f"  Posts geprüft: {seen_posts}",
+            f"  Neu/unbekannt: {inserted_posts}" + (f" / Ziel {target_unknown_total} ({target_unknown_per_query} pro Query)" if target_unknown_per_query > 0 else ""),
+            f"  Bekannt/aktualisiert: {known_posts}",
+            f"  Thumbnails geladen/aktualisiert: {cached_thumbnails}",
+        ]
+
+        llm_input = int(getattr(result, "llm_input_posts", 0) or 0)
+        llm_candidates = int(getattr(result, "llm_candidate_posts", 0) or 0)
+        llm_skipped = int(getattr(result, "llm_skipped_posts", 0) or 0)
+        llm_batches = int(getattr(result, "llm_batches_total", 0) or 0)
+        llm_payloads = int(getattr(result, "llm_payloads_prepared", 0) or 0)
+        llm_sent = int(getattr(result, "llm_requests_sent", 0) or 0)
+        llm_saved = int(getattr(result, "llm_decisions_saved", 0) or 0)
+        llm_reason = str(getattr(result, "llm_skipped_reason", "") or "")
+        if llm_input or llm_candidates or llm_payloads or llm_sent or llm_saved or llm_reason:
+            lines.append(
+                f"  LLM: Eingang {llm_input}, Kandidaten {llm_candidates}, "
+                f"uebersprungen {llm_skipped}, Batches {llm_batches}, Payloads {llm_payloads}, "
+                f"Requests {llm_sent}, Entscheidungen gespeichert {llm_saved}"
+            )
+            batch_summaries = getattr(result, "llm_batch_summaries", []) or []
+            for batch in batch_summaries[:5]:
+                post_ids = batch.get("post_ids", []) if isinstance(batch, dict) else []
+                id_text = ", ".join(str(post_id) for post_id in post_ids[:12])
+                if len(post_ids) > 12:
+                    id_text += ", ..."
+                lines.append(f"  LLM-Batch {batch.get('index')}/{batch.get('total')}: {batch.get('post_count')} Posts ({id_text})")
+            if len(batch_summaries) > 5:
+                lines.append(f"  LLM-Batches: {len(batch_summaries) - 5} weitere ausgeblendet")
+            if llm_reason:
+                lines.append(f"  LLM-Hinweis: {llm_reason}")
+        llm_errors = getattr(result, "llm_errors", []) or []
+        for error in llm_errors[:3]:
+            lines.append(f"  LLM-Fehler: {error}")
+        return "\n".join(lines)
 
     def on_fetch_finished(self, result: object) -> None:
         summary = self.format_fetch_summary(result)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from app.core.database import Database
@@ -21,6 +21,8 @@ class FetchResult:
     cached_thumbnails: int = 0
     target_unknown_per_query: int = 0
     target_unknown_total: int = 0
+    fetched_post_ids: list[int] = field(default_factory=list)
+    inserted_post_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -142,23 +144,26 @@ class PostImportService:
                     elif seen_for_query >= max_posts_per_query:
                         break
 
+                    post_id = int(post["id"])
                     post_result = self.store_post(post)
                     result.seen_posts += 1
+                    result.fetched_post_ids.append(post_id)
                     total_seen += 1
                     seen_for_query += 1
 
                     if post_result == "inserted":
                         result.inserted_posts += 1
+                        result.inserted_post_ids.append(post_id)
                         inserted_for_query += 1
                     else:
                         result.updated_posts += 1
 
                     # Für entschiedene Posts keine aktiven Thumbnails neu laden.
-                    status = self.get_status(int(post["id"]))
+                    status = self.get_status(post_id)
                     if status in {"new", "potential", "review", "selected_save"}:
                         thumbnail_path = self.thumbnail_cache.cache_thumbnail(post)
                         if thumbnail_path:
-                            self.set_thumbnail_path(int(post["id"]), thumbnail_path)
+                            self.set_thumbnail_path(post_id, thumbnail_path)
                             result.cached_thumbnails += 1
 
                     self.emit_progress(

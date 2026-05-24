@@ -108,6 +108,8 @@ SORT_LABELS: dict[str, str] = {
     "score_asc": "Danbooru-Score: niedrig → hoch",
     "recommendation_desc": "Vorauswahl: hoch → niedrig",
     "recommendation_asc": "Vorauswahl: niedrig → hoch",
+    "llm_score_desc": "LLM-Score: hoch → niedrig",
+    "llm_score_asc": "LLM-Score: niedrig → hoch",
     "personal_desc": "Persönliches Rating: hoch → niedrig",
     "personal_asc": "Persönliches Rating: niedrig → hoch",
     "rating": "Danbooru-Rating: general → explicit",
@@ -125,6 +127,8 @@ SQL_SORT_ORDER: dict[str, str] = {
     "id_asc": "p.id ASC",
     "score_desc": "COALESCE(p.score, -999999) DESC, p.id DESC",
     "score_asc": "COALESCE(p.score, 999999) ASC, p.id DESC",
+    "llm_score_desc": "COALESCE(p.llm_score, -999999) DESC, p.id DESC",
+    "llm_score_asc": "COALESCE(p.llm_score, 999999) ASC, p.id DESC",
     "personal_desc": "COALESCE(pr.stars, -1) DESC, p.id DESC",
     "personal_asc": "COALESCE(pr.stars, 999) ASC, p.id DESC",
     "rating": "CASE p.rating WHEN 'g' THEN 0 WHEN 's' THEN 1 WHEN 'q' THEN 2 WHEN 'e' THEN 3 ELSE 9 END ASC, p.id DESC",
@@ -163,6 +167,109 @@ class LLMPayloadDialog(QDialog):
 
     def copy_payload(self) -> None:
         QApplication.clipboard().setText(self.payload_edit.toPlainText())
+
+
+class LastLLMPayloadsDialog(QDialog):
+    def __init__(self, payloads: list[dict[str, Any]], summary: dict[str, Any] | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.payloads = payloads
+        self.summary = summary or {}
+        self.setWindowTitle("Letzte Fetch-LLM-Payloads")
+        self.resize(980, 720)
+
+        layout = QVBoxLayout(self)
+
+        self.summary_label = QLabel(self.build_summary_text())
+        self.summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.summary_label.setWordWrap(True)
+        layout.addWidget(self.summary_label)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Payload:"))
+        self.payload_combo = QComboBox()
+        for index, payload in enumerate(self.payloads, start=1):
+            post_ids = self.payload_post_ids(payload)
+            preview_ids = ", ".join(str(post_id) for post_id in post_ids[:5])
+            if len(post_ids) > 5:
+                preview_ids += ", ..."
+            self.payload_combo.addItem(f"{index}/{len(self.payloads)} · {len(post_ids)} Posts · {preview_ids}", index - 1)
+        self.payload_combo.currentIndexChanged.connect(self.update_payload_view)
+        row.addWidget(self.payload_combo, stretch=1)
+        layout.addLayout(row)
+
+        self.payload_info = QLabel("")
+        self.payload_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.payload_info.setWordWrap(True)
+        layout.addWidget(self.payload_info)
+
+        self.payload_edit = QTextEdit()
+        self.payload_edit.setReadOnly(True)
+        layout.addWidget(self.payload_edit, stretch=1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        copy_current_button = buttons.addButton("Aktuelle Payload kopieren", QDialogButtonBox.ActionRole)
+        copy_all_button = buttons.addButton("Alle Payloads kopieren", QDialogButtonBox.ActionRole)
+        copy_current_button.clicked.connect(self.copy_current_payload)
+        copy_all_button.clicked.connect(self.copy_all_payloads)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.update_payload_view()
+
+    @staticmethod
+    def payload_post_ids(payload: dict[str, Any]) -> list[int]:
+        ids: list[int] = []
+        posts = payload.get("posts", [])
+        if not isinstance(posts, list):
+            return ids
+        for post in posts:
+            if not isinstance(post, dict):
+                continue
+            try:
+                ids.append(int(post.get("post_id")))
+            except Exception:
+                continue
+        return ids
+
+    def build_summary_text(self) -> str:
+        if not self.summary:
+            return "Keine Batch-Zusammenfassung gespeichert. Nur die Payloads selbst sind vorhanden."
+        return (
+            f"Eingang: {int(self.summary.get('input_posts', 0) or 0)} Posts · "
+            f"Kandidaten: {int(self.summary.get('candidate_posts', 0) or 0)} · "
+            f"Übersprungen: {int(self.summary.get('skipped_posts', 0) or 0)} · "
+            f"Batches: {int(self.summary.get('batches_total', 0) or 0)} · "
+            f"Payloads: {int(self.summary.get('payloads_prepared', 0) or 0)}"
+        )
+
+    def selected_payload(self) -> dict[str, Any] | None:
+        if not self.payloads:
+            return None
+        index = self.payload_combo.currentData()
+        try:
+            return self.payloads[int(index)]
+        except Exception:
+            return self.payloads[0]
+
+    def update_payload_view(self, *_args: Any) -> None:
+        payload = self.selected_payload()
+        if payload is None:
+            self.payload_info.setText("Keine Payload vorhanden.")
+            self.payload_edit.clear()
+            return
+        post_ids = self.payload_post_ids(payload)
+        batch = payload.get("batch", {}) if isinstance(payload.get("batch"), dict) else {}
+        self.payload_info.setText(
+            f"Batch {batch.get('index', self.payload_combo.currentIndex() + 1)}/{batch.get('total', len(self.payloads))} · "
+            f"Posts: {len(post_ids)} · IDs: {', '.join(str(post_id) for post_id in post_ids)}"
+        )
+        self.payload_edit.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    def copy_current_payload(self) -> None:
+        QApplication.clipboard().setText(self.payload_edit.toPlainText())
+
+    def copy_all_payloads(self) -> None:
+        QApplication.clipboard().setText(json.dumps(self.payloads, ensure_ascii=False, indent=2))
 
 
 class PreviewWindow(QMainWindow):
@@ -230,6 +337,13 @@ class PreviewWindow(QMainWindow):
         )
         self.llm_payload_button.clicked.connect(self.show_llm_payload_for_selection)
         self.toolbar_actions.addWidget(self.llm_payload_button)
+
+        self.last_llm_payloads_button = QPushButton("Letzte LLM-Payloads")
+        self.last_llm_payloads_button.setToolTip(
+            "Zeigt die zuletzt nach einem Fetch vorbereiteten LLM-Batch-Payloads samt Post-IDs."
+        )
+        self.last_llm_payloads_button.clicked.connect(self.show_last_fetch_llm_payloads)
+        self.toolbar_actions.addWidget(self.last_llm_payloads_button)
 
         self.fetch_status_label = QLabel("Fetch läuft…")
         self.fetch_status_label.setToolTip("Es werden gerade Posts von Danbooru geholt. Preview kann währenddessen noch unvollständig sein.")
@@ -634,6 +748,48 @@ class PreviewWindow(QMainWindow):
             return
 
         dialog = LLMPayloadDialog(json.dumps(payload, ensure_ascii=False, indent=2), self)
+        dialog.exec()
+
+    def show_last_fetch_llm_payloads(self) -> None:
+        raw_payloads = self.db.get_app_setting("llm.last_fetch_payloads", "[]") or "[]"
+        raw_summary = self.db.get_app_setting("llm.last_fetch_payload_summary", "{}") or "{}"
+        try:
+            payloads_data = json.loads(raw_payloads)
+            summary_data = json.loads(raw_summary)
+        except Exception as exc:
+            QMessageBox.critical(self, "Letzte LLM-Payloads", f"Gespeicherte Payloads konnten nicht gelesen werden:\n{exc}")
+            return
+
+        if isinstance(payloads_data, dict):
+            payloads = [payloads_data]
+        elif isinstance(payloads_data, list):
+            payloads = [payload for payload in payloads_data if isinstance(payload, dict)]
+        else:
+            payloads = []
+
+        summary = summary_data if isinstance(summary_data, dict) else {}
+
+        if not payloads:
+            if summary:
+                info = (
+                    f"Eingang: {int(summary.get('input_posts', 0) or 0)} Posts\n"
+                    f"Kandidaten: {int(summary.get('candidate_posts', 0) or 0)}\n"
+                    f"Übersprungen: {int(summary.get('skipped_posts', 0) or 0)}\n"
+                    f"Batches: {int(summary.get('batches_total', 0) or 0)}\n"
+                    f"Payloads: {int(summary.get('payloads_prepared', 0) or 0)}"
+                )
+                reason = str(summary.get("skipped_reason", "") or "")
+                if reason:
+                    info += f"\n\nHinweis: {reason}"
+            else:
+                info = (
+                    "Es sind keine Fetch-LLM-Payloads gespeichert. Starte einen Fetch mit aktivierter LLM-Batch-Vorbereitung. "
+                    "Ja, die Software versteckt die Beweise sonst hervorragend."
+                )
+            QMessageBox.information(self, "Letzte LLM-Payloads", info)
+            return
+
+        dialog = LastLLMPayloadsDialog(payloads, summary, self)
         dialog.exec()
 
     # Kategorie-Filter / Kategorie-Vorschlag
@@ -1229,6 +1385,11 @@ class PreviewWindow(QMainWindow):
                     p.status,
                     p.local_score,
                     p.llm_score,
+                    p.llm_decision,
+                    p.llm_category,
+                    p.llm_reason,
+                    p.llm_model,
+                    p.llm_reviewed_at,
                     p.final_score,
                     p.final_file_path,
                     p.final_directory,

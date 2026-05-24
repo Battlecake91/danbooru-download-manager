@@ -408,14 +408,38 @@ class ConfigTab(QWidget):
         self.llm_model_edit = QLineEdit(str(llm_config.get("model", "") or ""))
         self.llm_model_edit.setPlaceholderText("Modellname, z. B. lokal konfigurierter Modellbezeichner")
 
+        self.llm_api_key_edit = QLineEdit(str(llm_config.get("api_key", "") or ""))
+        self.llm_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.llm_api_key_edit.setPlaceholderText("Optional: OpenAI/API-Key direkt speichern, z. B. sk-...; bleibt lokal in SQLite")
+        self.llm_api_key_edit.setToolTip(
+            "Optionaler direkter API-Key. Wenn leer, wird API-Key Env genutzt. "
+            "Der Key wird maskiert angezeigt und nicht in Logs geschrieben, liegt aber lokal in der SQLite-Konfiguration."
+        )
+
+        self.show_llm_api_key_checkbox = QCheckBox("LLM-API-Key anzeigen")
+        self.show_llm_api_key_checkbox.toggled.connect(self.toggle_llm_api_key_visibility)
+
         self.llm_api_key_env_edit = QLineEdit(str(llm_config.get("api_key_env", "LLM_API_KEY") or "LLM_API_KEY"))
-        self.llm_api_key_env_edit.setPlaceholderText("Name der Umgebungsvariable, nicht der Key selbst")
+        self.llm_api_key_env_edit.setPlaceholderText("Fallback: Name der Umgebungsvariable, z. B. OPENAI_API_KEY")
 
         self.llm_timeout_spin = QSpinBox()
         self.llm_timeout_spin.setRange(1, 600)
         self.llm_timeout_spin.setValue(int(llm_config.get("request_timeout_seconds", 60)))
         self.llm_timeout_spin.setSuffix(" s")
         self.llm_timeout_spin.setKeyboardTracking(False)
+
+        self.llm_run_after_fetch_checkbox = QCheckBox("Nach Fetch als Batch vorsortieren")
+        self.llm_run_after_fetch_checkbox.setChecked(bool(llm_config.get("run_after_fetch", False)))
+        self.llm_run_after_fetch_checkbox.setToolTip(
+            "Wenn aktiv, werden nach einem Fetch alle neuen passenden Posts in LLM-Batches vorbereitet oder bewertet."
+        )
+
+        self.llm_skip_scored_checkbox = QCheckBox("Bereits LLM-bewertete Posts überspringen")
+        self.llm_skip_scored_checkbox.setChecked(bool(llm_config.get("skip_already_scored", True)))
+        self.llm_skip_scored_checkbox.setToolTip(
+            "Verhindert, dass schon bewertete Posts beim nächsten Fetch erneut an die LLM gehen. "
+            "Sehr großzügig von uns gegenüber API-Kosten."
+        )
 
         self.llm_max_posts_spin = QSpinBox()
         self.llm_max_posts_spin.setRange(1, 200)
@@ -426,6 +450,34 @@ class ConfigTab(QWidget):
         self.llm_max_tags_spin.setRange(1, 500)
         self.llm_max_tags_spin.setValue(int(llm_config.get("max_tags_per_post", 80)))
         self.llm_max_tags_spin.setKeyboardTracking(False)
+
+        self.llm_include_preference_context_checkbox = QCheckBox("Bisherige Bewertungen als Preference-Context mitsenden")
+        self.llm_include_preference_context_checkbox.setChecked(bool(llm_config.get("include_preference_context", True)))
+
+        self.llm_max_preference_tags_spin = QSpinBox()
+        self.llm_max_preference_tags_spin.setRange(0, 1000)
+        self.llm_max_preference_tags_spin.setValue(int(llm_config.get("max_preference_tags", 80)))
+        self.llm_max_preference_tags_spin.setKeyboardTracking(False)
+
+        self.llm_max_positive_examples_spin = QSpinBox()
+        self.llm_max_positive_examples_spin.setRange(0, 100)
+        self.llm_max_positive_examples_spin.setValue(int(llm_config.get("max_positive_examples", 8)))
+        self.llm_max_positive_examples_spin.setKeyboardTracking(False)
+
+        self.llm_max_negative_examples_spin = QSpinBox()
+        self.llm_max_negative_examples_spin.setRange(0, 100)
+        self.llm_max_negative_examples_spin.setValue(int(llm_config.get("max_negative_examples", 8)))
+        self.llm_max_negative_examples_spin.setKeyboardTracking(False)
+
+        self.llm_max_category_examples_spin = QSpinBox()
+        self.llm_max_category_examples_spin.setRange(0, 50)
+        self.llm_max_category_examples_spin.setValue(int(llm_config.get("max_category_examples", 3)))
+        self.llm_max_category_examples_spin.setKeyboardTracking(False)
+
+        self.llm_max_example_tags_spin = QSpinBox()
+        self.llm_max_example_tags_spin.setRange(1, 200)
+        self.llm_max_example_tags_spin.setValue(int(llm_config.get("max_example_tags", 30)))
+        self.llm_max_example_tags_spin.setKeyboardTracking(False)
 
         self.llm_system_prompt_edit = QTextEdit()
         self.llm_system_prompt_edit.setPlainText(str(llm_config.get("system_prompt", "") or ""))
@@ -450,12 +502,34 @@ class ConfigTab(QWidget):
         self.llm_hash_length_spin.setValue(int(llm_config.get("hash_length", 12)))
         self.llm_hash_length_spin.setKeyboardTracking(False)
 
+        self.llm_category_export_mode_combo = QComboBox()
+        for value, label in [
+            ("hashed", "Gehashte Kategorien (Privacy-Modus)"),
+            ("original", "Original-Kategorien (Klartext)"),
+        ]:
+            self.llm_category_export_mode_combo.addItem(label, value)
+        category_mode_index = self.llm_category_export_mode_combo.findData(str(llm_config.get("category_export_mode", "hashed")))
+        if category_mode_index >= 0:
+            self.llm_category_export_mode_combo.setCurrentIndex(category_mode_index)
+
+        self.llm_category_hash_prefix_edit = QLineEdit(str(llm_config.get("category_hash_prefix", "cat_")))
+
+        self.llm_category_hash_length_spin = QSpinBox()
+        self.llm_category_hash_length_spin.setRange(4, 64)
+        self.llm_category_hash_length_spin.setValue(int(llm_config.get("category_hash_length", llm_config.get("hash_length", 12))))
+        self.llm_category_hash_length_spin.setKeyboardTracking(False)
+
+        self.llm_include_category_legend_checkbox = QCheckBox("Kategorie-Legende an LLM mitsenden (weniger privat)")
+        self.llm_include_category_legend_checkbox.setChecked(bool(llm_config.get("include_category_legend", False)))
+
         self.llm_include_legend_checkbox = QCheckBox("Tag-Legende an LLM mitsenden (weniger privat)")
         self.llm_include_legend_checkbox.setChecked(bool(llm_config.get("include_tag_legend", False)))
 
         llm_help = QLabel(
             "Erste Integrationsstufe: Der Previewer kann fuer markierte Posts eine LLM-Payload erzeugen und anzeigen. "
-            "Gesendet wird noch nichts automatisch. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
+            "Gesendet wird je nach Backend automatisch nach dem Fetch oder manuell im Previewer. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
+            "Kategorien werden separat anonymisiert und vor dem Speichern wieder zurueckgemappt. "
+            "API-Keys koennen direkt lokal gespeichert oder per Umgebungsvariable gelesen werden. "
             "Der Salt bleibt lokal in app_settings. Hashes sind Pseudonymisierung, kein magischer Tarnumhang."
         )
         llm_help.setWordWrap(True)
@@ -466,14 +540,28 @@ class ConfigTab(QWidget):
         self.scoring_llm_form.addRow("Backend:", self.llm_backend_combo)
         self.scoring_llm_form.addRow("Endpoint:", self.llm_endpoint_url_edit)
         self.scoring_llm_form.addRow("Modell:", self.llm_model_edit)
+        self.scoring_llm_form.addRow("API-Key:", self.llm_api_key_edit)
+        self.scoring_llm_form.addRow("", self.show_llm_api_key_checkbox)
         self.scoring_llm_form.addRow("API-Key Env:", self.llm_api_key_env_edit)
         self.scoring_llm_form.addRow("Timeout:", self.llm_timeout_spin)
+        self.scoring_llm_form.addRow("Nach Fetch:", self.llm_run_after_fetch_checkbox)
+        self.scoring_llm_form.addRow("", self.llm_skip_scored_checkbox)
         self.scoring_llm_form.addRow("Posts/Request:", self.llm_max_posts_spin)
         self.scoring_llm_form.addRow("Tags/Post:", self.llm_max_tags_spin)
+        self.scoring_llm_form.addRow("Preference-Kontext:", self.llm_include_preference_context_checkbox)
+        self.scoring_llm_form.addRow("Praeferenz-Tags:", self.llm_max_preference_tags_spin)
+        self.scoring_llm_form.addRow("Positive Beispiele:", self.llm_max_positive_examples_spin)
+        self.scoring_llm_form.addRow("Negative Beispiele:", self.llm_max_negative_examples_spin)
+        self.scoring_llm_form.addRow("Beispiele/Kategorie:", self.llm_max_category_examples_spin)
+        self.scoring_llm_form.addRow("Tags/Beispiel:", self.llm_max_example_tags_spin)
         self.scoring_llm_form.addRow("System-Prompt:", self.llm_system_prompt_edit)
         self.scoring_llm_form.addRow("LLM-Export:", self.llm_tag_export_mode_combo)
         self.scoring_llm_form.addRow("Hash-Prefix:", self.llm_hash_prefix_edit)
         self.scoring_llm_form.addRow("Hash-Laenge:", self.llm_hash_length_spin)
+        self.scoring_llm_form.addRow("Kategorie-Export:", self.llm_category_export_mode_combo)
+        self.scoring_llm_form.addRow("Kategorie-Prefix:", self.llm_category_hash_prefix_edit)
+        self.scoring_llm_form.addRow("Kategorie-Hash-Laenge:", self.llm_category_hash_length_spin)
+        self.scoring_llm_form.addRow("", self.llm_include_category_legend_checkbox)
         self.scoring_llm_form.addRow("", self.llm_include_legend_checkbox)
         self.scoring_llm_form.addRow("", llm_help)
 
@@ -766,6 +854,9 @@ class ConfigTab(QWidget):
     def toggle_api_key_visibility(self, visible: bool) -> None:
         self.api_key_edit.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
 
+    def toggle_llm_api_key_visibility(self, visible: bool) -> None:
+        self.llm_api_key_edit.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
+
     # -------------------------------------------------------------------------
     # SQL app_settings
     # -------------------------------------------------------------------------
@@ -932,16 +1023,31 @@ class ConfigTab(QWidget):
             self.llm_backend_combo.setCurrentIndex(backend_index)
         self.llm_endpoint_url_edit.setText(str(self.runtime_value("llm.endpoint_url", "") or ""))
         self.llm_model_edit.setText(str(self.runtime_value("llm.model", "") or ""))
+        self.llm_api_key_edit.setText(str(self.runtime_value("llm.api_key", "") or ""))
         self.llm_api_key_env_edit.setText(str(self.runtime_value("llm.api_key_env", "LLM_API_KEY") or "LLM_API_KEY"))
         self.llm_timeout_spin.setValue(int(self.runtime_value("llm.request_timeout_seconds", 60)))
+        self.llm_run_after_fetch_checkbox.setChecked(bool(self.runtime_value("llm.run_after_fetch", False)))
+        self.llm_skip_scored_checkbox.setChecked(bool(self.runtime_value("llm.skip_already_scored", True)))
         self.llm_max_posts_spin.setValue(int(self.runtime_value("llm.max_posts_per_request", 20)))
         self.llm_max_tags_spin.setValue(int(self.runtime_value("llm.max_tags_per_post", 80)))
+        self.llm_include_preference_context_checkbox.setChecked(bool(self.runtime_value("llm.include_preference_context", True)))
+        self.llm_max_preference_tags_spin.setValue(int(self.runtime_value("llm.max_preference_tags", 80)))
+        self.llm_max_positive_examples_spin.setValue(int(self.runtime_value("llm.max_positive_examples", 8)))
+        self.llm_max_negative_examples_spin.setValue(int(self.runtime_value("llm.max_negative_examples", 8)))
+        self.llm_max_category_examples_spin.setValue(int(self.runtime_value("llm.max_category_examples", 3)))
+        self.llm_max_example_tags_spin.setValue(int(self.runtime_value("llm.max_example_tags", 30)))
         self.llm_system_prompt_edit.setPlainText(str(self.runtime_value("llm.system_prompt", "") or ""))
         mode_index = self.llm_tag_export_mode_combo.findData(str(self.runtime_value("llm.tag_export_mode", "hashed_alias")))
         if mode_index >= 0:
             self.llm_tag_export_mode_combo.setCurrentIndex(mode_index)
         self.llm_hash_prefix_edit.setText(str(self.runtime_value("llm.hash_prefix", "tag_")))
         self.llm_hash_length_spin.setValue(int(self.runtime_value("llm.hash_length", 12)))
+        category_mode_index = self.llm_category_export_mode_combo.findData(str(self.runtime_value("llm.category_export_mode", "hashed")))
+        if category_mode_index >= 0:
+            self.llm_category_export_mode_combo.setCurrentIndex(category_mode_index)
+        self.llm_category_hash_prefix_edit.setText(str(self.runtime_value("llm.category_hash_prefix", "cat_")))
+        self.llm_category_hash_length_spin.setValue(int(self.runtime_value("llm.category_hash_length", self.runtime_value("llm.hash_length", 12))))
+        self.llm_include_category_legend_checkbox.setChecked(bool(self.runtime_value("llm.include_category_legend", False)))
         self.llm_include_legend_checkbox.setChecked(bool(self.runtime_value("llm.include_tag_legend", False)))
 
         workflow_statuses = self.runtime_value("workflow.worklist_statuses", ["new", "potential"])
@@ -1003,14 +1109,28 @@ class ConfigTab(QWidget):
             "llm.backend": str(self.llm_backend_combo.currentData()),
             "llm.endpoint_url": self.llm_endpoint_url_edit.text().strip(),
             "llm.model": self.llm_model_edit.text().strip(),
+            "llm.api_key": self.llm_api_key_edit.text().strip(),
             "llm.api_key_env": self.llm_api_key_env_edit.text().strip() or "LLM_API_KEY",
             "llm.request_timeout_seconds": int(self.llm_timeout_spin.value()),
+            "llm.run_after_fetch": self.llm_run_after_fetch_checkbox.isChecked(),
+            "llm.skip_already_scored": self.llm_skip_scored_checkbox.isChecked(),
+            "llm.after_fetch_statuses": ["new", "potential"],
             "llm.max_posts_per_request": int(self.llm_max_posts_spin.value()),
             "llm.max_tags_per_post": int(self.llm_max_tags_spin.value()),
+            "llm.include_preference_context": self.llm_include_preference_context_checkbox.isChecked(),
+            "llm.max_preference_tags": int(self.llm_max_preference_tags_spin.value()),
+            "llm.max_positive_examples": int(self.llm_max_positive_examples_spin.value()),
+            "llm.max_negative_examples": int(self.llm_max_negative_examples_spin.value()),
+            "llm.max_category_examples": int(self.llm_max_category_examples_spin.value()),
+            "llm.max_example_tags": int(self.llm_max_example_tags_spin.value()),
             "llm.system_prompt": self.llm_system_prompt_edit.toPlainText().strip(),
             "llm.tag_export_mode": str(self.llm_tag_export_mode_combo.currentData()),
             "llm.hash_prefix": self.llm_hash_prefix_edit.text().strip() or "tag_",
             "llm.hash_length": int(self.llm_hash_length_spin.value()),
+            "llm.category_export_mode": str(self.llm_category_export_mode_combo.currentData()),
+            "llm.category_hash_prefix": self.llm_category_hash_prefix_edit.text().strip() or "cat_",
+            "llm.category_hash_length": int(self.llm_category_hash_length_spin.value()),
+            "llm.include_category_legend": self.llm_include_category_legend_checkbox.isChecked(),
             "llm.include_tag_legend": self.llm_include_legend_checkbox.isChecked(),
 
             "workflow.worklist_statuses": statuses,

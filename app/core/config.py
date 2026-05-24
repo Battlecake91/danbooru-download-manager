@@ -93,15 +93,29 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backend": "none",
         "endpoint_url": "",
         "model": "",
+        "api_key": "",
         "api_key_env": "LLM_API_KEY",
         "request_timeout_seconds": 60,
+        "run_after_fetch": False,
+        "after_fetch_statuses": ["new", "potential"],
+        "skip_already_scored": True,
         "max_posts_per_request": 20,
         "max_tags_per_post": 80,
+        "include_preference_context": True,
+        "max_preference_tags": 80,
+        "max_positive_examples": 8,
+        "max_negative_examples": 8,
+        "max_category_examples": 3,
+        "max_example_tags": 30,
         "system_prompt": "",
         "tag_aliases": {},
         "tag_export_mode": "hashed_alias",
         "hash_prefix": "tag_",
         "hash_length": 12,
+        "category_export_mode": "hashed",
+        "category_hash_prefix": "cat_",
+        "category_hash_length": 12,
+        "include_category_legend": False,
         "include_tag_legend": False,
     },
 }
@@ -245,9 +259,30 @@ def validate_config(config: dict[str, Any]) -> None:
 
     if int(llm.get("hash_length", 12)) < 4:
         raise ValueError("llm.hash_length muss >= 4 sein")
+
+    category_export_mode = str(llm.get("category_export_mode", "hashed")).lower()
+    if category_export_mode not in {"original", "hashed"}:
+        raise ValueError("llm.category_export_mode muss original oder hashed sein")
+    llm["category_export_mode"] = category_export_mode
+
+    if int(llm.get("category_hash_length", llm.get("hash_length", 12))) < 4:
+        raise ValueError("llm.category_hash_length muss >= 4 sein")
     if int(llm.get("request_timeout_seconds", 60)) < 1:
         raise ValueError("llm.request_timeout_seconds muss >= 1 sein")
+    after_fetch_statuses = llm.get("after_fetch_statuses", ["new", "potential"])
+    if not isinstance(after_fetch_statuses, list):
+        llm["after_fetch_statuses"] = ["new", "potential"]
     if int(llm.get("max_posts_per_request", 20)) < 1:
         raise ValueError("llm.max_posts_per_request muss >= 1 sein")
     if int(llm.get("max_tags_per_post", 80)) < 1:
         raise ValueError("llm.max_tags_per_post muss >= 1 sein")
+    if int(llm.get("max_preference_tags", 80)) < 0:
+        raise ValueError("llm.max_preference_tags muss >= 0 sein")
+    if int(llm.get("max_positive_examples", 8)) < 0:
+        raise ValueError("llm.max_positive_examples muss >= 0 sein")
+    if int(llm.get("max_negative_examples", 8)) < 0:
+        raise ValueError("llm.max_negative_examples muss >= 0 sein")
+    if int(llm.get("max_category_examples", 3)) < 0:
+        raise ValueError("llm.max_category_examples muss >= 0 sein")
+    if int(llm.get("max_example_tags", 30)) < 1:
+        raise ValueError("llm.max_example_tags muss >= 1 sein")
