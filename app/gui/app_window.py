@@ -47,7 +47,9 @@ class AppWindow(QMainWindow):
 
         self._startup_log("AppWindow: begin")
 
+        self._startup_log("FetchTab: begin")
         self.fetch_tab = FetchTab(config, db)
+        self._startup_log("FetchTab: end")
         self.tabs.addTab(self.fetch_tab, "Fetch / Suche")
         self._tab_widgets["fetch"] = self.fetch_tab
         self._tab_indices["fetch"] = 0

@@ -84,6 +84,8 @@ class FetchWorker(QObject):
 
 
 class TagQueryLineEdit(QLineEdit):
+    suggestions_requested = Signal()
+
     """Line edit with Danbooru-tag completion for the current token.
 
     Tags are separated by whitespace. A leading '-' belongs to the current
@@ -95,6 +97,7 @@ class TagQueryLineEdit(QLineEdit):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._all_tags: list[str] = []
+        self._suggestions_loaded = False
         self._model = QStringListModel(self)
         self._completer = QCompleter(self._model, self)
         self._completer.setWidget(self)
@@ -107,7 +110,13 @@ class TagQueryLineEdit(QLineEdit):
 
     def set_tag_suggestions(self, tags: list[str]) -> None:
         self._all_tags = sorted({tag for tag in tags if tag}, key=str.lower)
+        self._suggestions_loaded = True
         self.update_completion_popup()
+
+    def focusInEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().focusInEvent(event)
+        if not self._suggestions_loaded:
+            self.suggestions_requested.emit()
 
     def keyPressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().keyPressEvent(event)
@@ -264,6 +273,7 @@ class FetchTab(QWidget):
 
         self.manual_query_edit = TagQueryLineEdit()
         self.manual_query_edit.setPlaceholderText("z. B. 1girl cute smile -red_hair")
+        self.manual_query_edit.suggestions_requested.connect(self.reload_tag_suggestions)
         self.manual_layout.addRow("Tags / Query:", self.manual_query_edit)
 
         self.main_layout.addWidget(self.manual_group)
@@ -362,12 +372,16 @@ class FetchTab(QWidget):
         self.log_text.setMinimumHeight(180)
         self.main_layout.addWidget(self.log_text, stretch=1)
 
-        self.reload_tag_suggestions()
+        # Tag-Suggestions sind eine potenziell teure GROUP-BY-Abfrage über post_tags.
+        # Nicht beim Programmstart laden, sondern erst wenn das Suchfeld wirklich benutzt wird.
+        # Ja, Arbeit erst bei Bedarf zu machen ist offenbar eine Innovation.
         self.load_presets()
         self.load_initial_values()
         self.on_source_mode_changed()
 
     def reload_tag_suggestions(self) -> None:
+        if self.manual_query_edit._suggestions_loaded:
+            return
         try:
             self.manual_query_edit.set_tag_suggestions(self.db.suggest_tags(limit=1500))
         except Exception:

@@ -109,6 +109,7 @@
       "command": ".\\.venv\\Scripts\\python.exe",
       "args": [
         "main.py",
+        "--debug-startup",
         "--config",
         "config.yaml",
         "--gui"
