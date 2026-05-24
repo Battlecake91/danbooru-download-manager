@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
 from app.gui.thumbnail_grid import ThumbnailGrid
+from app.i18n.i18n import available_languages, language_from_config, tr
 from app.services.post_import_service import PostImportService
 from app.services.llm_payload_service import LLMPayloadService
 
@@ -236,10 +237,7 @@ class ConfigTab(QWidget):
 
         self.main_layout = QVBoxLayout(self)
 
-        self.info_label = QLabel(
-            "Konfiguration wird in SQLite geführt. Eine YAML-Datei ist nicht mehr nötig; "
-            "sie wird nur noch optional als altes Start-Overlay gelesen, wenn sie existiert."
-        )
+        self.info_label = QLabel(tr("config.info", config=self.config))
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
 
@@ -259,14 +257,14 @@ class ConfigTab(QWidget):
         self.scoring_page, self.scoring_layout = self._make_tab_page()
         self.custom_page, self.custom_layout = self._make_tab_page()
 
-        self.config_tabs.addTab(self.basis_page, "Basis")
-        self.config_tabs.addTab(self.fetch_page, "Fetch")
-        self.config_tabs.addTab(self.gui_page, "GUI")
-        self.config_tabs.addTab(self.filename_page, "Filename")
-        self.config_tabs.addTab(self.scoring_page, "Scoring")
-        self.config_tabs.addTab(self.custom_page, "Custom (Expert)")
+        self.config_tabs.addTab(self.basis_page, tr("config.tabs.base", config=self.config))
+        self.config_tabs.addTab(self.fetch_page, tr("config.tabs.fetch", config=self.config))
+        self.config_tabs.addTab(self.gui_page, tr("config.tabs.gui", config=self.config))
+        self.config_tabs.addTab(self.filename_page, tr("config.tabs.filename", config=self.config))
+        self.config_tabs.addTab(self.scoring_page, tr("config.tabs.scoring", config=self.config))
+        self.config_tabs.addTab(self.custom_page, tr("config.tabs.custom", config=self.config))
 
-        self.general_group = QGroupBox("Pfade / Basis")
+        self.general_group = QGroupBox(tr("config.group.paths", config=self.config))
         self.general_form = QFormLayout(self.general_group)
 
         self.work_dir_edit = QLineEdit(str(config.get("work_dir", "./danbooru_manager_data")))
@@ -286,6 +284,21 @@ class ConfigTab(QWidget):
         self.general_form.addRow("rejected_thumbnail_dir:", self.rejected_thumbnail_dir_edit)
 
         self.basis_layout.addWidget(self.general_group)
+
+        self.interface_group = QGroupBox(tr("config.group.interface", config=self.config))
+        self.interface_form = QFormLayout(self.interface_group)
+        self.language_combo = QComboBox()
+        for language_code, language_name in available_languages():
+            self.language_combo.addItem(language_name, language_code)
+        current_language = language_from_config(config)
+        language_index = self.language_combo.findData(current_language)
+        if language_index >= 0:
+            self.language_combo.setCurrentIndex(language_index)
+        self.language_hint_label = QLabel(tr("config.language_hint", config=self.config))
+        self.language_hint_label.setWordWrap(True)
+        self.interface_form.addRow(tr("config.language", config=self.config), self.language_combo)
+        self.interface_form.addRow("", self.language_hint_label)
+        self.basis_layout.addWidget(self.interface_group)
 
         self.fetch_group = QGroupBox("Fetch")
         self.fetch_form = QFormLayout(self.fetch_group)
@@ -780,27 +793,27 @@ class ConfigTab(QWidget):
 
         self.button_row = QHBoxLayout()
 
-        self.save_button = QPushButton("Speichern")
+        self.save_button = QPushButton(tr("config.save", config=self.config))
         self.save_button.clicked.connect(self.save_config)
         self.button_row.addWidget(self.save_button)
 
-        self.reload_button = QPushButton("Aus SQL neu laden")
+        self.reload_button = QPushButton(tr("config.reload_sql", config=self.config))
         self.reload_button.clicked.connect(self.reload_from_sql)
         self.button_row.addWidget(self.reload_button)
 
-        self.runtime_reload_button = QPushButton("Formular zurücksetzen")
+        self.runtime_reload_button = QPushButton(tr("config.reset_form", config=self.config))
         self.runtime_reload_button.clicked.connect(self.reload_from_runtime)
         self.button_row.addWidget(self.runtime_reload_button)
 
-        self.export_button = QPushButton("Konfiguration exportieren")
+        self.export_button = QPushButton(tr("config.export", config=self.config))
         self.export_button.clicked.connect(self.export_configuration)
         self.button_row.addWidget(self.export_button)
 
-        self.import_button = QPushButton("Konfiguration importieren")
+        self.import_button = QPushButton(tr("config.import", config=self.config))
         self.import_button.clicked.connect(self.import_configuration)
         self.button_row.addWidget(self.import_button)
 
-        self.reset_defaults_button = QPushButton("SQLite-Konfiguration auf Defaults")
+        self.reset_defaults_button = QPushButton(tr("config.reset_defaults", config=self.config))
         self.reset_defaults_button.clicked.connect(self.reset_sql_config_to_defaults)
         self.button_row.addWidget(self.reset_defaults_button)
 
@@ -1187,6 +1200,10 @@ class ConfigTab(QWidget):
         self.refresh_raw_settings()
 
     def reload_from_runtime(self) -> None:
+        language_index = self.language_combo.findData(str(self.runtime_value("ui.language", language_from_config(self.config))))
+        if language_index >= 0:
+            self.language_combo.setCurrentIndex(language_index)
+
         self.work_dir_edit.setText(str(self.runtime_value("work_dir", "./danbooru_manager_data")))
         self.database_file_edit.setText(str(self.runtime_value("database_file", "./danbooru_manager_data/danbooru_manager.db")))
         self.default_output_dir_edit.setText(str(self.runtime_value("default_output_dir", "./danbooru_saved")))
@@ -1287,6 +1304,8 @@ class ConfigTab(QWidget):
         ]
 
         return {
+            "ui.language": str(self.language_combo.currentData() or "en"),
+
             "work_dir": self.work_dir_edit.text().strip(),
             "database_file": self.database_file_edit.text().strip(),
             "default_output_dir": self.default_output_dir_edit.text().strip(),
@@ -1371,14 +1390,13 @@ class ConfigTab(QWidget):
             self.config_changed.emit()
 
         except Exception as exc:
-            QMessageBox.critical(self, "Konfiguration speichern", str(exc))
+            QMessageBox.critical(self, tr("config.save_error_title", config=self.config), str(exc))
             return
 
         QMessageBox.information(
             self,
-            "Konfiguration gespeichert",
-            "Konfiguration wurde in SQLite gespeichert.\n"
-            "Einige Werte wirken sofort, andere erst beim nächsten Start oder neuem Fetch.",
+            tr("config.saved_title", config=self.config),
+            tr("config.saved_message", config=self.config),
         )
 
 

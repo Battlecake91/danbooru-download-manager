@@ -25,6 +25,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_total_posts": 500,
     "request_timeout_seconds": 30,
     "user_agent": "DanbooruManager/0.1",
+    "ui": {
+        "language": "en",
+    },
     "work_dir": "./danbooru_manager_data",
     "database_file": "./danbooru_manager_data/danbooru_manager.db",
     "thumbnail_dir": "./danbooru_manager_data/thumbnails/active",

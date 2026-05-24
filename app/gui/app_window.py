@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVB
 from app.core.database import Database
 from app.gui.fetch_tab import FetchTab
 from app.gui.icon_utils import ensure_app_icon
+from app.i18n.i18n import tr
 
 
 class AppWindow(QMainWindow):
@@ -39,7 +40,7 @@ class AppWindow(QMainWindow):
         self._pending_preview_reload = False
         self._pending_fetch_running = False
 
-        self.setWindowTitle("Danbooru Manager")
+        self.setWindowTitle(tr("app.title", config=self.config))
         self.setWindowIcon(ensure_app_icon(config))
 
         self.tabs = QTabWidget()
@@ -50,14 +51,14 @@ class AppWindow(QMainWindow):
         self._startup_log("FetchTab: begin")
         self.fetch_tab = FetchTab(config, db)
         self._startup_log("FetchTab: end")
-        self.tabs.addTab(self.fetch_tab, "Fetch / Suche")
+        self.tabs.addTab(self.fetch_tab, self._tab_title("fetch"))
         self._tab_widgets["fetch"] = self.fetch_tab
         self._tab_indices["fetch"] = 0
 
         self._startup_log("PreviewTab: begin")
         self.preview_window = self._create_preview_tab()
         self._startup_log("PreviewTab: end")
-        self.tabs.addTab(self.preview_window, "Preview / Review")
+        self.tabs.addTab(self.preview_window, self._tab_title("preview"))
         self._tab_widgets["preview"] = self.preview_window
         self._tab_indices["preview"] = 1
 
@@ -66,14 +67,18 @@ class AppWindow(QMainWindow):
         self.fetch_tab.fetch_failed_signal.connect(self.on_fetch_failed)
         self.fetch_tab.open_preview_requested.connect(self.open_preview_tab)
 
-        self._add_lazy_tab("import", "Importer")
-        self._add_lazy_tab("tags", "Tags")
-        self._add_lazy_tab("categories", "Kategorien")
-        self._add_lazy_tab("config", "Konfiguration")
+        self._add_lazy_tab("import", self._tab_title("import"))
+        self._add_lazy_tab("tags", self._tab_title("tags"))
+        self._add_lazy_tab("categories", self._tab_title("categories"))
+        self._add_lazy_tab("config", self._tab_title("config"))
         self._ensure_maintenance_tab_registered()
 
         self.tabs.currentChanged.connect(self.on_tab_changed)
         self._startup_log("AppWindow: shown-ready")
+
+
+    def _tab_title(self, key: str) -> str:
+        return tr(f"tabs.{key}", config=self.config)
 
     def _startup_log(self, message: str) -> None:
         if not self.debug_startup:
@@ -84,7 +89,7 @@ class AppWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(24, 24, 24, 24)
-        label = QLabel(f"{title} wird erst beim Öffnen geladen.")
+        label = QLabel(tr("lazy.not_loaded", config=self.config, title=title))
         label.setObjectName("lazyTabPlaceholderLabel")
         label.setWordWrap(True)
         label.setStyleSheet("color: #9aa0a6; font-size: 14px;")
@@ -101,11 +106,11 @@ class AppWindow(QMainWindow):
         if label is None:
             return
 
-        label.setText(f"Lade {title}…")
+        label.setText(tr("lazy.loading", config=self.config, title=title))
         label.setStyleSheet(
             "color: #ffd166; font-size: 15px; font-weight: bold;"
         )
-        self.statusBar().showMessage(f"Lade {title}…")
+        self.statusBar().showMessage(tr("lazy.loading", config=self.config, title=title))
         placeholder.update()
         self.tabs.update()
         QApplication.processEvents()
@@ -122,7 +127,7 @@ class AppWindow(QMainWindow):
         """Add the maintenance tab if an older patched window missed it."""
         if "maintenance" in self._tab_widgets:
             return
-        self._add_lazy_tab("maintenance", "Wartung / DB")
+        self._add_lazy_tab("maintenance", self._tab_title("maintenance"))
 
     def _ensure_tab(self, key: str) -> QWidget:
         existing = self._tab_widgets.get(key)
@@ -139,7 +144,7 @@ class AppWindow(QMainWindow):
         }
         factory = factories.get(key)
         if factory is None:
-            raise KeyError(f"Unbekannter Tab: {key}")
+            raise KeyError(tr("error.unknown_tab", config=self.config, key=key))
 
         index = self._tab_indices[key]
         title = self.tabs.tabText(index)
@@ -159,7 +164,7 @@ class AppWindow(QMainWindow):
             self.tabs.blockSignals(signals_blocked)
         self._tab_widgets[key] = widget
         self._rebuild_tab_indices()
-        self.statusBar().showMessage(f"{title} geladen.", 3000)
+        self.statusBar().showMessage(tr("lazy.loaded", config=self.config, title=title), 3000)
         return widget
 
     def _is_placeholder(self, key: str, widget: QWidget) -> bool:
@@ -247,13 +252,13 @@ class AppWindow(QMainWindow):
             self.preview_window.set_fetch_running(True)
         index = self._tab_indices.get("preview", -1)
         if index >= 0:
-            self.tabs.setTabText(index, "Preview / Review · Fetch läuft")
+            self.tabs.setTabText(index, self._tab_title("preview_fetch_running"))
 
     def on_fetch_finished(self) -> None:
         self._pending_fetch_running = False
         index = self._tab_indices.get("preview", -1)
         if index >= 0:
-            self.tabs.setTabText(index, "Preview / Review")
+            self.tabs.setTabText(index, self._tab_title("preview"))
         if self.preview_window is not None:
             self.preview_window.set_fetch_running(False)
             self.preview_window.schedule_reload()
@@ -266,7 +271,7 @@ class AppWindow(QMainWindow):
             self.preview_window.set_fetch_running(False)
         index = self._tab_indices.get("preview", -1)
         if index >= 0:
-            self.tabs.setTabText(index, "Preview / Review")
+            self.tabs.setTabText(index, self._tab_title("preview"))
 
     def open_preview_tab(self) -> None:
         self._ensure_tab("preview")
