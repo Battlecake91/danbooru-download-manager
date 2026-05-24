@@ -34,10 +34,11 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.i18n.i18n import tr
 
 
 TAG_TYPE_LABELS = {
-    "all": "Alle",
+    "all": "All",
     "copyright": "Copyright",
     "character": "Character",
     "artist": "Artist",
@@ -88,14 +89,18 @@ class SimilarTagsBulkActionDialog(QDialog):
 
     def __init__(self, parent: QWidget, rows: list[Any], category_names: list[str], suggested_alias: str = "") -> None:
         super().__init__(parent)
-        self.setWindowTitle("Ähnliche Tags bearbeiten")
+        self.config = getattr(parent, "config", {})
+        self.setWindowTitle(self.t("tags.similar.title", "Edit similar tags"))
         self.resize(820, 640)
 
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "Wähle die Tags aus und trage unten nur die Aktionen ein, die wirklich übernommen werden sollen. "
-            "Leere Felder bleiben unverändert. So schwer ist Zurückhaltung, ich weiß."
+            self.t(
+                "tags.similar.info",
+                "Select the tags and enter only the actions that should actually be applied. "
+                "Empty fields stay unchanged."
+            )
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -119,11 +124,11 @@ class SimilarTagsBulkActionDialog(QDialog):
                 suffix += " | Filename-Exclude"
             flag_labels: list[str] = []
             if ignore_category_influence:
-                flag_labels.append("Kat.-Hinweis ignoriert")
+                flag_labels.append(self.t("tags.flags.category_ignored_short", "Category hint ignored"))
             if ignore_recommendation_score:
-                flag_labels.append("Vorauswahl ignoriert")
+                flag_labels.append(self.t("tags.flags.preselection_ignored_short", "Preselection ignored"))
             if ignore_llm_input:
-                flag_labels.append("LLM ignoriert")
+                flag_labels.append(self.t("tags.flags.llm_ignored_short", "LLM ignored"))
             if flag_labels:
                 suffix += " | " + ", ".join(flag_labels)
 
@@ -136,8 +141,8 @@ class SimilarTagsBulkActionDialog(QDialog):
         layout.addWidget(self.list_widget, stretch=1)
 
         select_buttons = QHBoxLayout()
-        select_all = QPushButton("Alle auswählen")
-        select_none = QPushButton("Alle abwählen")
+        select_all = QPushButton(self.t("common.select_all", "Select all"))
+        select_none = QPushButton(self.t("common.select_none", "Select none"))
         select_all.clicked.connect(lambda: self.set_all_checked(True))
         select_none.clicked.connect(lambda: self.set_all_checked(False))
         select_buttons.addWidget(select_all)
@@ -145,45 +150,45 @@ class SimilarTagsBulkActionDialog(QDialog):
         select_buttons.addStretch(1)
         layout.addLayout(select_buttons)
 
-        layout.addWidget(QLabel("Aktionen für alle ausgewählten Tags:"))
+        layout.addWidget(QLabel(self.t("tags.bulk.actions_for_selected", "Actions for all selected tags:")))
 
         alias_row = QHBoxLayout()
-        alias_row.addWidget(QLabel("Alias setzen:"))
+        alias_row.addWidget(QLabel(self.t("tags.bulk.set_alias", "Set alias:")))
         self.alias_edit = QLineEdit("")
-        self.alias_edit.setPlaceholderText(suggested_alias or "leer = nicht ändern")
+        self.alias_edit.setPlaceholderText(suggested_alias or self.t("tags.bulk.placeholder.no_change", "empty = no change"))
         alias_row.addWidget(self.alias_edit, stretch=1)
         layout.addLayout(alias_row)
 
         filename_row = QHBoxLayout()
-        filename_row.addWidget(QLabel("Filename-Ausschluss:"))
+        filename_row.addWidget(QLabel(self.t("tags.bulk.filename_exclude", "Filename exclude:")))
         self.filename_combo = QComboBox()
-        self.filename_combo.addItem("nicht ändern", self.FILENAME_NO_CHANGE)
-        self.filename_combo.addItem("in Filename-Ausschluss aufnehmen", self.FILENAME_ADD)
-        self.filename_combo.addItem("aus Filename-Ausschluss entfernen", self.FILENAME_REMOVE)
+        self.filename_combo.addItem(self.t("common.no_change", "no change"), self.FILENAME_NO_CHANGE)
+        self.filename_combo.addItem(self.t("tags.bulk.filename_add", "add to filename exclude"), self.FILENAME_ADD)
+        self.filename_combo.addItem(self.t("tags.bulk.filename_remove", "remove from filename exclude"), self.FILENAME_REMOVE)
         filename_row.addWidget(self.filename_combo, stretch=1)
         layout.addLayout(filename_row)
 
         scoring_row = QHBoxLayout()
-        scoring_row.addWidget(QLabel("Scoring-/Nutzungsflags:"))
+        scoring_row.addWidget(QLabel(self.t("tags.bulk.scoring_flags", "Scoring / usage flags:")))
         self.category_influence_combo = QComboBox()
-        self.category_influence_combo.addItem("Kategorie-Hinweis nicht ändern", self.FLAG_NO_CHANGE)
-        self.category_influence_combo.addItem("Kategorie-Hinweis ignorieren", self.FLAG_IGNORE)
-        self.category_influence_combo.addItem("Kategorie-Hinweis wieder nutzen", self.FLAG_USE)
+        self.category_influence_combo.addItem(self.t("tags.flags.category_no_change", "category hint: no change"), self.FLAG_NO_CHANGE)
+        self.category_influence_combo.addItem(self.t("tags.flags.category_ignore", "ignore category hint"), self.FLAG_IGNORE)
+        self.category_influence_combo.addItem(self.t("tags.flags.category_use", "use category hint again"), self.FLAG_USE)
         self.recommendation_combo = QComboBox()
-        self.recommendation_combo.addItem("Vorauswahl nicht ändern", self.FLAG_NO_CHANGE)
-        self.recommendation_combo.addItem("Vorauswahl ignorieren", self.FLAG_IGNORE)
-        self.recommendation_combo.addItem("Vorauswahl wieder nutzen", self.FLAG_USE)
+        self.recommendation_combo.addItem(self.t("tags.flags.preselection_no_change", "preselection: no change"), self.FLAG_NO_CHANGE)
+        self.recommendation_combo.addItem(self.t("tags.flags.preselection_ignore", "ignore preselection"), self.FLAG_IGNORE)
+        self.recommendation_combo.addItem(self.t("tags.flags.preselection_use", "use preselection again"), self.FLAG_USE)
         self.llm_input_combo = QComboBox()
-        self.llm_input_combo.addItem("LLM-Eingabe nicht ändern", self.FLAG_NO_CHANGE)
-        self.llm_input_combo.addItem("LLM-Eingabe ignorieren", self.FLAG_IGNORE)
-        self.llm_input_combo.addItem("LLM-Eingabe wieder nutzen", self.FLAG_USE)
+        self.llm_input_combo.addItem(self.t("tags.flags.llm_no_change", "LLM input: no change"), self.FLAG_NO_CHANGE)
+        self.llm_input_combo.addItem(self.t("tags.flags.llm_ignore", "ignore LLM input"), self.FLAG_IGNORE)
+        self.llm_input_combo.addItem(self.t("tags.flags.llm_use", "use LLM input again"), self.FLAG_USE)
         scoring_row.addWidget(self.category_influence_combo, stretch=1)
         scoring_row.addWidget(self.recommendation_combo, stretch=1)
         scoring_row.addWidget(self.llm_input_combo, stretch=1)
         layout.addLayout(scoring_row)
 
         score_row = QHBoxLayout()
-        self.score_checkbox = QCheckBox("Manuellen Score setzen")
+        self.score_checkbox = QCheckBox(self.t("tags.bulk.set_manual_score", "Set manual score"))
         self.score_spin = QDoubleSpinBox()
         self.score_spin.setRange(-10.0, 10.0)
         self.score_spin.setDecimals(3)
@@ -196,9 +201,9 @@ class SimilarTagsBulkActionDialog(QDialog):
         layout.addLayout(score_row)
 
         category_row = QHBoxLayout()
-        category_row.addWidget(QLabel("Kategorie-Regel:"))
+        category_row.addWidget(QLabel(self.t("tags.bulk.category_rule", "Category rule:")))
         self.category_combo = QComboBox()
-        self.category_combo.addItem("nicht ändern", self.CATEGORY_NO_CHANGE)
+        self.category_combo.addItem(self.t("common.no_change", "no change"), self.CATEGORY_NO_CHANGE)
         for category_name in category_names:
             self.category_combo.addItem(category_name, category_name)
         self.category_rule_combo = QComboBox()
@@ -209,16 +214,22 @@ class SimilarTagsBulkActionDialog(QDialog):
         layout.addLayout(category_row)
 
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.button(QDialogButtonBox.Ok).setText("Übernehmen")
-        button_box.button(QDialogButtonBox.Cancel).setText("Abbrechen")
+        button_box.button(QDialogButtonBox.Ok).setText(self.t("common.apply", "Apply"))
+        button_box.button(QDialogButtonBox.Cancel).setText(self.t("common.cancel", "Cancel"))
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+    def t(self, key: str, default: str, **kwargs: Any) -> str:
+        return tr(key, default, config=self.config, **kwargs)
 
     def set_all_checked(self, checked: bool) -> None:
         state = Qt.Checked if checked else Qt.Unchecked
         for index in range(self.list_widget.count()):
             self.list_widget.item(index).setCheckState(state)
+
+    def yes_text(self) -> str:
+        return self.t("common.yes", "yes")
 
     def selected_tags(self) -> list[str]:
         tags: list[str] = []
@@ -311,21 +322,21 @@ class TagTab(QWidget):
 
         self.toolbar_layout = QHBoxLayout()
 
-        self.toolbar_layout.addWidget(QLabel("Suche:"))
+        self.toolbar_layout.addWidget(QLabel(self.t("common.search.label", "Search: ")))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Tag suchen...")
-        self.search_edit.returnPressed.connect(lambda: self.safe(self.reload_tags, "Tags neu laden"))
+        self.search_edit.setPlaceholderText(self.t("tags.search.placeholder", "Search tags..."))
+        self.search_edit.returnPressed.connect(lambda: self.safe(self.reload_tags, self.t("tags.action.reload", "Reload tags")))
         self.toolbar_layout.addWidget(self.search_edit, stretch=1)
 
-        self.toolbar_layout.addWidget(QLabel("Typ:"))
+        self.toolbar_layout.addWidget(QLabel(self.t("tags.type.label", "Type:")))
         self.type_filter = QComboBox()
         for tag_type, label in TAG_TYPE_LABELS.items():
             self.type_filter.addItem(label, tag_type)
-        self.type_filter.currentIndexChanged.connect(lambda *_: self.safe(self.reload_tags, "Tags neu laden"))
+        self.type_filter.currentIndexChanged.connect(lambda *_: self.safe(self.reload_tags, self.t("tags.action.reload", "Reload tags")))
         self.toolbar_layout.addWidget(self.type_filter)
 
-        self.reload_button = QPushButton("Neu laden")
-        self.reload_button.clicked.connect(lambda *_: self.safe(self.reload_tags, "Tags neu laden"))
+        self.reload_button = QPushButton(self.t("common.reload", "Reload"))
+        self.reload_button.clicked.connect(lambda *_: self.safe(self.reload_tags, self.t("tags.action.reload", "Reload tags")))
         self.toolbar_layout.addWidget(self.reload_button)
 
         self.main_layout.addLayout(self.toolbar_layout)
@@ -334,20 +345,20 @@ class TagTab(QWidget):
         self.table.setColumnCount(14)
         self.table.setHorizontalHeaderLabels(
             [
-                "Tag",
-                "Typ",
-                "Posts",
-                "Offen",
-                "Gespeichert",
-                "Abgelehnt",
-                "Alias",
-                "Filename-Exclude",
-                "Kat.-Scoring ignoriert",
-                "Vorauswahl ignoriert",
-                "LLM ignoriert",
-                "Manueller Score",
-                "Berechneter Score",
-                "Ø Sterne",
+                self.t("tags.table.tag", "Tag"),
+                self.t("tags.table.type", "Type"),
+                self.t("tags.table.posts", "Posts"),
+                self.t("tags.table.open", "Open"),
+                self.t("tags.table.saved", "Saved"),
+                self.t("tags.table.rejected", "Rejected"),
+                self.t("tags.table.alias", "Alias"),
+                self.t("tags.table.filename_exclude", "Filename exclude"),
+                self.t("tags.table.category_scoring_ignored", "Category scoring ignored"),
+                self.t("tags.table.preselection_ignored", "Preselection ignored"),
+                self.t("tags.table.llm_ignored", "LLM ignored"),
+                self.t("tags.table.manual_score", "Manual score"),
+                self.t("tags.table.computed_score", "Computed score"),
+                self.t("tags.table.average_stars", "Avg. stars"),
             ]
         )
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -360,13 +371,13 @@ class TagTab(QWidget):
         )
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(
-            lambda pos: self.safe(lambda: self.open_context_menu(pos), "Kontextmenü öffnen")
+            lambda pos: self.safe(lambda: self.open_context_menu(pos), self.t("tags.action.open_context_menu", "Open context menu"))
         )
         self.table.itemClicked.connect(
-            lambda item: self.safe(lambda: self.handle_option_cell_click(item), "Tag-Option per Klick ändern")
+            lambda item: self.safe(lambda: self.handle_option_cell_click(item), self.t("tags.action.toggle_option", "Toggle tag option"))
         )
         self.table.itemChanged.connect(
-            lambda item: self.safe(lambda: self.handle_editable_cell_changed(item), "Tag-Zelle direkt bearbeiten")
+            lambda item: self.safe(lambda: self.handle_editable_cell_changed(item), self.t("tags.action.edit_cell", "Edit tag cell"))
         )
 
         header = self.table.horizontalHeader()
@@ -375,19 +386,17 @@ class TagTab(QWidget):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
-        header.sectionClicked.connect(lambda column: self.safe(lambda: self.sort_by_column(column), "Tags sortieren"))
+        header.sectionClicked.connect(lambda column: self.safe(lambda: self.sort_by_column(column), self.t("tags.action.sort", "Sort tags")))
 
         self.main_layout.addWidget(self.table)
 
         self.hint_label = QLabel(
-            f"Klick in Filename-/Scoring-Spalten: Option direkt umschalten. "
-            f"Alias und manueller Score sind direkt in der Tabelle editierbar. Rechtsklick: Kategorie, Scoring/Nutzung, Bulk-Alias, Suche. "
-            f"Fehlerlog: {self.tag_log_path}"
+            self.t("tags.hint", "Click filename/scoring columns to toggle options directly. Alias and manual score are editable in the table. Right-click for category, scoring/usage, bulk alias and search actions. Error log: {path}", path=self.tag_log_path)
         )
         self.hint_label.setWordWrap(True)
         self.main_layout.addWidget(self.hint_label)
 
-        self.safe(self.reload_tags, "Initiales Laden der Tags")
+        self.safe(self.reload_tags, self.t("tags.action.initial_load", "Initial tag load"))
 
     # ------------------------------------------------------------------
     # Logging / safety helpers
@@ -424,7 +433,10 @@ class TagTab(QWidget):
         except Exception:
             pass
 
-    def safe(self, action: Callable[[], None], title: str = "Tag-Tab-Aktion") -> None:
+    def t(self, key: str, default: str, **kwargs: Any) -> str:
+        return tr(key, default, config=self.config, **kwargs)
+
+    def safe(self, action: Callable[[], None], title: str = "Tag tab action") -> None:
         self.log_message(f"START: {title}")
         watchdog_done = self.start_watchdog(title)
         try:
@@ -436,13 +448,13 @@ class TagTab(QWidget):
             self.log_message(f"ERROR: {title}: {exc}")
             QMessageBox.critical(
                 self,
-                "Fehler im Tag-Tab",
-                f"{title} ist fehlgeschlagen:\n\n{exc}\n\nLog: {self.tag_log_path}",
+                self.t("tags.error.title", "Tag tab error"),
+                self.t("tags.error.failed", "{title} failed:\n\n{error}\n\nLog: {log}", title=title, error=exc, log=self.tag_log_path),
             )
         finally:
             watchdog_done.set()
 
-    def schedule_safe(self, action: Callable[[], None], title: str = "Tag-Tab-Aktion") -> None:
+    def schedule_safe(self, action: Callable[[], None], title: str = "Tag tab action") -> None:
         QTimer.singleShot(0, lambda: self.safe(action, title))
 
     def start_watchdog(self, title: str, timeout_seconds: float = 15.0) -> threading.Event:
@@ -485,7 +497,7 @@ class TagTab(QWidget):
 
         def do_reload() -> None:
             self._reload_pending = False
-            self.safe(self.reload_tags, "Tags verzögert neu laden")
+            self.safe(self.reload_tags, self.t("tags.action.delayed_reload", "Delayed tag reload"))
 
         QTimer.singleShot(50, do_reload)
 
@@ -565,10 +577,10 @@ class TagTab(QWidget):
                     (row["saved_count"], row["saved_count"], True),
                     (row["rejected_count"], row["rejected_count"], True),
                     (row["alias_tag"] or "", row["alias_tag"] or "", False),
-                    ("ja" if filename_excluded else "", 1 if filename_excluded else 0, False),
-                    ("ja" if ignore_category_influence else "", 1 if ignore_category_influence else 0, False),
-                    ("ja" if ignore_recommendation_score else "", 1 if ignore_recommendation_score else 0, False),
-                    ("ja" if ignore_llm_input else "", 1 if ignore_llm_input else 0, False),
+                    (self.yes_text() if filename_excluded else "", 1 if filename_excluded else 0, False),
+                    (self.yes_text() if ignore_category_influence else "", 1 if ignore_category_influence else 0, False),
+                    (self.yes_text() if ignore_recommendation_score else "", 1 if ignore_recommendation_score else 0, False),
+                    (self.yes_text() if ignore_llm_input else "", 1 if ignore_llm_input else 0, False),
                     (self.format_number_cell(manual_score, decimals=2), manual_score if manual_score not in {"", None} else -999999, True),
                     (self.format_number_cell(computed_score, decimals=2, empty="0"), computed_score, True),
                     (self.format_number_cell(average_rating, decimals=1), average_rating if average_rating is not None else -1, True),
@@ -592,6 +604,9 @@ class TagTab(QWidget):
         finally:
             self.table.blockSignals(False)
             self.table.setUpdatesEnabled(True)
+
+    def yes_text(self) -> str:
+        return self.t("common.yes", "yes")
 
     def selected_tags(self) -> list[str]:
         tags: list[str] = []
@@ -755,9 +770,8 @@ class TagTab(QWidget):
             except ValueError:
                 QMessageBox.warning(
                     self,
-                    "Ungültiger Score",
-                    "Der manuelle Score muss leer sein oder eine Zahl zwischen -10 und +10. "
-                    "Ja, leider kann auch diese Tabelle nicht Gedanken lesen.",
+                    self.t("tags.invalid_score.title", "Invalid score"),
+                    self.t("tags.invalid_score.empty_or_range", "The manual score must be empty or a number between -10 and +10."),
                 )
                 self.restore_manual_score_cell(item, tag)
                 return
@@ -765,8 +779,8 @@ class TagTab(QWidget):
             if score < -10.0 or score > 10.0:
                 QMessageBox.warning(
                     self,
-                    "Ungültiger Score",
-                    "Der manuelle Score muss zwischen -10 und +10 liegen.",
+                    self.t("tags.invalid_score.title", "Invalid score"),
+                    self.t("tags.invalid_score.range", "The manual score must be between -10 and +10."),
                 )
                 self.restore_manual_score_cell(item, tag)
                 return
@@ -784,11 +798,11 @@ class TagTab(QWidget):
         finally:
             self.table.blockSignals(False)
             self._suppress_item_changed = False
-        self.log_message(f"Manueller Score direkt aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+        self.log_message(f"Manual score updated locally for tag={tag!r}. No automatic full reload.")
 
     def update_filename_exclude_cells(self, tags: list[str], excluded: bool) -> None:
         tag_set = set(tags)
-        value = "ja" if excluded else ""
+        value = self.yes_text() if excluded else ""
 
         self.table.setUpdatesEnabled(False)
         try:
@@ -964,7 +978,7 @@ class TagTab(QWidget):
                     if value is None:
                         continue
                     self.update_current_row_value_for_tag(str(tag), key, 1 if value else 0)
-                    self.set_table_cell_text(row_index, column, str(tag), "ja" if value else "")
+                    self.set_table_cell_text(row_index, column, str(tag), self.yes_text() if value else "")
                     item = self.table.item(row_index, column)
                     if item is not None:
                         item.setData(SortableTableWidgetItem.SORT_ROLE, 1 if value else 0)
@@ -1017,11 +1031,11 @@ class TagTab(QWidget):
         menu = QMenu(self)
         self._context_menu = menu
 
-        category_menu = QMenu("Zu Kategorie hinzufügen", menu)
+        category_menu = QMenu(self.t("tags.menu.add_to_category", "Add to category"), menu)
         category_names = self.db.list_category_names()
 
         if not category_names:
-            disabled = QAction("Keine Kategorien vorhanden", menu)
+            disabled = QAction(self.t("tags.menu.no_categories", "No categories available"), menu)
             disabled.setEnabled(False)
             category_menu.addAction(disabled)
 
@@ -1030,7 +1044,7 @@ class TagTab(QWidget):
             include_action.triggered.connect(
                 lambda checked=False, c=category_name, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.add_tags_to_category(t, c, "include"),
-                    "Tags zu Kategorie hinzufügen",
+                    self.t("tags.action.add_to_category", "Add tags to category"),
                 )
             )
             category_menu.addAction(include_action)
@@ -1039,7 +1053,7 @@ class TagTab(QWidget):
             exclude_action.triggered.connect(
                 lambda checked=False, c=category_name, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.add_tags_to_category(t, c, "exclude"),
-                    "Tags als Kategorie-Ausschluss hinzufügen",
+                    self.t("tags.action.add_category_exclude", "Add tags as category exclude"),
                 )
             )
             category_menu.addAction(exclude_action)
@@ -1052,107 +1066,107 @@ class TagTab(QWidget):
         any_excluded, all_excluded = self.filename_exclude_state_for_tags(frozen_tags)
 
         if all_excluded:
-            remove_exclude_action = QAction("Filename-Ausschluss entfernen", menu)
+            remove_exclude_action = QAction(self.t("tags.menu.remove_filename_exclude", "Remove filename exclude"), menu)
             remove_exclude_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.remove_tags_from_filename_exclude(t),
-                    "Tags vom Filename-Ausschluss entfernen",
+                    self.t("tags.action.remove_filename_exclude", "Remove tags from filename exclude"),
                 )
             )
             menu.addAction(remove_exclude_action)
         elif any_excluded:
-            add_exclude_action = QAction("Nicht ausgeschlossene Tags ausschließen", menu)
+            add_exclude_action = QAction(self.t("tags.menu.exclude_not_excluded", "Exclude non-excluded tags"), menu)
             add_exclude_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.add_tags_to_filename_exclude([tag for tag in t if not self.is_filename_excluded_visible(tag)]),
-                    "Nicht ausgeschlossene Tags zum Filename-Ausschluss hinzufügen",
+                    self.t("tags.action.exclude_not_excluded", "Add non-excluded tags to filename exclude"),
                 )
             )
             menu.addAction(add_exclude_action)
 
-            remove_exclude_action = QAction("Ausgeschlossene Tags aus Ausschluss entfernen", menu)
+            remove_exclude_action = QAction(self.t("tags.menu.remove_excluded_subset", "Remove excluded tags from exclude list"), menu)
             remove_exclude_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.remove_tags_from_filename_exclude([tag for tag in t if self.is_filename_excluded_visible(tag)]),
-                    "Ausgeschlossene Tags vom Filename-Ausschluss entfernen",
+                    self.t("tags.action.remove_excluded_subset", "Remove excluded tags from filename exclude"),
                 )
             )
             menu.addAction(remove_exclude_action)
         else:
-            add_exclude_action = QAction("Vom Dateinamen ausschließen", menu)
+            add_exclude_action = QAction(self.t("tags.menu.exclude_from_filename", "Exclude from filename"), menu)
             add_exclude_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.add_tags_to_filename_exclude(t),
-                    "Tags zum Filename-Ausschluss hinzufügen",
+                    self.t("tags.action.add_filename_exclude", "Add tags to filename exclude"),
                 )
             )
             menu.addAction(add_exclude_action)
 
         menu.addSeparator()
 
-        scoring_menu = QMenu("Scoring / Nutzung", menu)
+        scoring_menu = QMenu(self.t("tags.menu.scoring_usage", "Scoring / usage"), menu)
 
-        category_ignore_action = QAction("Kategorie-Hinweis ignorieren", menu)
+        category_ignore_action = QAction(self.t("tags.menu.ignore_category_hint", "Ignore category hint"), menu)
         category_ignore_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(t, ignore_category_influence=True),
-                "Kategorie-Hinweis fuer Tags ignorieren",
+                self.t("tags.action.ignore_category_hint", "Ignore category hint for tags"),
             )
         )
         scoring_menu.addAction(category_ignore_action)
 
-        category_use_action = QAction("Kategorie-Hinweis wieder nutzen", menu)
+        category_use_action = QAction(self.t("tags.menu.use_category_hint", "Use category hint again"), menu)
         category_use_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(t, ignore_category_influence=False),
-                "Kategorie-Hinweis fuer Tags wieder nutzen",
+                self.t("tags.action.use_category_hint", "Use category hint for tags again"),
             )
         )
         scoring_menu.addAction(category_use_action)
 
         scoring_menu.addSeparator()
 
-        recommendation_ignore_action = QAction("Vorauswahl ignorieren", menu)
+        recommendation_ignore_action = QAction(self.t("tags.menu.ignore_preselection", "Ignore preselection"), menu)
         recommendation_ignore_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(t, ignore_recommendation_score=True),
-                "Vorauswahl fuer Tags ignorieren",
+                self.t("tags.action.ignore_preselection", "Ignore preselection for tags"),
             )
         )
         scoring_menu.addAction(recommendation_ignore_action)
 
-        recommendation_use_action = QAction("Vorauswahl wieder nutzen", menu)
+        recommendation_use_action = QAction(self.t("tags.menu.use_preselection", "Use preselection again"), menu)
         recommendation_use_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(t, ignore_recommendation_score=False),
-                "Vorauswahl fuer Tags wieder nutzen",
+                self.t("tags.action.use_preselection", "Use preselection for tags again"),
             )
         )
         scoring_menu.addAction(recommendation_use_action)
 
         scoring_menu.addSeparator()
 
-        llm_ignore_action = QAction("LLM-Eingabe ignorieren", menu)
+        llm_ignore_action = QAction(self.t("tags.menu.ignore_llm_input", "Ignore LLM input"), menu)
         llm_ignore_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(t, ignore_llm_input=True),
-                "LLM-Eingabe fuer Tags ignorieren",
+                self.t("tags.action.ignore_llm_input", "Ignore LLM input for tags"),
             )
         )
         scoring_menu.addAction(llm_ignore_action)
 
-        llm_use_action = QAction("LLM-Eingabe wieder nutzen", menu)
+        llm_use_action = QAction(self.t("tags.menu.use_llm_input", "Use LLM input again"), menu)
         llm_use_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(t, ignore_llm_input=False),
-                "LLM-Eingabe fuer Tags wieder nutzen",
+                self.t("tags.action.use_llm_input", "Use LLM input for tags again"),
             )
         )
         scoring_menu.addAction(llm_use_action)
 
         scoring_menu.addSeparator()
 
-        all_ignore_action = QAction("Alle automatischen Bewertungen ignorieren", menu)
+        all_ignore_action = QAction(self.t("tags.menu.ignore_all_auto_scores", "Ignore all automatic scores"), menu)
         all_ignore_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(
@@ -1161,12 +1175,12 @@ class TagTab(QWidget):
                     ignore_recommendation_score=True,
                     ignore_llm_input=True,
                 ),
-                "Alle automatischen Bewertungen fuer Tags ignorieren",
+                self.t("tags.action.ignore_all_auto_scores", "Ignore all automatic scores for tags"),
             )
         )
         scoring_menu.addAction(all_ignore_action)
 
-        all_use_action = QAction("Alle automatischen Bewertungen wieder nutzen", menu)
+        all_use_action = QAction(self.t("tags.menu.use_all_auto_scores", "Use all automatic scores again"), menu)
         all_use_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_scoring_flags_for_tags(
@@ -1175,7 +1189,7 @@ class TagTab(QWidget):
                     ignore_recommendation_score=False,
                     ignore_llm_input=False,
                 ),
-                "Alle automatischen Bewertungen fuer Tags wieder nutzen",
+                self.t("tags.action.use_all_auto_scores", "Use all automatic scores for tags again"),
             )
         )
         scoring_menu.addAction(all_use_action)
@@ -1184,53 +1198,53 @@ class TagTab(QWidget):
         menu.addSeparator()
 
         if len(frozen_tags) > 1:
-            alias_action = QAction(f"Alias für Auswahl setzen… ({len(frozen_tags)})", menu)
+            alias_action = QAction(self.t("tags.menu.set_alias_selection", "Set alias for selection… ({count})", count=len(frozen_tags)), menu)
             alias_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.bulk_set_alias(t),
-                    "Alias für Auswahl setzen",
+                    self.t("tags.action.set_alias_selection", "Set alias for selection"),
                 )
             )
             menu.addAction(alias_action)
 
-            remove_alias_action = QAction(f"Alias für Auswahl entfernen… ({len(frozen_tags)})", menu)
+            remove_alias_action = QAction(self.t("tags.menu.remove_alias_selection", "Remove alias for selection… ({count})", count=len(frozen_tags)), menu)
             remove_alias_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                     lambda: self.bulk_remove_alias(t),
-                    "Alias für Auswahl entfernen",
+                    self.t("tags.action.remove_alias_selection", "Remove alias for selection"),
                 )
             )
             menu.addAction(remove_alias_action)
 
-        similar_action = QAction("Ähnliche Tags suchen/bearbeiten…", menu)
+        similar_action = QAction(self.t("tags.menu.find_similar", "Find/edit similar tags…"), menu)
         similar_action.triggered.connect(
             lambda checked=False, tag=frozen_tags[0]: self.schedule_safe(
                 lambda: self.find_similar_tags_for_bulk_actions(tag),
-                "Ähnliche Tags suchen/bearbeiten",
+                self.t("tags.action.find_similar", "Find/edit similar tags"),
             )
         )
         menu.addAction(similar_action)
 
-        # Alias und manueller Score werden direkt in der Tabelle editiert.
-        # Scoring-/Nutzungsflags bleiben direkt per Zellklick umschaltbar,
-        # sind aber zusätzlich als Bulk-Aktion im Kontextmenü erreichbar.
+        # Alias and manual score are edited directly in the table.
+        # Scoring/usage flags remain directly toggleable by cell click,
+        # but are also available as bulk actions in the context menu.
 
         menu.addSeparator()
 
-        copy_action = QAction("Tag kopieren", menu)
+        copy_action = QAction(self.t("tags.menu.copy_tag", "Copy tag"), menu)
         copy_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.copy_tags_to_clipboard(t),
-                "Tags kopieren",
+                self.t("tags.action.copy_tags", "Copy tags"),
             )
         )
         menu.addAction(copy_action)
 
-        query_action = QAction("Als Suchtext übernehmen", menu)
+        query_action = QAction(self.t("tags.menu.use_as_search", "Use as search text"), menu)
         query_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): self.schedule_safe(
                 lambda: self.set_search_text(t),
-                "Tags als Suchtext übernehmen",
+                self.t("tags.action.use_as_search", "Use tags as search text"),
             )
         )
         menu.addAction(query_action)
@@ -1256,7 +1270,7 @@ class TagTab(QWidget):
 
         # Do not show a QMessageBox here. Modal boxes inside context-menu follow-up actions
         # are a wonderful way to summon Qt ghosts.
-        self.log_message(f"Kategorie aktualisiert: {len(tags)} Tag(s) -> {category_name}/{rule_type}")
+        self.log_message(f"Category updated: {len(tags)} tag(s) -> {category_name}/{rule_type}")
 
     def add_tags_to_filename_exclude(self, tags: list[str]) -> None:
         if not tags:
@@ -1283,10 +1297,10 @@ class TagTab(QWidget):
         self.log_message(f"Filename-Exclude entfernt fuer {len(tags)} Tag(s). Kein automatischer Voll-Reload.")
 
     def add_selected_tags_to_filename_exclude(self) -> None:
-        self.safe(lambda: self.add_tags_to_filename_exclude(self.selected_tags()), "Ausgewählte Tags ausschließen")
+        self.safe(lambda: self.add_tags_to_filename_exclude(self.selected_tags()), self.t("tags.action.exclude_selected", "Exclude selected tags"))
 
     def remove_selected_tags_from_filename_exclude(self) -> None:
-        self.safe(lambda: self.remove_tags_from_filename_exclude(self.selected_tags()), "Ausgewählte Tags aus Ausschluss entfernen")
+        self.safe(lambda: self.remove_tags_from_filename_exclude(self.selected_tags()), self.t("tags.action.remove_selected_exclude", "Remove selected tags from exclude list"))
 
     def edit_alias_for_item(self, item: QTableWidgetItem) -> None:
         if item is None or item.column() != 6:
@@ -1304,8 +1318,8 @@ class TagTab(QWidget):
 
         text, ok = QInputDialog.getText(
             self,
-            "Alias bearbeiten",
-            f"LLM-Alias für Tag '{tag}'\nLeer lassen zum Entfernen:",
+            self.t("tags.alias.edit_title", "Edit alias"),
+            self.t("tags.alias.edit_prompt", "LLM alias for tag '{tag}'\nLeave empty to remove:", tag=tag),
             QLineEdit.Normal,
             current_alias,
         )
@@ -1320,7 +1334,7 @@ class TagTab(QWidget):
         self.log_message(f"db.set_tag_alias: end tag={tag!r}")
 
         self.update_alias_in_visible_rows(tag, alias)
-        self.log_message(f"Alias lokal aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+        self.log_message(f"Alias updated locally for tag={tag!r}. No automatic full reload.")
 
     def current_alias_for_tag(self, tag: str) -> str:
         for row in self.current_rows:
@@ -1336,7 +1350,7 @@ class TagTab(QWidget):
         lines = [f"- {tag}" for tag in visible]
         remaining = len(tags) - len(visible)
         if remaining > 0:
-            lines.append(f"… und {remaining} weitere")
+            lines.append(self.t("tags.preview.more", "… and {count} more", count=remaining))
         return "\n".join(lines)
 
     def confirm_bulk_alias_change(self, title: str, message: str, tags: list[str]) -> bool:
@@ -1344,7 +1358,7 @@ class TagTab(QWidget):
         result = QMessageBox.question(
             self,
             title,
-            f"{message}\n\nBetroffene Tags ({len(tags)}):\n{preview}",
+            self.t("tags.confirm.affected_tags", "{message}\n\nAffected tags ({count}):\n{preview}", message=message, count=len(tags), preview=preview),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -1381,7 +1395,7 @@ class TagTab(QWidget):
 
         self.update_aliases_in_visible_rows(clean_tags, alias.strip())
         self.log_message(
-            f"Alias lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload."
+            f"Alias updated locally for {len(clean_tags)} tag(s). No automatic full reload."
         )
 
     def bulk_set_alias(self, tags: list[str]) -> None:
@@ -1394,8 +1408,8 @@ class TagTab(QWidget):
 
         text, ok = QInputDialog.getText(
             self,
-            "Alias für Auswahl setzen",
-            f"Alias für {len(clean_tags)} ausgewählte Tags:\nLeer lassen entfernt den Alias.",
+            self.t("tags.action.set_alias_selection", "Set alias for selection"),
+            self.t("tags.alias.selection_prompt", "Alias for {count} selected tags:\nLeave empty to remove the alias.", count=len(clean_tags)),
             QLineEdit.Normal,
             default_alias,
         )
@@ -1403,9 +1417,9 @@ class TagTab(QWidget):
             return
 
         alias = text.strip()
-        action_text = "entfernt" if not alias else f"auf '{alias}' gesetzt"
+        action_text = self.t("tags.alias.action_removed", "removed") if not alias else self.t("tags.alias.action_set_to", "set to '{alias}'", alias=alias)
         if not self.confirm_bulk_alias_change(
-            "Alias für Auswahl setzen",
+            self.t("tags.action.set_alias_selection", "Set alias for selection"),
             f"Der Alias wird {action_text}.",
             clean_tags,
         ):
@@ -1419,8 +1433,8 @@ class TagTab(QWidget):
             return
 
         if not self.confirm_bulk_alias_change(
-            "Alias entfernen",
-            "Der Alias wird für diese Tags entfernt.",
+            self.t("tags.alias.remove_title", "Remove alias"),
+            self.t("tags.alias.confirm_remove", "The alias will be removed for these tags."),
             clean_tags,
         ):
             return
@@ -1450,25 +1464,25 @@ class TagTab(QWidget):
     ) -> list[str]:
         lines: list[str] = []
         if alias is not None:
-            lines.append(f"Alias setzen auf: {alias}")
+            lines.append(self.t("tags.bulk.describe.alias", "Set alias to: {alias}", alias=alias))
         if filename_action == SimilarTagsBulkActionDialog.FILENAME_ADD:
-            lines.append("Filename-Ausschluss: aufnehmen")
+            lines.append(self.t("tags.bulk.describe.filename_add", "Filename exclude: add"))
         elif filename_action == SimilarTagsBulkActionDialog.FILENAME_REMOVE:
-            lines.append("Filename-Ausschluss: entfernen")
+            lines.append(self.t("tags.bulk.describe.filename_remove", "Filename exclude: remove"))
         if manual_score is not None:
-            lines.append(f"Manueller Score setzen auf: {manual_score:.3f}".rstrip("0").rstrip("."))
+            lines.append(self.t("tags.bulk.describe.manual_score", "Set manual score to: {score}", score=f"{manual_score:.3f}".rstrip("0").rstrip(".")))
         flag_labels = {
-            "ignore_category_influence": "Kategorie-Hinweis",
-            "ignore_recommendation_score": "Vorauswahl",
-            "ignore_llm_input": "LLM-Eingabe",
+            "ignore_category_influence": self.t("tags.flags.category_hint", "Category hint"),
+            "ignore_recommendation_score": self.t("tags.flags.preselection", "Preselection"),
+            "ignore_llm_input": self.t("tags.flags.llm_input", "LLM input"),
         }
         for key, value in (scoring_flag_actions or {}).items():
             if value is None:
                 continue
             label = flag_labels.get(key, key)
-            lines.append(f"{label}: {'ignorieren' if value else 'wieder nutzen'}")
+            lines.append(self.t("tags.bulk.describe.flag", "{label}: {action}", label=label, action=self.t("tags.action.ignore", "ignore") if value else self.t("tags.action.use_again", "use again")))
         if category_name and category_rule_type:
-            lines.append(f"Kategorie-Regel hinzufügen: {category_name} / {category_rule_type}")
+            lines.append(self.t("tags.bulk.describe.category_rule", "Add category rule: {category} / {rule}", category=category_name, rule=category_rule_type))
         return lines
 
     def confirm_bulk_tag_actions(self, title: str, action_lines: list[str], tags: list[str]) -> bool:
@@ -1477,7 +1491,7 @@ class TagTab(QWidget):
         result = QMessageBox.question(
             self,
             title,
-            f"Diese Aktionen werden übernommen:\n{action_text}\n\nBetroffene Tags ({len(tags)}):\n{preview}",
+            self.t("tags.bulk.confirm_actions", "These actions will be applied:\n{actions}\n\nAffected tags ({count}):\n{preview}", actions=action_text, count=len(tags), preview=preview),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -1511,7 +1525,7 @@ class TagTab(QWidget):
                 self.db.set_tag_manual_score(tag, manual_score)
                 self.log_message(f"db.set_tag_manual_score: end tag={tag!r}")
                 self.update_manual_score_in_visible_rows(tag, manual_score)
-            self.log_message(f"Manueller Score lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload.")
+            self.log_message(f"Manual score updated locally for {len(clean_tags)} tag(s). No automatic full reload.")
 
         if scoring_flag_actions:
             self.set_scoring_flags_for_tags(
@@ -1528,8 +1542,8 @@ class TagTab(QWidget):
         default_pattern = self.suggest_pattern_from_tag(base_tag)
         pattern, ok = QInputDialog.getText(
             self,
-            "Ähnliche Tags suchen",
-            "Suchmuster (* und ? erlaubt):",
+            self.t("tags.similar.search_title", "Find similar tags"),
+            self.t("tags.similar.pattern_prompt", "Search pattern (* and ? allowed):"),
             QLineEdit.Normal,
             default_pattern,
         )
@@ -1549,7 +1563,7 @@ class TagTab(QWidget):
         self.log_message(f"db.search_tags_by_pattern: end rows={len(rows)}")
 
         if not rows:
-            QMessageBox.information(self, "Ähnliche Tags suchen", "Keine passenden Tags gefunden.")
+            QMessageBox.information(self, self.t("tags.similar.search_title", "Find similar tags"), self.t("tags.similar.none_found", "No matching tags found."))
             return
 
         suggested_alias = self.current_alias_for_tag(base_tag) or self.suggest_alias_from_tag(base_tag)
@@ -1564,11 +1578,11 @@ class TagTab(QWidget):
 
         selected = dialog.selected_tags()
         if not selected:
-            QMessageBox.information(self, "Ähnliche Tags bearbeiten", "Keine Tags ausgewählt.")
+            QMessageBox.information(self, self.t("tags.similar.title", "Edit similar tags"), self.t("tags.similar.none_selected", "No tags selected."))
             return
 
         if not dialog.has_any_action():
-            QMessageBox.information(self, "Ähnliche Tags bearbeiten", "Keine Aktion eingetragen.")
+            QMessageBox.information(self, self.t("tags.similar.title", "Edit similar tags"), self.t("tags.similar.no_action", "No action entered."))
             return
 
         category_name, category_rule_type = dialog.category_action()
@@ -1585,7 +1599,7 @@ class TagTab(QWidget):
             category_rule_type,
         )
 
-        if not self.confirm_bulk_tag_actions("Ähnliche Tags bearbeiten", action_lines, selected):
+        if not self.confirm_bulk_tag_actions(self.t("tags.similar.title", "Edit similar tags"), action_lines, selected):
             return
 
         self.apply_bulk_tag_actions(
@@ -1614,8 +1628,8 @@ class TagTab(QWidget):
 
         value, ok = QInputDialog.getDouble(
             self,
-            "Manueller Score",
-            f"Manueller Score für '{tag}' (-10 bis +10):",
+            self.t("tags.manual_score.title", "Manual score"),
+            self.t("tags.manual_score.prompt", "Manual score for '{tag}' (-10 to +10):", tag=tag),
             current_value,
             -10.0,
             10.0,
@@ -1630,7 +1644,7 @@ class TagTab(QWidget):
         self.log_message(f"db.set_tag_manual_score: end tag={tag!r}")
 
         self.update_manual_score_in_visible_rows(tag, value)
-        self.log_message(f"Manueller Score lokal aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+        self.log_message(f"Manual score updated locally for tag={tag!r}. No automatic full reload.")
 
     def copy_tags_to_clipboard(self, tags: list[str]) -> None:
         QGuiApplication.clipboard().setText(" ".join(tags))
