@@ -1148,13 +1148,50 @@ class Database:
         if status not in ALL_ALLOWED_STATUSES:
             raise ValueError(f"Ungültiger Status: {status}")
 
+        scoring_statuses = {"saved", "rejected", "auto_rejected"}
+        old_statuses = self._fetch_statuses_for_posts(clean_ids)
+        needs_tag_statistics_refresh = status in scoring_statuses or any(
+            old_status in scoring_statuses for old_status in old_statuses.values()
+        )
+        affected_tags = self._fetch_tags_for_posts(clean_ids) if needs_tag_statistics_refresh else []
+
         for post_id in clean_ids:
             self._set_post_status_no_commit(post_id, status, config)
 
-        for post_id in clean_ids:
-            self.refresh_tag_statistics_for_post(post_id)
+        # Wichtig fuer den Previewer: Bei 100 markierten Thumbnails darf nicht fuer
+        # jeden Post einzeln dieselbe Tag-Statistik neu aggregiert werden. Das war
+        # technisch korrekt, aber performanceseitig etwa so elegant wie ein
+        # Datenbank-Join mit Betonschuhen. Wir aktualisieren die vereinigte Tagmenge
+        # genau einmal, und nur wenn saved/rejected fuer die Score-Berechnung
+        # ueberhaupt betroffen ist.
+        if affected_tags:
+            self.refresh_tag_statistics_for_tags(affected_tags)
 
         self.commit()
+
+    def _fetch_statuses_for_posts(self, post_ids: list[int]) -> dict[int, str]:
+        clean_ids = [int(post_id) for post_id in post_ids]
+        if not clean_ids:
+            return {}
+
+        placeholders = ", ".join("?" for _ in clean_ids)
+        rows = self.execute(
+            f"SELECT id, status FROM posts WHERE id IN ({placeholders})",
+            clean_ids,
+        ).fetchall()
+        return {int(row["id"]): str(row["status"] or "") for row in rows}
+
+    def _fetch_tags_for_posts(self, post_ids: list[int]) -> list[str]:
+        clean_ids = [int(post_id) for post_id in post_ids]
+        if not clean_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in clean_ids)
+        rows = self.execute(
+            f"SELECT DISTINCT tag FROM post_tags WHERE post_id IN ({placeholders})",
+            clean_ids,
+        ).fetchall()
+        return [str(row["tag"]) for row in rows if str(row["tag"] or "").strip()]
 
     def _set_post_status_no_commit(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
         if status not in ALL_ALLOWED_STATUSES:
