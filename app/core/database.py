@@ -2267,6 +2267,52 @@ class Database:
         )
         self.commit()
 
+    def app_settings_as_values(self) -> dict[str, Any]:
+        """Return app_settings decoded as JSON where possible.
+
+        ConfigTab stores values as JSON. Older helper code may have written raw
+        strings, so decoding has to be forgiving instead of theatrical.
+        """
+        rows = self.execute(
+            """
+            SELECT key, value
+            FROM app_settings
+            """
+        ).fetchall()
+
+        values: dict[str, Any] = {}
+        for row in rows:
+            key = str(row["key"])
+            raw_value = row["value"]
+            try:
+                values[key] = json.loads(raw_value)
+            except Exception:
+                values[key] = raw_value
+        return values
+
+    def apply_app_settings_to_config(self, config: dict[str, Any]) -> None:
+        """Overlay SQLite app_settings onto a runtime config dictionary.
+
+        The database is the leading configuration source once it exists. This is
+        especially important for credentials: GUI saves username/api_key in
+        app_settings and fetch/import workers only receive the runtime dict.
+        """
+        for dotted_key, value in self.app_settings_as_values().items():
+            parts = str(dotted_key).split(".")
+            if not parts:
+                continue
+
+            target: Any = config
+            for part in parts[:-1]:
+                child = target.get(part) if isinstance(target, dict) else None
+                if not isinstance(child, dict):
+                    child = {}
+                    target[part] = child
+                target = child
+
+            if isinstance(target, dict):
+                target[parts[-1]] = value
+
     def save_fetch_preset(self, name: str, payload: dict[str, Any]) -> None:
         clean_name = name.strip()
         if not clean_name:

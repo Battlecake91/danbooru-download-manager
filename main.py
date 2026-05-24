@@ -76,6 +76,13 @@ def main() -> int:
     db.connect()
     db.initialize_schema()
 
+    # SQLite/app_settings is the leading GUI configuration once the database
+    # exists. Apply it before CLI fetch/import style actions and before the GUI
+    # creates API clients. database_file itself cannot be changed here anymore,
+    # because we had to open a database first. Reality, this rude little detail.
+    db.apply_app_settings_to_config(config)
+    ensure_runtime_dirs(config)
+
     if args.init_db:
         logging.info("Datenbank initialisiert: %s", config["database_file"])
 

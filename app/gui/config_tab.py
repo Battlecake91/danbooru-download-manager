@@ -28,6 +28,14 @@ from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
 
 
+SECRET_SETTING_KEYS = {"api_key"}
+SECRET_DISPLAY = "********"
+
+
+def is_secret_setting_key(key: str) -> bool:
+    return key in SECRET_SETTING_KEYS or key.endswith(".api_key") or key.endswith("_api_key")
+
+
 class ConfigTab(QWidget):
     config_changed = Signal()
 
@@ -80,6 +88,16 @@ class ConfigTab(QWidget):
         self.search_tags_edit = QLineEdit(str(config.get("search_tags", "order:id_desc")))
         self.saved_search_extra_tags_edit = QLineEdit(str(config.get("saved_search_extra_tags", "")))
 
+        self.username_edit = QLineEdit(str(config.get("username") or ""))
+        self.username_edit.setPlaceholderText("Danbooru-Username, optional")
+
+        self.api_key_edit = QLineEdit(str(config.get("api_key") or ""))
+        self.api_key_edit.setPlaceholderText("Danbooru API-Key, optional")
+        self.api_key_edit.setEchoMode(QLineEdit.Password)
+
+        self.show_api_key_checkbox = QCheckBox("API-Key anzeigen")
+        self.show_api_key_checkbox.toggled.connect(self.toggle_api_key_visibility)
+
         self.use_saved_searches_checkbox = QCheckBox("Saved Searches verwenden")
         self.use_saved_searches_checkbox.setChecked(bool(config.get("use_saved_searches", False)))
 
@@ -99,6 +117,9 @@ class ConfigTab(QWidget):
         self.max_total_posts_spin.setKeyboardTracking(False)
 
         self.fetch_form.addRow("base_url:", self.base_url_edit)
+        self.fetch_form.addRow("username:", self.username_edit)
+        self.fetch_form.addRow("api_key:", self.api_key_edit)
+        self.fetch_form.addRow("", self.show_api_key_checkbox)
         self.fetch_form.addRow("search_tags:", self.search_tags_edit)
         self.fetch_form.addRow("saved_search_extra_tags:", self.saved_search_extra_tags_edit)
         self.fetch_form.addRow("", self.use_saved_searches_checkbox)
@@ -326,6 +347,9 @@ class ConfigTab(QWidget):
         self.reload_from_runtime()
         self.refresh_raw_settings()
 
+    def toggle_api_key_visibility(self, visible: bool) -> None:
+        self.api_key_edit.setEchoMode(QLineEdit.Normal if visible else QLineEdit.Password)
+
     # -------------------------------------------------------------------------
     # SQL app_settings
     # -------------------------------------------------------------------------
@@ -373,7 +397,9 @@ class ConfigTab(QWidget):
 
         lines: list[str] = []
         for row in rows:
-            lines.append(f"{row['key']} = {row['value']}    ({row['updated_at']})")
+            key = str(row["key"])
+            value = SECRET_DISPLAY if is_secret_setting_key(key) and row["value"] else row["value"]
+            lines.append(f"{key} = {value}    ({row['updated_at']})")
 
         self.raw_text.setPlainText("\n".join(lines))
 
@@ -441,6 +467,8 @@ class ConfigTab(QWidget):
         self.rejected_thumbnail_dir_edit.setText(str(self.runtime_value("rejected_thumbnail_dir", "./danbooru_manager_data/thumbnails/rejected")))
 
         self.base_url_edit.setText(str(self.runtime_value("base_url", "https://danbooru.donmai.us")))
+        self.username_edit.setText(str(self.runtime_value("username", "") or ""))
+        self.api_key_edit.setText(str(self.runtime_value("api_key", "") or ""))
         self.search_tags_edit.setText(str(self.runtime_value("search_tags", "order:id_desc")))
         self.saved_search_extra_tags_edit.setText(str(self.runtime_value("saved_search_extra_tags", "")))
         self.use_saved_searches_checkbox.setChecked(bool(self.runtime_value("use_saved_searches", False)))
@@ -504,6 +532,8 @@ class ConfigTab(QWidget):
             "rejected_thumbnail_dir": self.rejected_thumbnail_dir_edit.text().strip(),
 
             "base_url": self.base_url_edit.text().strip(),
+            "username": self.username_edit.text().strip() or None,
+            "api_key": self.api_key_edit.text().strip() or None,
             "search_tags": self.search_tags_edit.text().strip(),
             "saved_search_extra_tags": self.saved_search_extra_tags_edit.text().strip(),
             "use_saved_searches": self.use_saved_searches_checkbox.isChecked(),
@@ -583,7 +613,16 @@ class ConfigTab(QWidget):
             ORDER BY key ASC
             """
         ).fetchall()
-        app_settings = {str(row["key"]): self._json_value(row["value"]) for row in settings_rows}
+        app_settings: dict[str, Any] = {}
+        for row in settings_rows:
+            key = str(row["key"])
+            if is_secret_setting_key(key):
+                # Do not leak secrets into config exports. The UI stores them in
+                # SQLite, but exports are usually copied around like cursed
+                # confetti.
+                app_settings[key] = SECRET_DISPLAY if row["value"] else None
+            else:
+                app_settings[key] = self._json_value(row["value"])
 
         category_rows = self.db.execute(
             """
@@ -720,8 +759,11 @@ class ConfigTab(QWidget):
                 raise ValueError("app_settings muss ein Objekt sein")
 
             for key, value in settings.items():
-                self.set_setting(str(key), value)
-                self.set_runtime_value(str(key), value)
+                key = str(key)
+                if is_secret_setting_key(key) and value in {SECRET_DISPLAY, "", None}:
+                    continue
+                self.set_setting(key, value)
+                self.set_runtime_value(key, value)
 
             for category in payload.get("categories", []) or []:
                 if not isinstance(category, dict) or not category.get("name"):
