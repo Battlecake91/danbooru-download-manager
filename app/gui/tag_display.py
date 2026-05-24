@@ -229,9 +229,20 @@ class TypedTagListWidget(QWidget):
         return tags
 
     def _refresh_all_lists(self) -> None:
-        for tag_type in ("artist", "copyright", "character", "general", "meta"):
-            self._fill_list(tag_type, self._visible_tags_for_type(tag_type))
-        self._autosize_lists()
+        # Building General/Meta rows can create many small QLabel/QWidget objects.
+        # Freeze repainting while the lists are rebuilt; otherwise Qt gleefully
+        # repaints intermediate states like it is paid by the frame.
+        self.setUpdatesEnabled(False)
+        try:
+            for list_widget in self.lists.values():
+                list_widget.setUpdatesEnabled(False)
+            for tag_type in ("artist", "copyright", "character", "general", "meta"):
+                self._fill_list(tag_type, self._visible_tags_for_type(tag_type))
+            self._autosize_lists()
+        finally:
+            for list_widget in self.lists.values():
+                list_widget.setUpdatesEnabled(True)
+            self.setUpdatesEnabled(True)
 
     def _fill_list(self, tag_type: str, tags: list[str]) -> None:
         list_widget = self.lists[tag_type]

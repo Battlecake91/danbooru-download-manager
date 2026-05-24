@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import OrderedDict
+from concurrent.futures import Future, ThreadPoolExecutor
 import os
 import time
 import webbrowser
@@ -7,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, QRectF, Signal, QTimer
-from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QKeySequence, QPainter, QPixmap, QShortcut
+from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -271,6 +273,13 @@ class ImageViewerWindow(QMainWindow):
         self.post_import_service = PostImportService(config, db)
 
         self.current_pixmap: QPixmap | None = None
+        self._pixmap_cache: OrderedDict[str, QPixmap] = OrderedDict()
+        self._prefetch_image_cache: OrderedDict[str, QImage] = OrderedDict()
+        self._prefetch_futures: dict[str, Future[QImage]] = {}
+        self._prefetch_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="viewer-image-prefetch")
+        self._pixmap_cache_max_items = int((config.get("viewer", {}) or {}).get("pixmap_cache_items", 12) or 12)
+        self._image_prefetch_enabled = bool((config.get("viewer", {}) or {}).get("prefetch_next_image", True))
+        self._image_prefetch_items = int((config.get("viewer", {}) or {}).get("prefetch_next_count", 1) or 1)
         self.current_post_id: int | None = None
         self.shortcuts: list[QShortcut] = []
         self.suggested_category_name: str | None = None
@@ -645,6 +654,7 @@ class ImageViewerWindow(QMainWindow):
             "ensure_image_path",
             "qpixmap_load",
             "refresh_image",
+            "prefetch_schedule",
         ]
         parts = [f"post={post_id}"]
         for key in ordered_keys:
@@ -751,9 +761,9 @@ class ImageViewerWindow(QMainWindow):
         self.perf_add(metrics, "ensure_image_path", started_at)
         if image_path:
             started_at = time.perf_counter()
-            pixmap = QPixmap(str(image_path))
+            pixmap = self.load_pixmap_cached(image_path)
             self.perf_add(metrics, "qpixmap_load", started_at)
-            if not pixmap.isNull():
+            if pixmap is not None and not pixmap.isNull():
                 self.current_pixmap = pixmap
             else:
                 self.current_pixmap = None
@@ -765,6 +775,10 @@ class ImageViewerWindow(QMainWindow):
         started_at = time.perf_counter()
         self.refresh_image()
         self.perf_add(metrics, "refresh_image", started_at)
+
+        started_at = time.perf_counter()
+        self.schedule_next_image_prefetch()
+        self.perf_add(metrics, "prefetch_schedule", started_at)
 
         if metrics is not None:
             metrics["total"] = (time.perf_counter() - total_started_at) * 1000.0
@@ -1070,7 +1084,7 @@ class ImageViewerWindow(QMainWindow):
             f"Durch Filename-Exclude entfernt: {excluded_total}"
         )
 
-    def ensure_image_path(self, post_id: int, row) -> str | None:  # noqa: ANN001
+    def existing_image_path_from_row(self, row) -> str | None:  # noqa: ANN001
         for candidate in (
             row["original_cache_path"],
             row["original_path"],
@@ -1080,8 +1094,116 @@ class ImageViewerWindow(QMainWindow):
         ):
             if candidate and Path(str(candidate)).exists():
                 return str(candidate)
+        return None
+
+    def ensure_image_path(self, post_id: int, row) -> str | None:  # noqa: ANN001
+        existing = self.existing_image_path_from_row(row)
+        if existing:
+            return existing
 
         return self.download_service.ensure_original_cached(post_id)
+
+    @staticmethod
+    def _load_prefetch_image(image_path: str) -> QImage:
+        # QImage is safe to create outside the GUI thread. QPixmap is not, because
+        # Qt apparently enjoys turning simple image loading into a trapdoor.
+        return QImage(image_path)
+
+    def _trim_prefetch_image_cache(self) -> None:
+        max_items = max(1, self._pixmap_cache_max_items)
+        while len(self._prefetch_image_cache) > max_items:
+            self._prefetch_image_cache.popitem(last=False)
+
+    def _store_prefetched_image(self, key: str, future: Future[QImage]) -> None:
+        self._prefetch_futures.pop(key, None)
+        if key in self._pixmap_cache:
+            return
+        try:
+            image = future.result()
+        except Exception:
+            return
+        if image.isNull():
+            return
+        self._prefetch_image_cache[key] = image
+        self._prefetch_image_cache.move_to_end(key)
+        self._trim_prefetch_image_cache()
+
+    def collect_finished_prefetches(self) -> None:
+        for key, future in list(self._prefetch_futures.items()):
+            if future.done():
+                self._store_prefetched_image(key, future)
+
+    def schedule_next_image_prefetch(self) -> None:
+        if not self._image_prefetch_enabled or self._image_prefetch_items <= 0:
+            return
+
+        self.collect_finished_prefetches()
+        scheduled = 0
+        for offset in range(1, self._image_prefetch_items + 1):
+            next_index = self.current_index + offset
+            if next_index >= len(self.post_ids):
+                break
+
+            next_post_id = int(self.post_ids[next_index])
+            row = self.db.get_post_detail(next_post_id)
+            if row is None:
+                continue
+
+            image_path = self.existing_image_path_from_row(row)
+            if not image_path:
+                continue
+
+            key = str(image_path)
+            if key in self._pixmap_cache or key in self._prefetch_image_cache or key in self._prefetch_futures:
+                continue
+
+            future = self._prefetch_executor.submit(self._load_prefetch_image, key)
+            self._prefetch_futures[key] = future
+            scheduled += 1
+
+        if scheduled:
+            self.statusBar().showMessage(f"Bild-Prefetch vorbereitet: {scheduled}", 1200)
+
+
+    def load_pixmap_cached(self, image_path: Path | str) -> QPixmap | None:
+        """Load a pixmap with a tiny LRU cache for back/forward navigation.
+
+        This does not make the first decode of a huge image free. Physics remains
+        rude. But going back to recently viewed posts no longer decodes the same
+        file again, and repeated viewer refreshes avoid disk/decoder work.
+        """
+        key = str(image_path)
+        cached = self._pixmap_cache.get(key)
+        if cached is not None:
+            self._pixmap_cache.move_to_end(key)
+            return cached
+
+        prefetched_image = self._prefetch_image_cache.pop(key, None)
+        if prefetched_image is not None and not prefetched_image.isNull():
+            pixmap = QPixmap.fromImage(prefetched_image)
+        else:
+            future = self._prefetch_futures.get(key)
+            if future is not None and future.done():
+                self._prefetch_futures.pop(key, None)
+                try:
+                    prefetched_image = future.result()
+                except Exception:
+                    prefetched_image = QImage()
+                if prefetched_image is not None and not prefetched_image.isNull():
+                    pixmap = QPixmap.fromImage(prefetched_image)
+                else:
+                    pixmap = QPixmap(key)
+            else:
+                pixmap = QPixmap(key)
+
+        if pixmap.isNull():
+            return pixmap
+
+        self._pixmap_cache[key] = pixmap
+        self._pixmap_cache.move_to_end(key)
+        while len(self._pixmap_cache) > max(1, self._pixmap_cache_max_items):
+            self._pixmap_cache.popitem(last=False)
+        return pixmap
 
     def refresh_image(self) -> None:
         if self.current_pixmap is None:
@@ -1099,6 +1221,13 @@ class ImageViewerWindow(QMainWindow):
         else:
             self.image_label.setPixmap(self.current_pixmap)
             self.image_label.resize(self.current_pixmap.size())
+
+    def closeEvent(self, event) -> None:  # noqa: ANN001
+        try:
+            self._prefetch_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            self._prefetch_executor.shutdown(wait=False)
+        super().closeEvent(event)
 
     def previous_post(self) -> None:
         if self.current_index > 0:
