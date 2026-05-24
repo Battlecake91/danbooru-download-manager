@@ -14,10 +14,13 @@ LOGGER = logging.getLogger(__name__)
 @dataclass
 class FetchResult:
     queries: int = 0
+    processed_queries: int = 0
     seen_posts: int = 0
     inserted_posts: int = 0
     updated_posts: int = 0
     cached_thumbnails: int = 0
+    target_unknown_per_query: int = 0
+    target_unknown_total: int = 0
 
 
 @dataclass
@@ -29,6 +32,8 @@ class FetchProgress:
     planned_total: int = 0
     seen_for_query: int = 0
     planned_for_query: int = 0
+    inserted_for_query: int = 0
+    target_unknown_for_query: int = 0
     inserted_posts: int = 0
     known_posts: int = 0
     cached_thumbnails: int = 0
@@ -59,12 +64,23 @@ class PostImportService:
         if not queries:
             raise RuntimeError("Keine Suchqueries vorhanden")
 
-        result = FetchResult(queries=len(queries))
+        min_unknown_per_query = max(0, int(self.config.get("min_unknown_posts_per_query", 0) or 0))
+        result = FetchResult(
+            queries=len(queries),
+            target_unknown_per_query=min_unknown_per_query,
+            target_unknown_total=len(queries) * min_unknown_per_query,
+        )
 
         max_total_posts = int(self.config.get("max_total_posts", 500))
         max_posts_per_query = int(self.config.get("max_posts_per_query", 200))
         limit = int(self.config.get("limit", 100))
-        planned_total = max(1, min(max_total_posts, len(queries) * max_posts_per_query))
+
+        if min_unknown_per_query > 0:
+            planned_total = max(1, min(max_total_posts, len(queries) * min_unknown_per_query))
+            planned_for_query = min_unknown_per_query
+        else:
+            planned_total = max(1, min(max_total_posts, len(queries) * max_posts_per_query))
+            planned_for_query = max_posts_per_query
 
         total_seen = 0
 
@@ -72,7 +88,8 @@ class PostImportService:
             FetchProgress(
                 query_total=len(queries),
                 planned_total=planned_total,
-                planned_for_query=max_posts_per_query,
+                planned_for_query=planned_for_query,
+                target_unknown_for_query=min_unknown_per_query,
                 phase="start",
             )
         )
@@ -81,9 +98,12 @@ class PostImportService:
             if total_seen >= max_total_posts:
                 break
 
+            result.processed_queries += 1
+
             LOGGER.info("Lade Query %s/%s: %s", query_index, len(queries), query)
             page = None
             seen_for_query = 0
+            inserted_for_query = 0
             self.emit_progress(
                 FetchProgress(
                     query_index=query_index,
@@ -92,7 +112,9 @@ class PostImportService:
                     seen_total=total_seen,
                     planned_total=planned_total,
                     seen_for_query=seen_for_query,
-                    planned_for_query=max_posts_per_query,
+                    planned_for_query=planned_for_query,
+                    inserted_for_query=inserted_for_query,
+                    target_unknown_for_query=min_unknown_per_query,
                     inserted_posts=result.inserted_posts,
                     known_posts=result.updated_posts,
                     cached_thumbnails=result.cached_thumbnails,
@@ -100,13 +122,24 @@ class PostImportService:
                 )
             )
 
-            while seen_for_query < max_posts_per_query and total_seen < max_total_posts:
+            while total_seen < max_total_posts:
+                if min_unknown_per_query > 0:
+                    if inserted_for_query >= min_unknown_per_query:
+                        break
+                elif seen_for_query >= max_posts_per_query:
+                    break
+
                 page_data = self.api.get_posts(query, limit=limit, page=page)
                 if not page_data.posts:
                     break
 
                 for post in page_data.posts:
-                    if seen_for_query >= max_posts_per_query or total_seen >= max_total_posts:
+                    if total_seen >= max_total_posts:
+                        break
+                    if min_unknown_per_query > 0:
+                        if inserted_for_query >= min_unknown_per_query:
+                            break
+                    elif seen_for_query >= max_posts_per_query:
                         break
 
                     post_result = self.store_post(post)
@@ -116,6 +149,7 @@ class PostImportService:
 
                     if post_result == "inserted":
                         result.inserted_posts += 1
+                        inserted_for_query += 1
                     else:
                         result.updated_posts += 1
 
@@ -135,7 +169,9 @@ class PostImportService:
                             seen_total=total_seen,
                             planned_total=planned_total,
                             seen_for_query=seen_for_query,
-                            planned_for_query=max_posts_per_query,
+                            planned_for_query=planned_for_query,
+                            inserted_for_query=inserted_for_query,
+                            target_unknown_for_query=min_unknown_per_query,
                             inserted_posts=result.inserted_posts,
                             known_posts=result.updated_posts,
                             cached_thumbnails=result.cached_thumbnails,
@@ -150,10 +186,12 @@ class PostImportService:
 
         self.emit_progress(
             FetchProgress(
-                query_index=min(len(queries), result.queries),
+                query_index=result.processed_queries,
                 query_total=len(queries),
                 seen_total=total_seen,
                 planned_total=planned_total,
+                planned_for_query=planned_for_query,
+                target_unknown_for_query=min_unknown_per_query,
                 inserted_posts=result.inserted_posts,
                 known_posts=result.updated_posts,
                 cached_thumbnails=result.cached_thumbnails,

@@ -312,7 +312,20 @@ class FetchTab(QWidget):
         self.max_posts_per_query_spin.setRange(1, 100000)
         self.max_posts_per_query_spin.setValue(int(config.get("max_posts_per_query", 200)))
         self.max_posts_per_query_spin.setKeyboardTracking(False)
+        self.max_posts_per_query_spin.setToolTip(
+            "Alter Modus: maximal so viele Posts pro Query prüfen. Wird nur als Query-Limit genutzt, wenn Min unbekannte pro Query = 0 ist."
+        )
         self.options_layout.addRow("Max Posts pro Query:", self.max_posts_per_query_spin)
+
+        self.min_unknown_per_query_spin = QSpinBox()
+        self.min_unknown_per_query_spin.setRange(0, 100000)
+        self.min_unknown_per_query_spin.setValue(int(config.get("min_unknown_posts_per_query", 0) or 0))
+        self.min_unknown_per_query_spin.setKeyboardTracking(False)
+        self.min_unknown_per_query_spin.setToolTip(
+            "0 = deaktiviert. Wenn > 0, wird jede Query weitergeblättert, bis so viele neue/unbekannte Posts gefunden wurden, "
+            "oder Max Posts gesamt bzw. das Ende der Query erreicht ist."
+        )
+        self.options_layout.addRow("Min unbekannte pro Query:", self.min_unknown_per_query_spin)
 
         self.max_total_posts_spin = QSpinBox()
         self.max_total_posts_spin.setRange(1, 100000)
@@ -424,6 +437,7 @@ class FetchTab(QWidget):
             "rating_states": self.rating_states(),
             "limit": int(self.limit_spin.value()),
             "max_posts_per_query": int(self.max_posts_per_query_spin.value()),
+            "min_unknown_posts_per_query": int(self.min_unknown_per_query_spin.value()),
             "max_total_posts": int(self.max_total_posts_spin.value()),
         }
 
@@ -443,6 +457,9 @@ class FetchTab(QWidget):
 
         self.limit_spin.setValue(int(payload.get("limit") or self.config.get("limit", 100)))
         self.max_posts_per_query_spin.setValue(int(payload.get("max_posts_per_query") or self.config.get("max_posts_per_query", 200)))
+        self.min_unknown_per_query_spin.setValue(
+            int(payload.get("min_unknown_posts_per_query") or self.config.get("min_unknown_posts_per_query", 0) or 0)
+        )
         self.max_total_posts_spin.setValue(int(payload.get("max_total_posts") or self.config.get("max_total_posts", 500)))
         self.on_source_mode_changed()
 
@@ -520,6 +537,7 @@ class FetchTab(QWidget):
 
         fetch_config["limit"] = int(self.limit_spin.value())
         fetch_config["max_posts_per_query"] = int(self.max_posts_per_query_spin.value())
+        fetch_config["min_unknown_posts_per_query"] = int(self.min_unknown_per_query_spin.value())
         fetch_config["max_total_posts"] = int(self.max_total_posts_spin.value())
 
         mode = self.selected_source_mode()
@@ -599,34 +617,78 @@ class FetchTab(QWidget):
 
         planned_total = max(1, int(progress.planned_total or 1))
         seen_total = max(0, int(progress.seen_total or 0))
-        self.progress_bar.setRange(0, planned_total)
-        self.progress_bar.setValue(min(seen_total, planned_total))
+        target_unknown = max(0, int(getattr(progress, "target_unknown_for_query", 0) or 0))
+        inserted_total = max(0, int(progress.inserted_posts or 0))
+        inserted_for_query = max(0, int(getattr(progress, "inserted_for_query", 0) or 0))
+
+        if target_unknown > 0:
+            self.progress_bar.setRange(0, planned_total)
+            self.progress_bar.setValue(min(inserted_total, planned_total))
+        else:
+            self.progress_bar.setRange(0, planned_total)
+            self.progress_bar.setValue(min(seen_total, planned_total))
 
         query_index = int(progress.query_index or 0)
         query_total = int(progress.query_total or 0)
         query_text = progress.query.strip()
         query_part = f"Query {query_index}/{query_total}" if query_total else "Query …"
-        post_part = f"Post {seen_total}/{planned_total}"
         known_part = f"Bekannt: {int(progress.known_posts or 0)}"
-        inserted_part = f"Neu: {int(progress.inserted_posts or 0)}"
+        inserted_part = f"Neu: {inserted_total}"
         thumb_part = f"Thumbs: {int(progress.cached_thumbnails or 0)}"
 
-        self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
+        if target_unknown > 0:
+            post_part = f"Unbekannt Query: {inserted_for_query}/{target_unknown}"
+            checked_part = f"Geprüft: {seen_total}"
+            self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
+            detail = f"{query_part} | {post_part} | {checked_part} | {known_part} | {inserted_part} | {thumb_part}"
+        else:
+            post_part = f"Post {seen_total}/{planned_total}"
+            self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
+            detail = f"{query_part} | {post_part} | {known_part} | {inserted_part} | {thumb_part}"
 
-        detail = f"{query_part} | {post_part} | {known_part} | {inserted_part} | {thumb_part}"
         if query_text:
             detail += f" | {query_text[:90]}"
         self.fetch_progress_label.setText(detail)
         self.fetch_progress_label.setToolTip(query_text)
         self.fetch_progress_label.setVisible(True)
 
+    @staticmethod
+    def format_fetch_summary(result: object) -> str:
+        queries = int(getattr(result, "queries", 0) or 0)
+        processed_queries = int(getattr(result, "processed_queries", queries) or 0)
+        seen_posts = int(getattr(result, "seen_posts", 0) or 0)
+        inserted_posts = int(getattr(result, "inserted_posts", 0) or 0)
+        known_posts = int(getattr(result, "updated_posts", 0) or 0)
+        cached_thumbnails = int(getattr(result, "cached_thumbnails", 0) or 0)
+        target_unknown_per_query = int(getattr(result, "target_unknown_per_query", 0) or 0)
+        target_unknown_total = int(getattr(result, "target_unknown_total", 0) or 0)
+
+        if queries:
+            query_line = f"Queries: {processed_queries}/{queries}"
+        else:
+            query_line = "Queries: ?"
+
+        return "\n".join(
+            [
+                "Fetch-Zusammenfassung:",
+                f"  {query_line}",
+                f"  Posts geprüft: {seen_posts}",
+                f"  Neu/unbekannt: {inserted_posts}" + (f" / Ziel {target_unknown_total} ({target_unknown_per_query} pro Query)" if target_unknown_per_query > 0 else ""),
+                f"  Bekannt/aktualisiert: {known_posts}",
+                f"  Thumbnails geladen/aktualisiert: {cached_thumbnails}",
+            ]
+        )
+
     def on_fetch_finished(self, result: object) -> None:
-        self.log_text.append(f"Fetch fertig: {result}")
+        summary = self.format_fetch_summary(result)
+        self.log_text.append(summary)
         self.fetch_button.setEnabled(True)
         self.save_preset_button.setEnabled(True)
         self.delete_preset_button.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.fetch_progress_label.setVisible(False)
+        self.fetch_progress_label.setText(summary.replace("\n", " | "))
+        self.fetch_progress_label.setToolTip(summary)
+        self.fetch_progress_label.setVisible(True)
         self.fetch_finished.emit()
         self.reload_tag_suggestions()
         self.open_preview_requested.emit()
