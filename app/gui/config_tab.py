@@ -70,22 +70,22 @@ PREVIEW_CARD_OPTION_LABELS = {
     "show_id": "ID",
     "show_rating": "Rating",
     "show_score": "Score",
-    "show_parent": "Parent / Child-Hinweis",
+    "show_parent": "Parent / child notice",
     "show_status": "Status",
-    "show_recommendation": "Vorauswahl",
-    "show_category": "Kategorie",
-    "show_path": "Pfad",
-    "show_tags": "Tags anzeigen",
-    "show_tag_general": "General-Tags",
-    "show_tag_character": "Character-Tags",
-    "show_tag_meta": "Meta-Tags",
-    "show_tag_copyright": "Copyright/Serie-Tags",
-    "show_tag_artist": "Artist-Tags",
+    "show_recommendation": "Preselection",
+    "show_category": "Category",
+    "show_path": "Path",
+    "show_tags": "Show tags",
+    "show_tag_general": "General tags",
+    "show_tag_character": "Character tags",
+    "show_tag_meta": "Meta tags",
+    "show_tag_copyright": "Copyright / series tags",
+    "show_tag_artist": "Artist tags",
 }
 
 PREVIEW_TAG_DISPLAY_MODES = [
-    ("raw", "Raw: einfache Tag-Zeile"),
-    ("structured", "Aufgeschlüsselt: Artist / Character / Copyright / …"),
+    ("raw", "Raw: single tag line"),
+    ("structured", "Structured: Artist / Character / Copyright / …"),
 ]
 
 
@@ -96,14 +96,14 @@ def is_secret_setting_key(key: str) -> bool:
 class LLMPayloadDialog(QDialog):
     def __init__(self, payload_text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("LLM-Payload Debug")
+        self.setWindowTitle("LLM payload debug")
         self.resize(900, 650)
 
         layout = QVBoxLayout(self)
 
         info = QLabel(
-            "Debug-Payload: Diese Eingabe wird hier nur angezeigt und nicht gesendet. "
-            "Wenn sie aussieht wie ein JSON-Monster, liegt das daran, dass sie eins ist."
+            "Debug payload: this input is shown here only and is not sent. "
+            "If it looks like a JSON monster, that is because it is one."
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -114,7 +114,7 @@ class LLMPayloadDialog(QDialog):
         layout.addWidget(self.payload_edit, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        copy_button = buttons.addButton("In Zwischenablage kopieren", QDialogButtonBox.ActionRole)
+        copy_button = buttons.addButton("Copy to clipboard", QDialogButtonBox.ActionRole)
         copy_button.clicked.connect(self.copy_payload)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -128,7 +128,7 @@ class LastLLMPayloadsDialog(QDialog):
         super().__init__(parent)
         self.payloads = payloads
         self.summary = summary or {}
-        self.setWindowTitle("Letzte Fetch-LLM-Payloads")
+        self.setWindowTitle("Last fetch LLM payloads")
         self.resize(980, 720)
 
         layout = QVBoxLayout(self)
@@ -161,8 +161,8 @@ class LastLLMPayloadsDialog(QDialog):
         layout.addWidget(self.payload_edit, stretch=1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        copy_current_button = buttons.addButton("Aktuelle Payload kopieren", QDialogButtonBox.ActionRole)
-        copy_all_button = buttons.addButton("Alle Payloads kopieren", QDialogButtonBox.ActionRole)
+        copy_current_button = buttons.addButton("Copy current payload", QDialogButtonBox.ActionRole)
+        copy_all_button = buttons.addButton("Copy all payloads", QDialogButtonBox.ActionRole)
         copy_current_button.clicked.connect(self.copy_current_payload)
         copy_all_button.clicked.connect(self.copy_all_payloads)
         buttons.rejected.connect(self.reject)
@@ -187,11 +187,11 @@ class LastLLMPayloadsDialog(QDialog):
 
     def build_summary_text(self) -> str:
         if not self.summary:
-            return "Keine Batch-Zusammenfassung gespeichert. Nur die Payloads selbst sind vorhanden."
+            return "No batch summary was stored. Only the payloads themselves are available."
         return (
-            f"Eingang: {int(self.summary.get('input_posts', 0) or 0)} Posts · "
-            f"Kandidaten: {int(self.summary.get('candidate_posts', 0) or 0)} · "
-            f"Übersprungen: {int(self.summary.get('skipped_posts', 0) or 0)} · "
+            f"Input: {int(self.summary.get('input_posts', 0) or 0)} posts · "
+            f"Candidates: {int(self.summary.get('candidate_posts', 0) or 0)} · "
+            f"Skipped: {int(self.summary.get('skipped_posts', 0) or 0)} · "
             f"Batches: {int(self.summary.get('batches_total', 0) or 0)} · "
             f"Payloads: {int(self.summary.get('payloads_prepared', 0) or 0)}"
         )
@@ -208,7 +208,7 @@ class LastLLMPayloadsDialog(QDialog):
     def update_payload_view(self, *_args: Any) -> None:
         payload = self.selected_payload()
         if payload is None:
-            self.payload_info.setText("Keine Payload vorhanden.")
+            self.payload_info.setText("No payload available.")
             self.payload_edit.clear()
             return
         post_ids = self.payload_post_ids(payload)
@@ -308,18 +308,18 @@ class ConfigTab(QWidget):
         self.saved_search_extra_tags_edit = QLineEdit(str(config.get("saved_search_extra_tags", "")))
 
         self.username_edit = QLineEdit(str(config.get("username") or ""))
-        self.username_edit.setPlaceholderText("Danbooru-Username, optional")
+        self.username_edit.setPlaceholderText("Danbooru username, optional")
 
         self.api_key_edit = QLineEdit(str(config.get("api_key") or ""))
-        self.api_key_edit.setPlaceholderText("Danbooru API-Key, optional")
+        self.api_key_edit.setPlaceholderText("Danbooru API key, optional")
         self.api_key_edit.setEchoMode(QLineEdit.Password)
 
-        self.show_api_key_checkbox = QCheckBox("API-Key anzeigen")
+        self.show_api_key_checkbox = QCheckBox("Show API key")
         self.show_api_key_checkbox.toggled.connect(self.toggle_api_key_visibility)
 
         self.legacy_saved_searches_label = QLabel(
-            "Saved Searches werden im neuen Workflow ueber Fetch-Presets gesteuert. "
-            "Der alte globale Schalter bleibt intern auf false, damit Presets nicht von einer Altlast ueberschrieben werden."
+            "Saved searches are controlled through fetch presets in the new workflow. "
+            "The old global switch stays internally false so presets are not overwritten by legacy baggage."
         )
         self.legacy_saved_searches_label.setWordWrap(True)
 
@@ -404,12 +404,12 @@ class ConfigTab(QWidget):
 
         self.viewer_default_view_combo = QComboBox()
         for value, label in [
-            ("filtered", "Status-Filter"),
-            ("worklist", "Arbeitsliste"),
-            ("saved", "Gespeichert"),
-            ("rejected", "Aussortiert"),
-            ("known", "Bekannte/importierte"),
-            ("all", "Alle bekannten Posts"),
+            ("filtered", "Status filter"),
+            ("worklist", "Worklist"),
+            ("saved", "Saved"),
+            ("rejected", "Rejected"),
+            ("known", "Known/imported"),
+            ("all", "All known posts"),
         ]:
             self.viewer_default_view_combo.addItem(label, value)
 
@@ -418,14 +418,14 @@ class ConfigTab(QWidget):
         if index >= 0:
             self.viewer_default_view_combo.setCurrentIndex(index)
 
-        self.auto_advance_after_save_checkbox = QCheckBox("Nach finalem Speichern automatisch weiter")
+        self.auto_advance_after_save_checkbox = QCheckBox("Auto-advance after saving")
         self.auto_advance_after_save_checkbox.setChecked(bool(viewer_config.get("auto_advance_after_save", True)))
 
-        self.auto_advance_after_reject_checkbox = QCheckBox("Nach Ablehnen automatisch weiter")
+        self.auto_advance_after_reject_checkbox = QCheckBox("Auto-advance after rejecting")
         self.auto_advance_after_reject_checkbox.setChecked(bool(viewer_config.get("auto_advance_after_reject", True)))
 
         preview_card_config = gui_config.get("preview_card", {}) or {}
-        self.preview_card_group = QGroupBox("Preview-Karten-Inhalte")
+        self.preview_card_group = QGroupBox("Preview card contents")
         self.preview_card_layout = QVBoxLayout(self.preview_card_group)
         self.preview_card_checkboxes: dict[str, QCheckBox] = {}
 
@@ -445,12 +445,12 @@ class ConfigTab(QWidget):
             tag_mode_index = self.preview_tag_display_mode_combo.findData("raw")
         self.preview_tag_display_mode_combo.setCurrentIndex(max(0, tag_mode_index))
         self.preview_tag_display_mode_combo.currentIndexChanged.connect(self.update_thumbnail_preview)
-        self.preview_card_layout.addWidget(QLabel("Tag-Darstellung:"))
+        self.preview_card_layout.addWidget(QLabel("Tag display:"))
         self.preview_card_layout.addWidget(self.preview_tag_display_mode_combo)
 
         tag_hint = QLabel(
-            "Die Tag-Typen wirken nur, wenn 'Tags anzeigen' aktiv ist. "
-            "Das Rating wird in der Karte als ausgeschriebener Danbooru-Wert mit Farbe angezeigt."
+            "Tag types only apply when 'Show tags' is enabled. "
+            "The rating is shown on the card as a full Danbooru value with color."
         )
         tag_hint.setWordWrap(True)
         self.preview_card_layout.addWidget(tag_hint)
@@ -464,7 +464,7 @@ class ConfigTab(QWidget):
         self.preview_left_layout = QFormLayout(self.preview_left_group)
         self.preview_left_layout.addRow("Thumbnail-Preset:", self.thumbnail_preset_combo)
         self.preview_left_layout.addRow("thumbnail_size:", self.thumbnail_size_spin)
-        self.preview_left_layout.addRow("Vorschau:", self.thumbnail_preview_host)
+        self.preview_left_layout.addRow("Preview:", self.thumbnail_preview_host)
         self.preview_left_layout.addRow("", self.thumbnail_preview_text)
 
         self.preview_card_group.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
@@ -482,7 +482,7 @@ class ConfigTab(QWidget):
 
         self.gui_layout.addWidget(self.gui_group)
 
-        self.filename_group = QGroupBox("Dateiname")
+        self.filename_group = QGroupBox("Filename")
         self.filename_form = QFormLayout(self.filename_group)
 
         filename_config = config.get("filename", {}) or {}
@@ -505,14 +505,14 @@ class ConfigTab(QWidget):
         self.filename_hash_length_spin.setKeyboardTracking(False)
 
         self.filename_tag_order_combo = QComboBox()
-        self.filename_tag_order_combo.addItem("Original / bisherige Reihenfolge", False)
-        self.filename_tag_order_combo.addItem("Nach Tag-Scoring priorisieren", True)
+        self.filename_tag_order_combo.addItem("Original / previous order", False)
+        self.filename_tag_order_combo.addItem("Prioritize by tag scoring", True)
         tag_order_index = self.filename_tag_order_combo.findData(bool(filename_config.get("sort_tags_by_average_rating", False)))
         if tag_order_index >= 0:
             self.filename_tag_order_combo.setCurrentIndex(tag_order_index)
 
         filename_help = QLabel(
-            "Platzhalter: %artist%/%artists%, %character%/%characters%, "
+            "Placeholders: %artist%/%artists%, %character%/%characters%, "
             "%copyright%/%series%, %general%, %meta%, %tags%, %postid%/%postID%, %hash%, %ext%"
         )
         filename_help.setWordWrap(True)
@@ -521,31 +521,31 @@ class ConfigTab(QWidget):
         self.filename_form.addRow("tags_count:", self.filename_tags_count_spin)
         self.filename_form.addRow("max_length:", self.filename_max_length_spin)
         self.filename_form.addRow("hash_length:", self.filename_hash_length_spin)
-        self.filename_form.addRow("Tag-Reihenfolge:", self.filename_tag_order_combo)
+        self.filename_form.addRow("Tag order:", self.filename_tag_order_combo)
         self.filename_form.addRow("", filename_help)
 
         self.filename_layout.addWidget(self.filename_group)
 
-        self.scoring_llm_group = QGroupBox("Scoring / LLM-Tag-Privacy")
+        self.scoring_llm_group = QGroupBox("Scoring / LLM tag privacy")
         self.scoring_llm_form = QFormLayout(self.scoring_llm_group)
 
         scoring_config = config.get("scoring", {}) or {}
         llm_config = config.get("llm", {}) or {}
 
-        self.scoring_aliases_checkbox = QCheckBox("Aliase fuer Scoring zusammenfassen")
+        self.scoring_aliases_checkbox = QCheckBox("Merge aliases for scoring")
         self.scoring_aliases_checkbox.setChecked(bool(scoring_config.get("use_aliases_for_scoring", True)))
 
-        self.scoring_ignore_excluded_checkbox = QCheckBox("Scoring-Ausschluesse ignorieren")
+        self.scoring_ignore_excluded_checkbox = QCheckBox("Ignore scoring exclusions")
         self.scoring_ignore_excluded_checkbox.setChecked(bool(scoring_config.get("ignore_scoring_excluded_tags", True)))
 
-        self.llm_enabled_checkbox = QCheckBox("LLM-Integration aktivieren")
+        self.llm_enabled_checkbox = QCheckBox("Enable LLM integration")
         self.llm_enabled_checkbox.setChecked(bool(llm_config.get("enabled", False)))
 
         self.llm_backend_combo = QComboBox()
         for value, label in [
-            ("none", "Kein Anbieter / nur Payload bauen"),
-            ("openai_compatible", "OpenAI-kompatibler Chat-Endpunkt"),
-            ("local", "Lokaler LLM-Endpunkt"),
+            ("none", "No provider / build payload only"),
+            ("openai_compatible", "OpenAI-compatible chat endpoint"),
+            ("local", "Local LLM endpoint"),
         ]:
             self.llm_backend_combo.addItem(label, value)
         backend_index = self.llm_backend_combo.findData(str(llm_config.get("backend", "none")))
@@ -553,20 +553,20 @@ class ConfigTab(QWidget):
             self.llm_backend_combo.setCurrentIndex(backend_index)
 
         self.llm_endpoint_url_edit = QLineEdit(str(llm_config.get("endpoint_url", "") or ""))
-        self.llm_endpoint_url_edit.setPlaceholderText("z. B. http://localhost:11434/... oder OpenAI-kompatibler /chat/completions Endpunkt")
+        self.llm_endpoint_url_edit.setPlaceholderText("e.g. http://localhost:11434/... or an OpenAI-compatible /chat/completions endpoint")
 
         self.llm_model_edit = QLineEdit(str(llm_config.get("model", "") or ""))
-        self.llm_model_edit.setPlaceholderText("Modellname, z. B. lokal konfigurierter Modellbezeichner")
+        self.llm_model_edit.setPlaceholderText("Model name, e.g. a locally configured model identifier")
 
         self.llm_api_key_edit = QLineEdit(str(llm_config.get("api_key", "") or ""))
         self.llm_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self.llm_api_key_edit.setPlaceholderText("Optional: OpenAI/API-Key direkt speichern, z. B. sk-...; bleibt lokal in SQLite")
+        self.llm_api_key_edit.setPlaceholderText("Optional: store OpenAI/API key directly, e.g. sk-...; stays local in SQLite")
         self.llm_api_key_edit.setToolTip(
-            "Optionaler API-Key. Der Key wird maskiert angezeigt und nicht in Logs geschrieben, "
-            "liegt aber lokal in der SQLite-Konfiguration."
+            "Optional API key. The key is masked and not written to logs, "
+            "but it is stored locally in the SQLite configuration."
         )
 
-        self.show_llm_api_key_checkbox = QCheckBox("LLM-API-Key anzeigen")
+        self.show_llm_api_key_checkbox = QCheckBox("Show LLM API key")
         self.show_llm_api_key_checkbox.toggled.connect(self.toggle_llm_api_key_visibility)
 
         self.llm_timeout_spin = QSpinBox()
@@ -575,17 +575,17 @@ class ConfigTab(QWidget):
         self.llm_timeout_spin.setSuffix(" s")
         self.llm_timeout_spin.setKeyboardTracking(False)
 
-        self.llm_run_after_fetch_checkbox = QCheckBox("Nach Fetch als Batch vorsortieren")
+        self.llm_run_after_fetch_checkbox = QCheckBox("Preselect as batch after fetch")
         self.llm_run_after_fetch_checkbox.setChecked(bool(llm_config.get("run_after_fetch", False)))
         self.llm_run_after_fetch_checkbox.setToolTip(
-            "Wenn aktiv, werden nach einem Fetch alle neuen passenden Posts in LLM-Batches vorbereitet oder bewertet."
+            "When enabled, all new matching posts are prepared or scored in LLM batches after a fetch."
         )
 
-        self.llm_skip_scored_checkbox = QCheckBox("Bereits LLM-bewertete Posts überspringen")
+        self.llm_skip_scored_checkbox = QCheckBox("Skip posts already scored by the LLM")
         self.llm_skip_scored_checkbox.setChecked(bool(llm_config.get("skip_already_scored", True)))
         self.llm_skip_scored_checkbox.setToolTip(
-            "Verhindert, dass schon bewertete Posts beim nächsten Fetch erneut an die LLM gehen. "
-            "Sehr großzügig von uns gegenüber API-Kosten."
+            "Prevents already scored posts from being sent to the LLM again on the next fetch. "
+            "Generous of us toward API costs, somehow."
         )
 
         self.llm_max_posts_spin = QSpinBox()
@@ -598,7 +598,7 @@ class ConfigTab(QWidget):
         self.llm_max_tags_spin.setValue(int(llm_config.get("max_tags_per_post", 80)))
         self.llm_max_tags_spin.setKeyboardTracking(False)
 
-        self.llm_include_preference_context_checkbox = QCheckBox("Bisherige Bewertungen als Preference-Context mitsenden")
+        self.llm_include_preference_context_checkbox = QCheckBox("Send previous ratings as preference context")
         self.llm_include_preference_context_checkbox.setChecked(bool(llm_config.get("include_preference_context", True)))
 
         self.llm_max_preference_tags_spin = QSpinBox()
@@ -628,14 +628,14 @@ class ConfigTab(QWidget):
 
         self.llm_system_prompt_edit = QTextEdit()
         self.llm_system_prompt_edit.setPlainText(str(llm_config.get("system_prompt", "") or ""))
-        self.llm_system_prompt_edit.setPlaceholderText("Leer lassen fuer Standard-Prompt. Erwartet wird eine kurze JSON-Entscheidung pro Post.")
+        self.llm_system_prompt_edit.setPlaceholderText("Leave empty for the default prompt. Expects a short JSON decision per post.")
         self.llm_system_prompt_edit.setMinimumHeight(90)
 
         self.llm_tag_export_mode_combo = QComboBox()
         for value, label in [
-            ("original", "Original-Tags (Klartext)"),
-            ("alias", "Alias/Canonical-Tags (Klartext, gruppiert)"),
-            ("hashed_alias", "Gehashte Alias-Tags (Privacy-Modus)"),
+            ("original", "Original tags (plain text)"),
+            ("alias", "Alias/canonical tags (plain text, grouped)"),
+            ("hashed_alias", "Hashed alias tags (privacy mode)"),
         ]:
             self.llm_tag_export_mode_combo.addItem(label, value)
         mode_index = self.llm_tag_export_mode_combo.findData(str(llm_config.get("tag_export_mode", "hashed_alias")))
@@ -651,8 +651,8 @@ class ConfigTab(QWidget):
 
         self.llm_category_export_mode_combo = QComboBox()
         for value, label in [
-            ("hashed", "Gehashte Kategorien (Privacy-Modus)"),
-            ("original", "Original-Kategorien (Klartext)"),
+            ("hashed", "Hashed categories (privacy mode)"),
+            ("original", "Original categories (plain text)"),
         ]:
             self.llm_category_export_mode_combo.addItem(label, value)
         category_mode_index = self.llm_category_export_mode_combo.findData(str(llm_config.get("category_export_mode", "hashed")))
@@ -666,18 +666,18 @@ class ConfigTab(QWidget):
         self.llm_category_hash_length_spin.setValue(int(llm_config.get("category_hash_length", llm_config.get("hash_length", 12))))
         self.llm_category_hash_length_spin.setKeyboardTracking(False)
 
-        self.llm_include_category_legend_checkbox = QCheckBox("Kategorie-Legende an LLM mitsenden (weniger privat)")
+        self.llm_include_category_legend_checkbox = QCheckBox("Send category legend to LLM (less private)")
         self.llm_include_category_legend_checkbox.setChecked(bool(llm_config.get("include_category_legend", False)))
 
-        self.llm_include_legend_checkbox = QCheckBox("Tag-Legende an LLM mitsenden (weniger privat)")
+        self.llm_include_legend_checkbox = QCheckBox("Send tag legend to LLM (less private)")
         self.llm_include_legend_checkbox.setChecked(bool(llm_config.get("include_tag_legend", False)))
 
         llm_help = QLabel(
-            "LLM-Debug ist hier in der Konfiguration gesammelt: Beispiel-Payload und letzte Fetch-Payloads. "
-            "Gesendet wird je nach Backend automatisch nach dem Fetch. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
-            "Kategorien werden separat anonymisiert und vor dem Speichern wieder zurueckgemappt. "
-            "API-Keys werden direkt lokal in SQLite gespeichert. "
-            "Der Salt bleibt lokal in app_settings. Hashes sind Pseudonymisierung, kein magischer Tarnumhang."
+            "LLM debug tools are collected here: sample payload and last fetch payloads. "
+            "Depending on the backend, payloads are sent automatically after fetching. Flow: original tag -> alias/canonical -> optional salted hash. "
+            "Categories are anonymized separately and mapped back before saving. "
+            "API keys are stored directly and locally in SQLite. "
+            "The salt stays local in app_settings. Hashes are pseudonymization, not a magic invisibility cloak."
         )
         llm_help.setWordWrap(True)
 
@@ -686,42 +686,42 @@ class ConfigTab(QWidget):
         self.scoring_llm_form.addRow("LLM:", self.llm_enabled_checkbox)
         self.scoring_llm_form.addRow("Backend:", self.llm_backend_combo)
         self.scoring_llm_form.addRow("Endpoint:", self.llm_endpoint_url_edit)
-        self.scoring_llm_form.addRow("Modell:", self.llm_model_edit)
+        self.scoring_llm_form.addRow("Model:", self.llm_model_edit)
         self.scoring_llm_form.addRow("API-Key:", self.llm_api_key_edit)
         self.scoring_llm_form.addRow("", self.show_llm_api_key_checkbox)
         self.scoring_llm_form.addRow("Timeout:", self.llm_timeout_spin)
-        self.scoring_llm_form.addRow("Nach Fetch:", self.llm_run_after_fetch_checkbox)
+        self.scoring_llm_form.addRow("After fetch:", self.llm_run_after_fetch_checkbox)
         self.scoring_llm_form.addRow("", self.llm_skip_scored_checkbox)
         self.scoring_llm_form.addRow("Posts/Request:", self.llm_max_posts_spin)
         self.scoring_llm_form.addRow("Tags/Post:", self.llm_max_tags_spin)
-        self.scoring_llm_form.addRow("Preference-Kontext:", self.llm_include_preference_context_checkbox)
-        self.scoring_llm_form.addRow("Praeferenz-Tags:", self.llm_max_preference_tags_spin)
-        self.scoring_llm_form.addRow("Positive Beispiele:", self.llm_max_positive_examples_spin)
-        self.scoring_llm_form.addRow("Negative Beispiele:", self.llm_max_negative_examples_spin)
-        self.scoring_llm_form.addRow("Beispiele/Kategorie:", self.llm_max_category_examples_spin)
-        self.scoring_llm_form.addRow("Tags/Beispiel:", self.llm_max_example_tags_spin)
+        self.scoring_llm_form.addRow("Preference context:", self.llm_include_preference_context_checkbox)
+        self.scoring_llm_form.addRow("Preference tags:", self.llm_max_preference_tags_spin)
+        self.scoring_llm_form.addRow("Positive examples:", self.llm_max_positive_examples_spin)
+        self.scoring_llm_form.addRow("Negative examples:", self.llm_max_negative_examples_spin)
+        self.scoring_llm_form.addRow("Examples/category:", self.llm_max_category_examples_spin)
+        self.scoring_llm_form.addRow("Tags/example:", self.llm_max_example_tags_spin)
         self.scoring_llm_form.addRow("System-Prompt:", self.llm_system_prompt_edit)
         self.scoring_llm_form.addRow("LLM-Export:", self.llm_tag_export_mode_combo)
         self.scoring_llm_form.addRow("Hash-Prefix:", self.llm_hash_prefix_edit)
-        self.scoring_llm_form.addRow("Hash-Laenge:", self.llm_hash_length_spin)
-        self.scoring_llm_form.addRow("Kategorie-Export:", self.llm_category_export_mode_combo)
-        self.scoring_llm_form.addRow("Kategorie-Prefix:", self.llm_category_hash_prefix_edit)
-        self.scoring_llm_form.addRow("Kategorie-Hash-Laenge:", self.llm_category_hash_length_spin)
+        self.scoring_llm_form.addRow("Hash length:", self.llm_hash_length_spin)
+        self.scoring_llm_form.addRow("Category export:", self.llm_category_export_mode_combo)
+        self.scoring_llm_form.addRow("Category prefix:", self.llm_category_hash_prefix_edit)
+        self.scoring_llm_form.addRow("Category hash length:", self.llm_category_hash_length_spin)
         self.scoring_llm_form.addRow("", self.llm_include_category_legend_checkbox)
         self.scoring_llm_form.addRow("", self.llm_include_legend_checkbox)
 
         self.llm_debug_buttons_row = QHBoxLayout()
-        self.llm_sample_payload_button = QPushButton("LLM-Payload Beispielpost")
-        self.llm_sample_payload_button.setToolTip("Erzeugt eine Debug-Payload für die GUI-Vorschau-Beispielpost-ID. Es wird nichts gesendet.")
+        self.llm_sample_payload_button = QPushButton("LLM payload sample post")
+        self.llm_sample_payload_button.setToolTip("Builds a debug payload for the GUI preview sample post ID. Nothing is sent.")
         self.llm_sample_payload_button.clicked.connect(self.show_llm_payload_for_sample_post)
         self.llm_debug_buttons_row.addWidget(self.llm_sample_payload_button)
 
-        self.last_llm_payloads_button = QPushButton("Letzte Fetch-LLM-Payloads")
-        self.last_llm_payloads_button.setToolTip("Zeigt die zuletzt nach einem Fetch vorbereiteten LLM-Batch-Payloads samt Post-IDs.")
+        self.last_llm_payloads_button = QPushButton("Last fetch LLM payloads")
+        self.last_llm_payloads_button.setToolTip("Shows the LLM batch payloads most recently prepared after a fetch, including post IDs.")
         self.last_llm_payloads_button.clicked.connect(self.show_last_fetch_llm_payloads)
         self.llm_debug_buttons_row.addWidget(self.last_llm_payloads_button)
         self.llm_debug_buttons_row.addStretch(1)
-        self.scoring_llm_form.addRow("LLM-Debug:", self.llm_debug_buttons_row)
+        self.scoring_llm_form.addRow("LLM debug:", self.llm_debug_buttons_row)
         self.scoring_llm_form.addRow("", llm_help)
 
         self.scoring_layout.addWidget(self.scoring_llm_group)
@@ -745,7 +745,7 @@ class ConfigTab(QWidget):
 
         self.basis_layout.addWidget(self.workflow_group)
 
-        self.preview_sample_group = QGroupBox("GUI-Vorschau Beispielpost")
+        self.preview_sample_group = QGroupBox("GUI preview sample post")
         self.preview_sample_form = QFormLayout(self.preview_sample_group)
 
         self.preview_sample_post_id_spin = QSpinBox()
@@ -754,15 +754,15 @@ class ConfigTab(QWidget):
         self.preview_sample_post_id_spin.setKeyboardTracking(False)
         self.preview_sample_post_id_spin.valueChanged.connect(self.on_preview_sample_post_id_changed)
 
-        self.preview_sample_fetch_button = QPushButton("Beispielpost laden/aktualisieren")
+        self.preview_sample_fetch_button = QPushButton("Load/update sample post")
         self.preview_sample_fetch_button.clicked.connect(self.fetch_preview_sample_post)
 
         self.preview_sample_status_label = QLabel(
-            "Der Beispielpost wird nur auf Knopfdruck von Danbooru geladen und danach lokal aus der DB/Thumbnail-Datei angezeigt."
+            "The sample post is fetched from Danbooru only when you press the button and is then shown locally from the DB/thumbnail file."
         )
         self.preview_sample_status_label.setWordWrap(True)
 
-        self.preview_sample_form.addRow("Danbooru Post-ID:", self.preview_sample_post_id_spin)
+        self.preview_sample_form.addRow("Danbooru post ID:", self.preview_sample_post_id_spin)
         self.preview_sample_form.addRow("", self.preview_sample_fetch_button)
         self.preview_sample_form.addRow("", self.preview_sample_status_label)
         self.custom_layout.addWidget(self.preview_sample_group)
@@ -871,10 +871,11 @@ class ConfigTab(QWidget):
             preview_card_config["tag_display_mode"] = self.preview_tag_display_mode_from_form()
             preview_config.setdefault("gui", {})["preview_card"] = preview_card_config
 
-            # Nicht direkt ThumbnailCard einbetten: Im echten Previewer sitzt die Karte
-            # in ThumbnailGrid/QScrollArea. Genau dieser Kontext beeinflusst Hintergrund,
-            # Breite, Scroll-Verhalten und damit das sichtbare Layout. Direktes Einbetten
-            # sah ähnlich aus, war aber genau die Art UI-Lüge, die später Ärger macht.
+            # Do not embed ThumbnailCard directly: in the real previewer the card sits
+            # inside ThumbnailGrid/QScrollArea. That context affects background,
+            # width, scrolling behavior, and therefore the visible layout. Direct
+            # embedding looked similar, but it was exactly the kind of UI lie that
+            # causes trouble later.
             grid = ThumbnailGrid(self.db, preview_config)
             grid.setFocusPolicy(Qt.NoFocus)
             grid.setMinimumWidth(card_width + 40)
@@ -885,13 +886,13 @@ class ConfigTab(QWidget):
             self.thumbnail_preview_card = grid
             self.thumbnail_preview_host_layout.addWidget(grid, alignment=Qt.AlignLeft)
             self.thumbnail_preview_text.setText(
-                f"Echte Preview-Ansicht mit ThumbnailGrid: Thumbnail {size}px, "
-                f"Kartenbreite ca. {card_width}px. Beispielpost: {post_id}."
+                f"Real preview view using ThumbnailGrid: thumbnail {size}px, "
+                f"card width approx. {card_width}px. Sample post: {post_id}."
             )
         else:
             placeholder = QLabel(
-                f"Kein lokaler Beispielpost für ID {post_id}.\n"
-                "In Custom (Expert) laden/aktualisieren."
+                f"No local sample post for ID {post_id}.\n"
+                "Load/update it in Custom (Expert)."
             )
             placeholder.setAlignment(Qt.AlignCenter)
             placeholder.setMinimumSize(min(max(260, card_width), 760), 180)
@@ -908,8 +909,8 @@ class ConfigTab(QWidget):
             self.thumbnail_preview_card = placeholder
             self.thumbnail_preview_host_layout.addWidget(placeholder, alignment=Qt.AlignLeft)
             self.thumbnail_preview_text.setText(
-                f"Preview-Karte noch nicht lokal geladen. Ziel: Thumbnail {size}px, "
-                f"Kartenbreite ca. {card_width}px."
+                f"Preview card not loaded locally yet. Target: thumbnail {size}px, "
+                f"card width approx. {card_width}px."
             )
 
     def _clear_thumbnail_preview_card(self) -> None:
@@ -937,10 +938,10 @@ class ConfigTab(QWidget):
     def fetch_preview_sample_post(self) -> None:
         post_id = self._current_preview_sample_post_id()
         self.preview_sample_fetch_button.setEnabled(False)
-        self.preview_sample_status_label.setText(f"Lade Beispielpost {post_id}…")
+        self.preview_sample_status_label.setText(f"Loading sample post {post_id}…")
         try:
             fetch_config = copy.deepcopy(self.config)
-            # Aktuelle Formularwerte nutzen, auch wenn sie noch nicht gespeichert sind.
+            # Use current form values even if they have not been saved yet.
             for key, value in self.collect_values().items():
                 self._set_nested_value(fetch_config, key, value)
 
@@ -956,12 +957,12 @@ class ConfigTab(QWidget):
             self.db.commit()
             self.refresh_raw_settings()
             self.preview_sample_status_label.setText(
-                f"Beispielpost {post_id} geladen. Thumbnail: {thumbnail_path or 'nicht verfügbar'}"
+                f"Sample post {post_id} loaded. Thumbnail: {thumbnail_path or 'not available'}"
             )
             self.update_thumbnail_preview()
         except Exception as exc:
-            self.preview_sample_status_label.setText(f"Fehler beim Laden von Beispielpost {post_id}: {exc}")
-            QMessageBox.critical(self, "Beispielpost laden", str(exc))
+            self.preview_sample_status_label.setText(f"Error loading sample post {post_id}: {exc}")
+            QMessageBox.critical(self, "Load sample post", str(exc))
         finally:
             self.preview_sample_fetch_button.setEnabled(True)
 
@@ -1034,8 +1035,8 @@ class ConfigTab(QWidget):
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "LLM-Payload Beispielpost",
-                f"Payload fuer Post {post_id} konnte nicht erzeugt werden:\n{exc}",
+                "LLM payload sample post",
+                f"Payload for post {post_id} could not be built:\n{exc}",
             )
             return
 
@@ -1064,17 +1065,17 @@ class ConfigTab(QWidget):
         if not payloads:
             if summary:
                 info = (
-                    f"Eingang: {int(summary.get('input_posts', 0) or 0)} Posts\n"
-                    f"Kandidaten: {int(summary.get('candidate_posts', 0) or 0)}\n"
-                    f"Uebersprungen: {int(summary.get('skipped_posts', 0) or 0)}\n"
+                    f"Input: {int(summary.get('input_posts', 0) or 0)} posts\n"
+                    f"Candidates: {int(summary.get('candidate_posts', 0) or 0)}\n"
+                    f"Skipped: {int(summary.get('skipped_posts', 0) or 0)}\n"
                     f"Batches: {int(summary.get('batches_total', 0) or 0)}\n"
                     f"Payloads: {int(summary.get('payloads_prepared', 0) or 0)}"
                 )
                 reason = str(summary.get("skipped_reason", "") or "")
                 if reason:
-                    info += f"\n\nHinweis: {reason}"
+                    info += f"\n\nNote: {reason}"
             else:
-                info = "Es sind keine Fetch-LLM-Payloads gespeichert. Starte einen Fetch mit aktivierter LLM-Batch-Vorbereitung."
+                info = "No fetch LLM payloads are stored. Start a fetch with LLM batch preparation enabled."
             QMessageBox.information(self, "Letzte LLM-Payloads", info)
             return
 
@@ -1517,9 +1518,9 @@ class ConfigTab(QWidget):
         default_name = f"danbooru_downloader_config_export_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
         file_name, _ = QFileDialog.getSaveFileName(
             self,
-            "Konfiguration exportieren",
+            "Export configuration",
             default_name,
-            "JSON (*.json);;Alle Dateien (*)",
+            "JSON (*.json);;All files (*)",
         )
         if not file_name:
             return
@@ -1528,27 +1529,27 @@ class ConfigTab(QWidget):
             payload = self._export_payload()
             Path(file_name).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as exc:
-            QMessageBox.critical(self, "Konfiguration exportieren", str(exc))
+            QMessageBox.critical(self, "Export configuration", str(exc))
             return
 
-        QMessageBox.information(self, "Konfiguration exportiert", f"Export gespeichert:\n{file_name}")
+        QMessageBox.information(self, "Configuration exported", f"Export saved:\n{file_name}")
 
     def import_configuration(self) -> None:
         file_name, _ = QFileDialog.getOpenFileName(
             self,
-            "Konfiguration importieren",
+            "Import configuration",
             "",
-            "JSON (*.json);;Alle Dateien (*)",
+            "JSON (*.json);;All files (*)",
         )
         if not file_name:
             return
 
         answer = QMessageBox.question(
             self,
-            "Konfiguration importieren",
-            "Die Konfiguration aus der JSON-Datei wird in die SQLite-Konfiguration übernommen.\n"
-            "Kategorien, Filename-Ausschlüsse, Aliase und manuelle Tag-Gewichtungen werden ergänzt/aktualisiert, nicht gelöscht.\n\n"
-            "Import starten?",
+            "Import configuration",
+            "The configuration from the JSON file will be imported into the SQLite configuration.\n"
+            "Categories, filename exclusions, aliases, and manual tag weights are added/updated, not deleted.\n\n"
+            "Start import?",
         )
         if answer != QMessageBox.Yes:
             return
@@ -1559,7 +1560,7 @@ class ConfigTab(QWidget):
             if isinstance(settings, list):
                 settings = {str(item.get("key")): item.get("value") for item in settings if isinstance(item, dict) and item.get("key")}
             if not isinstance(settings, dict):
-                raise ValueError("app_settings muss ein Objekt sein")
+                raise ValueError("app_settings must be an object")
 
             for key, value in settings.items():
                 key = str(key)
@@ -1610,18 +1611,18 @@ class ConfigTab(QWidget):
             self.reload_from_sql()
             self.config_changed.emit()
         except Exception as exc:
-            QMessageBox.critical(self, "Konfiguration importieren", str(exc))
+            QMessageBox.critical(self, "Import configuration", str(exc))
             return
 
-        QMessageBox.information(self, "Konfiguration importiert", "Import abgeschlossen.")
+        QMessageBox.information(self, "Configuration imported", "Import completed.")
 
     def reset_sql_config_to_defaults(self) -> None:
         answer = QMessageBox.warning(
             self,
-            "SQLite-Konfiguration auf Defaults",
-            "Die Werte in app_settings werden gelöscht und aus den internen Defaults neu geschrieben.\n"
-            "Kategorien, Tags, Aliase, Gewichtungen, Posts und Downloads bleiben erhalten.\n\n"
-            "Das ist also kein Datenbank-Nuklearangriff, nur Konfig-Putzdienst. Fortfahren?",
+            "Reset SQLite configuration to defaults",
+            "Values in app_settings will be deleted and recreated from the internal defaults.\n"
+            "Categories, tags, aliases, weights, posts, and downloads stay intact.\n\n"
+            "So this is not a database nuclear strike, just configuration housekeeping. Continue?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -1631,7 +1632,7 @@ class ConfigTab(QWidget):
         try:
             self.db.execute("DELETE FROM app_settings")
             default_settings = flatten_config(DEFAULT_CONFIG)
-            # categories wird in eigenen Tabellen verwaltet; leere Defaults sollen vorhandene Kategorien nicht vernichten.
+            # categories are managed in their own tables; empty defaults must not destroy existing categories.
             default_settings.pop("categories", None)
             for key, value in default_settings.items():
                 self.set_setting(key, value)
@@ -1640,12 +1641,12 @@ class ConfigTab(QWidget):
             self.reload_from_sql()
             self.config_changed.emit()
         except Exception as exc:
-            QMessageBox.critical(self, "Defaults wiederherstellen", str(exc))
+            QMessageBox.critical(self, "Restore defaults", str(exc))
             return
 
         QMessageBox.information(
             self,
-            "Defaults wiederhergestellt",
-            "SQLite-Konfiguration wurde auf interne Defaults zurückgesetzt.\n"
-            "Einige Pfade wirken erst nach einem Neustart vollständig.",
+            "Defaults restored",
+            "SQLite configuration was reset to internal defaults.\n"
+            "Some paths only take full effect after restarting.",
         )
