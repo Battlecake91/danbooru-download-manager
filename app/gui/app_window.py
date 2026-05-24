@@ -32,6 +32,7 @@ class AppWindow(QMainWindow):
         self.tag_tab: QWidget | None = None
         self.category_tab: QWidget | None = None
         self.config_tab: QWidget | None = None
+        self.maintenance_tab: QWidget | None = None
 
         self._tab_widgets: dict[str, QWidget] = {}
         self._tab_indices: dict[str, int] = {}
@@ -69,6 +70,7 @@ class AppWindow(QMainWindow):
         self._add_lazy_tab("tags", "Tags")
         self._add_lazy_tab("categories", "Kategorien")
         self._add_lazy_tab("config", "Konfiguration")
+        self._ensure_maintenance_tab_registered()
 
         self.tabs.currentChanged.connect(self.on_tab_changed)
         self._startup_log("AppWindow: shown-ready")
@@ -109,10 +111,18 @@ class AppWindow(QMainWindow):
         QApplication.processEvents()
 
     def _add_lazy_tab(self, key: str, title: str) -> None:
+        if key in self._tab_widgets:
+            return
         placeholder = self._make_placeholder(title)
         index = self.tabs.addTab(placeholder, title)
         self._tab_widgets[key] = placeholder
         self._tab_indices[key] = index
+
+    def _ensure_maintenance_tab_registered(self) -> None:
+        """Add the maintenance tab if an older patched window missed it."""
+        if "maintenance" in self._tab_widgets:
+            return
+        self._add_lazy_tab("maintenance", "Wartung / DB")
 
     def _ensure_tab(self, key: str) -> QWidget:
         existing = self._tab_widgets.get(key)
@@ -125,6 +135,7 @@ class AppWindow(QMainWindow):
             "tags": self._create_tag_tab,
             "categories": self._create_category_tab,
             "config": self._create_config_tab,
+            "maintenance": self._create_maintenance_tab,
         }
         factory = factories.get(key)
         if factory is None:
@@ -160,9 +171,11 @@ class AppWindow(QMainWindow):
             or (key == "tags" and self.tag_tab is None)
             or (key == "categories" and self.category_tab is None)
             or (key == "config" and self.config_tab is None)
+            or (key == "maintenance" and self.maintenance_tab is None)
         )
 
     def _rebuild_tab_indices(self) -> None:
+        self._ensure_maintenance_tab_registered()
         for key, widget in list(self._tab_widgets.items()):
             index = self.tabs.indexOf(widget)
             if index >= 0:
@@ -208,6 +221,13 @@ class AppWindow(QMainWindow):
         widget = ConfigTab(self.config, self.db)
         widget.config_changed.connect(self.on_config_changed)
         self.config_tab = widget
+        return widget
+
+    def _create_maintenance_tab(self) -> QWidget:
+        from app.gui.maintenance_tab import MaintenanceTab
+
+        widget = MaintenanceTab(self.config, self.db)
+        self.maintenance_tab = widget
         return widget
 
     def on_tab_changed(self, index: int) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -43,7 +45,7 @@ class QualityAuditRow:
 class MaintenanceTab(QWidget):
     """Temporäre Werkbank für einmalige Reparaturen.
 
-    Das Ding ist absichtlich nicht hübsch. Es soll falsche finale Dateien finden,
+    Das Ding ist absichtlich nicht hübsch. Es soll falsche lokale Dateien finden,
     nicht im Museum für GUI-Design ausgestellt werden.
     """
 
@@ -67,8 +69,41 @@ class MaintenanceTab(QWidget):
 
         layout = QVBoxLayout(self)
 
+        self.db_info_label = QLabel(
+            "Datenbank-Wartung: analysiert Tabellen/Indizes, app_settings, WAL-Dateien "
+            "und kann LLM-Debug-Payloads löschen. VACUUM kann je nach DB-Größe kurz dauern, "
+            "weil SQLite dann einmal tief durchatmet und die Möbel neu stellt."
+        )
+        self.db_info_label.setWordWrap(True)
+        layout.addWidget(self.db_info_label)
+
+        db_controls = QHBoxLayout()
+        self.analyze_db_button = QPushButton("Datenbankgröße analysieren")
+        self.analyze_db_button.clicked.connect(self.analyze_database_size)
+        db_controls.addWidget(self.analyze_db_button)
+
+        self.clear_llm_payloads_button = QPushButton("LLM-Debug-Payloads löschen")
+        self.clear_llm_payloads_button.clicked.connect(self.clear_llm_debug_payloads)
+        db_controls.addWidget(self.clear_llm_payloads_button)
+
+        self.checkpoint_wal_button = QPushButton("WAL komprimieren")
+        self.checkpoint_wal_button.clicked.connect(self.checkpoint_wal)
+        db_controls.addWidget(self.checkpoint_wal_button)
+
+        self.vacuum_button = QPushButton("VACUUM ausführen")
+        self.vacuum_button.clicked.connect(self.vacuum_database)
+        db_controls.addWidget(self.vacuum_button)
+        db_controls.addStretch(1)
+        layout.addLayout(db_controls)
+
+        self.db_result_text = QPlainTextEdit()
+        self.db_result_text.setReadOnly(True)
+        self.db_result_text.setMinimumHeight(180)
+        self.db_result_text.setPlainText("Noch keine Datenbankanalyse ausgeführt.")
+        layout.addWidget(self.db_result_text)
+
         self.info_label = QLabel(
-            "Temporäre Prüfung: findet final gespeicherte Dateien, die kleiner als die "
+            "Temporäre Prüfung: findet lokal gespeicherte Dateien, die kleiner als die "
             "Danbooru-Originalauflösung sind. Fehlende Originalmaße können direkt von "
             "Danbooru nachgeladen werden. Später darf dieser Tab wieder rausfliegen, "
             "wie ein hässliches Gerüst nach der Renovierung."
@@ -108,6 +143,81 @@ class MaintenanceTab(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.doubleClicked.connect(self.open_selected_file)
         layout.addWidget(self.table, stretch=1)
+
+    def analyze_database_size(self) -> None:
+        self.analyze_db_button.setEnabled(False)
+        self.db_result_text.setPlainText("Analysiere Datenbankgröße ...")
+        try:
+            report = self.db.analyze_database_size()
+            self.db_result_text.setPlainText(format_database_size_report(report))
+        except Exception as exc:
+            QMessageBox.critical(self, "Datenbankanalyse fehlgeschlagen", str(exc))
+            self.db_result_text.setPlainText(f"Datenbankanalyse fehlgeschlagen: {exc}")
+        finally:
+            self.analyze_db_button.setEnabled(True)
+
+    def clear_llm_debug_payloads(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "LLM-Debug-Payloads löschen?",
+            "Die gespeicherten LLM-Debug-Payloads und deren Summary werden aus app_settings gelöscht. "
+            "LLM-Ergebnisse an Posts bleiben erhalten. Fortfahren?",
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            deleted = self.db.clear_llm_debug_payload_settings()
+            QMessageBox.information(self, "LLM-Debug-Payloads gelöscht", f"Gelöschte Einträge: {deleted}")
+            self.analyze_database_size()
+        except Exception as exc:
+            QMessageBox.critical(self, "Löschen fehlgeschlagen", str(exc))
+
+    def checkpoint_wal(self) -> None:
+        try:
+            before = self.db.database_file_sizes()
+            result = self.db.checkpoint_wal_truncate()
+            after = self.db.database_file_sizes()
+            QMessageBox.information(
+                self,
+                "WAL komprimiert",
+                "WAL-Checkpoint/TRUNCATE ausgeführt.\n"
+                f"Vorher WAL: {format_bytes(before.get('wal', 0))}\n"
+                f"Nachher WAL: {format_bytes(after.get('wal', 0))}\n"
+                f"SQLite-Ergebnis: {result}",
+            )
+            self.analyze_database_size()
+        except Exception as exc:
+            QMessageBox.critical(self, "WAL-Komprimierung fehlgeschlagen", str(exc))
+
+    def vacuum_database(self) -> None:
+        answer = QMessageBox.warning(
+            self,
+            "VACUUM ausführen?",
+            "VACUUM kompaktiert die SQLite-Datei und kann bei großen Datenbanken eine Weile dauern. "
+            "Währenddessen sollte kein Fetch/Import laufen. Fortfahren?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        self.vacuum_button.setEnabled(False)
+        self.db_result_text.setPlainText("VACUUM läuft ... bitte nicht nervös auf Knöpfe hämmern.")
+        try:
+            before = self.db.database_file_sizes()
+            self.db.vacuum_database()
+            after = self.db.database_file_sizes()
+            QMessageBox.information(
+                self,
+                "VACUUM abgeschlossen",
+                f"Vorher: {format_bytes(before.get('database', 0))}\n"
+                f"Nachher: {format_bytes(after.get('database', 0))}",
+            )
+            self.analyze_database_size()
+        except Exception as exc:
+            QMessageBox.critical(self, "VACUUM fehlgeschlagen", str(exc))
+            self.db_result_text.setPlainText(f"VACUUM fehlgeschlagen: {exc}")
+        finally:
+            self.vacuum_button.setEnabled(True)
 
     def scan_saved_files(self) -> None:
         self.scan_button.setEnabled(False)
@@ -166,7 +276,7 @@ class MaintenanceTab(QWidget):
                 )
 
         if final_path is None or not final_path.exists():
-            # Fehlende finale Dateien sind reparierbar, wenn final_file_path in der DB steht.
+            # Fehlende lokale Dateien sind reparierbar, wenn ein lokaler Dateipfad in der DB steht.
             # Früher wurde hier nur gemeckert und beim Reparieren trotzdem abgebrochen.
             # Sehr hilfreich, wenn man gerne Türen ohne Griff einbaut.
             return QualityAuditRow(
@@ -179,7 +289,7 @@ class MaintenanceTab(QWidget):
                 remote_width=remote_width,
                 remote_height=remote_height,
                 status="Fehler",
-                note="final_file_path fehlt oder Datei existiert nicht",
+                note="Lokaler Dateipfad fehlt oder Datei existiert nicht",
             )
 
         local_size = final_path.stat().st_size
@@ -380,3 +490,58 @@ def format_bytes(value: int | None) -> str:
             return f"{number:.1f} {unit}" if unit != "B" else f"{int(number)} B"
         number /= 1024.0
     return f"{value} B"
+
+
+def format_database_size_report(report: dict[str, Any]) -> str:
+    file_sizes = report.get("file_sizes", {}) or {}
+    sqlite_info = report.get("sqlite", {}) or {}
+    counts = report.get("counts", {}) or {}
+    object_sizes = report.get("object_sizes", []) or []
+    largest_app_settings = report.get("largest_app_settings", []) or []
+
+    lines: list[str] = []
+    lines.append("Datenbankgröße")
+    lines.append("===============")
+    lines.append(f"Pfad: {report.get('path', '-')}")
+    lines.append(f"DB-Datei: {format_bytes(file_sizes.get('database', 0))}")
+    lines.append(f"WAL:      {format_bytes(file_sizes.get('wal', 0))}")
+    lines.append(f"SHM:      {format_bytes(file_sizes.get('shm', 0))}")
+    lines.append(f"Gesamt:   {format_bytes(file_sizes.get('total', 0))}")
+    lines.append("")
+    lines.append("SQLite")
+    lines.append("------")
+    lines.append(f"Journal-Modus: {sqlite_info.get('journal_mode', '-')}")
+    lines.append(f"Page size: {sqlite_info.get('page_size', '-')}")
+    lines.append(f"Pages: {sqlite_info.get('page_count', '-')}")
+    lines.append(f"Freelist pages: {sqlite_info.get('freelist_count', '-')}")
+    lines.append(f"Geschätzter freier Platz: {format_bytes(sqlite_info.get('free_bytes_estimate', 0))}")
+    lines.append("")
+    lines.append("Zeilen")
+    lines.append("------")
+    for key in ("posts", "post_tags", "tag_scores", "categories", "app_settings"):
+        lines.append(f"{key}: {counts.get(key, '-')}")
+
+    lines.append("")
+    if report.get("dbstat_available"):
+        lines.append("Größte Tabellen/Indizes laut dbstat")
+        lines.append("-----------------------------------")
+        for item in object_sizes[:30]:
+            lines.append(f"{format_bytes(int(item.get('bytes', 0))):>12}  {item.get('name', '-')}")
+    else:
+        lines.append("dbstat ist in dieser SQLite-Version nicht verfügbar. Natürlich fehlt genau das Werkzeug, wenn man es mal braucht.")
+
+    lines.append("")
+    lines.append("Größte app_settings")
+    lines.append("-------------------")
+    for item in largest_app_settings[:20]:
+        lines.append(
+            f"{format_bytes(int(item.get('bytes', 0))):>12}  {item.get('key', '-')}  {item.get('updated_at', '')}"
+        )
+
+    lines.append("")
+    lines.append("Hinweis")
+    lines.append("-------")
+    lines.append("Wenn llm.last_fetch_payloads groß ist: 'LLM-Debug-Payloads löschen' drücken.")
+    lines.append("Wenn WAL groß ist: 'WAL komprimieren' drücken.")
+    lines.append("Wenn Freelist groß ist: 'VACUUM ausführen' kann die DB-Datei verkleinern.")
+    return "\n".join(lines)
