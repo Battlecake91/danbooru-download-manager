@@ -42,6 +42,26 @@ RATING_COLORS: dict[str, str] = {
     "e": "#ff6b6b",
 }
 
+
+PREVIEW_TAG_TYPE_LABELS: dict[str, str] = {
+    "artist": "Artist",
+    "character": "Character",
+    "copyright": "Copyright",
+    "general": "General",
+    "meta": "Meta",
+}
+
+# Gleiche Grundfarben wie im Viewer/TagDisplay. Nicht importieren, damit diese
+# Preview-Karte kein unnötiges GUI-Abhängigkeitsknäuel bekommt. Qt braucht
+# dafür wirklich keine weitere Gelegenheit, beleidigt zu sein.
+PREVIEW_TAG_TYPE_COLORS: dict[str, str] = {
+    "artist": "#ff9f1c",
+    "character": "#2ec4b6",
+    "copyright": "#e71d36",
+    "meta": "#9b5de5",
+    "general": "#dddddd",
+}
+
 DEFAULT_PREVIEW_CARD_OPTIONS: dict[str, bool] = {
     "show_id": True,
     "show_rating": True,
@@ -823,6 +843,7 @@ class ThumbnailCard(QFrame):
         self.layout.addWidget(self.path_label)
 
         self.tags_label = QLabel()
+        self.tags_label.setTextFormat(Qt.RichText)
         self.tags_label.setWordWrap(True)
         self.tags_label.setMaximumHeight(90)
         self.tags_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -958,11 +979,11 @@ class ThumbnailCard(QFrame):
             return
 
         typed_order: list[tuple[str, str, str]] = [
-            ("artist", "show_tag_artist", "Artist"),
-            ("character", "show_tag_character", "Character"),
-            ("copyright", "show_tag_copyright", "Copyright"),
-            ("general", "show_tag_general", "General"),
-            ("meta", "show_tag_meta", "Meta"),
+            ("artist", "show_tag_artist", PREVIEW_TAG_TYPE_LABELS["artist"]),
+            ("character", "show_tag_character", PREVIEW_TAG_TYPE_LABELS["character"]),
+            ("copyright", "show_tag_copyright", PREVIEW_TAG_TYPE_LABELS["copyright"]),
+            ("general", "show_tag_general", PREVIEW_TAG_TYPE_LABELS["general"]),
+            ("meta", "show_tag_meta", PREVIEW_TAG_TYPE_LABELS["meta"]),
         ]
 
         typed_tags: dict[str, list[str]] = {}
@@ -980,11 +1001,17 @@ class ThumbnailCard(QFrame):
                 pretty_tags = [prettify_danbooru_tag(tag) for tag in tags]
                 pretty_tags = [tag for tag in pretty_tags if tag]
                 if pretty_tags:
-                    lines.append(f"{label}: {', '.join(pretty_tags)}")
+                    color = PREVIEW_TAG_TYPE_COLORS.get(tag_type, "#dddddd")
+                    label_html = html.escape(label)
+                    tags_html = html.escape(", ".join(pretty_tags))
+                    lines.append(
+                        f'<span style="color:{color}; font-weight:700;">{label_html}:</span> '
+                        f'<span style="color:{color};">{tags_html}</span>'
+                    )
 
             if lines:
-                self.tags_label.setMaximumHeight(170 if self.thumbnail_size >= 260 else 130)
-                self.tags_label.setText("\n".join(lines))
+                self.tags_label.setMaximumHeight(190 if self.thumbnail_size >= 260 else 145)
+                self.tags_label.setText("<br>".join(lines))
                 self.tags_label.show()
                 return
 
