@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -40,6 +39,13 @@ from app.services.llm_payload_service import LLMPayloadService
 
 SECRET_SETTING_KEYS = {"api_key"}
 SECRET_DISPLAY = "********"
+RAW_SETTING_COLLAPSE_KEYS = {
+    "fetch.last_payload",
+    "llm.last_fetch_payloads",
+    "llm.last_fetch_payload_summary",
+    "llm.system_prompt",
+}
+RAW_SETTING_VALUE_PREVIEW_LIMIT = 240
 
 THUMBNAIL_SIZE_PRESETS = {
     "small": 180,
@@ -241,14 +247,9 @@ class ConfigTab(QWidget):
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
 
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-
-        self.content = QWidget()
-        self.content_layout = QVBoxLayout(self.content)
-
         self.config_tabs = QTabWidget()
-        self.content_layout.addWidget(self.config_tabs)
+        self.config_tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.main_layout.addWidget(self.config_tabs, stretch=1)
 
         self.basis_page, self.basis_layout = self._make_tab_page()
         self.fetch_page, self.fetch_layout = self._make_tab_page()
@@ -767,25 +768,33 @@ class ConfigTab(QWidget):
         self.preview_sample_form.addRow("", self.preview_sample_status_label)
         self.custom_layout.addWidget(self.preview_sample_group)
 
-        self.raw_group = QGroupBox("Raw app_settings")
+        self.raw_group = QGroupBox(tr("config.raw_settings.title", "Raw app_settings", config=self.config))
         self.raw_layout = QVBoxLayout(self.raw_group)
+
+        self.raw_hint_label = QLabel(
+            tr(
+                "config.raw_settings.hint",
+                "Diagnostic view only. Large debug payloads and prompts are collapsed here; edit them in the dedicated fields above.",
+                config=self.config,
+            )
+        )
+        self.raw_hint_label.setWordWrap(True)
+        self.raw_layout.addWidget(self.raw_hint_label)
 
         self.raw_text = QTextEdit()
         self.raw_text.setReadOnly(True)
-        self.raw_text.setMinimumHeight(160)
-        self.raw_layout.addWidget(self.raw_text)
+        self.raw_text.setMinimumHeight(120)
+        self.raw_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.raw_layout.addWidget(self.raw_text, stretch=1)
 
-        self.custom_layout.addWidget(self.raw_group)
+        self.raw_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.custom_layout.addWidget(self.raw_group, stretch=1)
 
         self.basis_layout.addStretch(1)
         self.fetch_layout.addStretch(1)
         self.gui_layout.addStretch(1)
         self.filename_layout.addStretch(1)
         self.scoring_layout.addStretch(1)
-        self.custom_layout.addStretch(1)
-
-        self.scroll.setWidget(self.content)
-        self.main_layout.addWidget(self.scroll, stretch=1)
 
         self.button_row = QHBoxLayout()
 
@@ -824,6 +833,7 @@ class ConfigTab(QWidget):
 
     def _make_tab_page(self) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
+        page.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout = QVBoxLayout(page)
         return page, layout
 
@@ -1124,6 +1134,30 @@ class ConfigTab(QWidget):
             (key, encoded),
         )
 
+    def _format_raw_setting_value(self, key: str, raw_value: Any) -> str:
+        raw_text = "" if raw_value is None else str(raw_value)
+        if is_secret_setting_key(key) and raw_text:
+            return SECRET_DISPLAY
+
+        if key in RAW_SETTING_COLLAPSE_KEYS and raw_text:
+            return tr(
+                "config.raw_settings.collapsed_value",
+                "<collapsed: {chars} characters>",
+                config=self.config,
+                chars=len(raw_text),
+            )
+
+        single_line = raw_text.replace("\r", "\n").replace("\n", "\\n")
+        if len(single_line) > RAW_SETTING_VALUE_PREVIEW_LIMIT:
+            return tr(
+                "config.raw_settings.truncated_value",
+                "{preview}… <truncated: {chars} characters total>",
+                config=self.config,
+                preview=single_line[:RAW_SETTING_VALUE_PREVIEW_LIMIT],
+                chars=len(raw_text),
+            )
+        return single_line
+
     def refresh_raw_settings(self) -> None:
         rows = self.db.execute(
             """
@@ -1136,7 +1170,7 @@ class ConfigTab(QWidget):
         lines: list[str] = []
         for row in rows:
             key = str(row["key"])
-            value = SECRET_DISPLAY if is_secret_setting_key(key) and row["value"] else row["value"]
+            value = self._format_raw_setting_value(key, row["value"])
             lines.append(f"{key} = {value}    ({row['updated_at']})")
 
         self.raw_text.setPlainText("\n".join(lines))
