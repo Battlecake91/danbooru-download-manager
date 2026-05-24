@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.i18n.i18n import tr
 
 
 _GROUP_INCLUDE_RE = re.compile(r"^group_(\d+)_include$")
@@ -179,7 +180,7 @@ class CategoryTab(QWidget):
 
         self.top_buttons = QHBoxLayout()
 
-        self.reload_button = QPushButton("Neu laden")
+        self.reload_button = QPushButton(self.t("common.reload", "Reload"))
         self.reload_button.clicked.connect(self.reload_all)
         self.top_buttons.addWidget(self.reload_button)
 
@@ -192,13 +193,13 @@ class CategoryTab(QWidget):
         self.left_layout = QVBoxLayout(self.left_panel)
         self.left_layout.setContentsMargins(0, 0, 6, 0)
         self.left_layout.setSpacing(6)
-        self.left_title = QLabel("Kategorien (Priorität: oben gewinnt)")
+        self.left_title = QLabel(self.t("category.left_title", "Categories (priority: top wins)"))
         self.left_title.setStyleSheet("font-weight: 600;")
         self.left_layout.addWidget(self.left_title)
 
         self.category_table = QTableWidget()
         self.category_table.setColumnCount(4)
-        self.category_table.setHorizontalHeaderLabels(["ID", "Name", "Ordner", "Hotkey"])
+        self.category_table.setHorizontalHeaderLabels([self.t("common.id", "ID"), self.t("common.name", "Name"), self.t("category.column.folder", "Folder"), self.t("category.column.hotkey", "Hotkey")])
         self.category_table.setColumnHidden(0, True)
         self.category_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.category_table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -211,10 +212,10 @@ class CategoryTab(QWidget):
         self.left_layout.addWidget(self.category_table, stretch=1)
 
         self.priority_buttons = QHBoxLayout()
-        self.category_up_button = QPushButton("↑ Kategorie hoch")
+        self.category_up_button = QPushButton(self.t("category.button.move_up", "↑ Move category up"))
         self.category_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_category(-1)))
         self.priority_buttons.addWidget(self.category_up_button)
-        self.category_down_button = QPushButton("↓ Kategorie runter")
+        self.category_down_button = QPushButton(self.t("category.button.move_down", "↓ Move category down"))
         self.category_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_category(1)))
         self.priority_buttons.addWidget(self.category_down_button)
         self.left_layout.addLayout(self.priority_buttons)
@@ -222,15 +223,15 @@ class CategoryTab(QWidget):
         self.category_action_buttons = QHBoxLayout()
         self.category_action_buttons.setSpacing(4)
 
-        self.add_category_button = QPushButton("Kategorie hinzufügen")
+        self.add_category_button = QPushButton(self.t("category.button.add_category", "Add category"))
         self.add_category_button.clicked.connect(lambda: self.safe(self.add_category))
         self.category_action_buttons.addWidget(self.add_category_button)
 
-        self.save_category_button = QPushButton("Kategorie speichern")
+        self.save_category_button = QPushButton(self.t("category.button.save_category", "Save category"))
         self.save_category_button.clicked.connect(lambda: self.safe(self.save_selected_category))
         self.category_action_buttons.addWidget(self.save_category_button)
 
-        self.delete_category_button = QPushButton("Kategorie löschen")
+        self.delete_category_button = QPushButton(self.t("category.button.delete_category", "Delete category"))
         self.delete_category_button.clicked.connect(lambda: self.safe(self.delete_selected_category))
         self.category_action_buttons.addWidget(self.delete_category_button)
 
@@ -243,64 +244,65 @@ class CategoryTab(QWidget):
         self.right_layout.setContentsMargins(6, 0, 0, 0)
         self.right_layout.setSpacing(8)
 
-        self.details_box = QGroupBox("Kategorie")
+        self.details_box = QGroupBox(self.t("category.details.title", "Category"))
         self.details_layout = QFormLayout(self.details_box)
         self.details_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("z. B. Favorites")
-        self.details_layout.addRow("Name", self.name_edit)
+        self.name_edit.setPlaceholderText(self.t("category.placeholder.name", "e.g. Favorites"))
+        self.details_layout.addRow(self.t("common.name", "Name"), self.name_edit)
 
         self.folder_edit = QLineEdit()
-        self.folder_edit.setPlaceholderText("Ordnername, leer = Name")
-        self.details_layout.addRow("Ordner", self.folder_edit)
+        self.folder_edit.setPlaceholderText(self.t("category.placeholder.folder", "Folder name, empty = name"))
+        self.details_layout.addRow(self.t("category.label.folder", "Folder"), self.folder_edit)
 
         self.output_path_edit = QLineEdit()
-        self.output_path_edit.setPlaceholderText("Optionaler Zielpfad nur fuer diese Kategorie")
-        self.details_layout.addRow("Zielpfad", self.output_path_edit)
+        self.output_path_edit.setPlaceholderText(self.t("category.placeholder.output_path", "Optional output path for this category only"))
+        self.details_layout.addRow(self.t("category.label.output_path", "Output path"), self.output_path_edit)
 
         self.hotkey_edit = QLineEdit()
-        self.hotkey_edit.setPlaceholderText("Optional, z. B. F")
+        self.hotkey_edit.setPlaceholderText(self.t("category.placeholder.hotkey", "Optional, e.g. F"))
         self.hotkey_edit.setMaxLength(24)
-        self.details_layout.addRow("Hotkey", self.hotkey_edit)
+        self.details_layout.addRow(self.t("category.label.hotkey", "Hotkey"), self.hotkey_edit)
 
         self.sort_order_edit = QLineEdit()
-        self.sort_order_edit.setPlaceholderText("wird ueber die Kategorienliste links gesetzt")
+        self.sort_order_edit.setPlaceholderText(self.t("category.placeholder.position", "Set through the category list on the left"))
         self.sort_order_edit.setReadOnly(True)
-        self.details_layout.addRow("Position", self.sort_order_edit)
+        self.details_layout.addRow(self.t("category.label.position", "Position"), self.sort_order_edit)
 
         self.right_layout.addWidget(self.details_box)
 
-        self.rules_box = QGroupBox("Wann passt diese Kategorie?")
+        self.rules_box = QGroupBox(self.t("category.rules.title", "When does this category match?"))
         self.rules_layout = QVBoxLayout(self.rules_box)
         self.rules_layout.setSpacing(6)
 
-        self.rule_hint = QLabel(
-            "Jede Include-Regel ist ein alternativer Trefferweg. Tags ohne '-' müssen vorhanden sein, "
-            "Tags mit '-' schließen aus. Beispiel: 'maid apron -comic' oder 'school_uniform ribbon'."
-        )
+        self.rule_hint = QLabel(self.t(
+            "category.rules.hint",
+            "Each include rule is an alternative match path. Tags without '-' must be present, "
+            "tags with '-' exclude. Example: 'maid apron -comic' or 'school_uniform ribbon'.",
+        ))
         self.rule_hint.setWordWrap(True)
         self.rule_hint.setStyleSheet("color: #9aa0a6;")
         self.rules_layout.addWidget(self.rule_hint)
 
         self.group_buttons = QHBoxLayout()
-        self.add_group_button = QPushButton("+ Include-Regel")
+        self.add_group_button = QPushButton(self.t("category.button.add_include_rule", "+ Include rule"))
         self.add_group_button.clicked.connect(lambda: self.safe(self.add_group_row))
         self.group_buttons.addWidget(self.add_group_button)
 
-        self.delete_group_button = QPushButton("Include-Regel löschen")
+        self.delete_group_button = QPushButton(self.t("category.button.delete_include_rule", "Delete include rule"))
         self.delete_group_button.clicked.connect(lambda: self.safe(self.delete_selected_group_rows))
         self.group_buttons.addWidget(self.delete_group_button)
 
-        self.move_group_up_button = QPushButton("↑ Include-Regel")
+        self.move_group_up_button = QPushButton(self.t("category.button.move_include_up", "↑ Include rule"))
         self.move_group_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.groups_table, -1)))
         self.group_buttons.addWidget(self.move_group_up_button)
 
-        self.move_group_down_button = QPushButton("↓ Include-Regel")
+        self.move_group_down_button = QPushButton(self.t("category.button.move_include_down", "↓ Include rule"))
         self.move_group_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.groups_table, 1)))
         self.group_buttons.addWidget(self.move_group_down_button)
 
-        self.save_groups_button = QPushButton("Regeln speichern")
+        self.save_groups_button = QPushButton(self.t("category.button.save_rules", "Save rules"))
         self.save_groups_button.clicked.connect(lambda: self.safe(self.save_rule_groups))
         self.group_buttons.addWidget(self.save_groups_button)
 
@@ -309,18 +311,18 @@ class CategoryTab(QWidget):
 
         self.new_group_row = QHBoxLayout()
         self.new_group_edit = QLineEdit()
-        self.new_group_edit.setPlaceholderText("Neue Include-Regel, z. B. maid apron -comic")
+        self.new_group_edit.setPlaceholderText(self.t("category.placeholder.new_include_rule", "New include rule, e.g. maid apron -comic"))
         self.new_group_edit.returnPressed.connect(lambda: self.safe(self.add_group_from_input))
         self.new_group_row.addWidget(self.new_group_edit, stretch=1)
 
-        self.add_group_from_input_button = QPushButton("Hinzufügen")
+        self.add_group_from_input_button = QPushButton(self.t("common.add", "Add"))
         self.add_group_from_input_button.clicked.connect(lambda: self.safe(self.add_group_from_input))
         self.new_group_row.addWidget(self.add_group_from_input_button)
         self.rules_layout.addLayout(self.new_group_row)
 
         self.groups_table = QTableWidget()
         self.groups_table.setColumnCount(2)
-        self.groups_table.setHorizontalHeaderLabels(["Include-Regel", "Tags (UND, '-' = Ausschluss)"])
+        self.groups_table.setHorizontalHeaderLabels([self.t("category.column.include_rule", "Include rule"), self.t("category.column.include_rule_tags", "Tags (AND, '-' = exclusion)")])
         self.groups_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.groups_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.groups_table.setEditTriggers(
@@ -331,28 +333,29 @@ class CategoryTab(QWidget):
         self.groups_table.itemChanged.connect(self.on_group_item_changed)
         self.rules_layout.addWidget(self.groups_table, stretch=2)
 
-        self.global_hint = QLabel(
-            "Globale Bedingungen gelten zusätzlich zu jeder Include-Regel. Nutze sie nur für echte Pflicht- oder Sperr-Tags, "
-            "sonst baust du dir eine Kategorie mit Türsteherkomplex."
-        )
+        self.global_hint = QLabel(self.t(
+            "category.global.hint",
+            "Global conditions are applied in addition to every include rule. Use them only for true required or blocked tags, "
+            "otherwise you build a category with a bouncer complex.",
+        ))
         self.global_hint.setWordWrap(True)
         self.global_hint.setStyleSheet("color: #9aa0a6;")
         self.rules_layout.addWidget(self.global_hint)
 
         self.global_buttons = QHBoxLayout()
-        self.add_global_button = QPushButton("+ Globale Bedingung")
+        self.add_global_button = QPushButton(self.t("category.button.add_global_condition", "+ Global condition"))
         self.add_global_button.clicked.connect(lambda: self.safe(self.add_global_row))
         self.global_buttons.addWidget(self.add_global_button)
 
-        self.delete_global_button = QPushButton("Bedingung löschen")
+        self.delete_global_button = QPushButton(self.t("category.button.delete_condition", "Delete condition"))
         self.delete_global_button.clicked.connect(lambda: self.safe(self.delete_selected_global_rows))
         self.global_buttons.addWidget(self.delete_global_button)
 
-        self.move_global_up_button = QPushButton("↑ Bedingung")
+        self.move_global_up_button = QPushButton(self.t("category.button.move_condition_up", "↑ Condition"))
         self.move_global_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.global_table, -1)))
         self.global_buttons.addWidget(self.move_global_up_button)
 
-        self.move_global_down_button = QPushButton("↓ Bedingung")
+        self.move_global_down_button = QPushButton(self.t("category.button.move_condition_down", "↓ Condition"))
         self.move_global_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.global_table, 1)))
         self.global_buttons.addWidget(self.move_global_down_button)
 
@@ -361,18 +364,18 @@ class CategoryTab(QWidget):
 
         self.new_global_row = QHBoxLayout()
         self.new_global_edit = QLineEdit()
-        self.new_global_edit.setPlaceholderText("Globale Bedingung, z. B. solo -comic")
+        self.new_global_edit.setPlaceholderText(self.t("category.placeholder.global_condition", "Global condition, e.g. solo -comic"))
         self.new_global_edit.returnPressed.connect(lambda: self.safe(self.add_global_from_input))
         self.new_global_row.addWidget(self.new_global_edit, stretch=1)
 
-        self.add_global_from_input_button = QPushButton("Hinzufügen")
+        self.add_global_from_input_button = QPushButton(self.t("common.add", "Add"))
         self.add_global_from_input_button.clicked.connect(lambda: self.safe(self.add_global_from_input))
         self.new_global_row.addWidget(self.add_global_from_input_button)
         self.rules_layout.addLayout(self.new_global_row)
 
         self.global_table = QTableWidget()
         self.global_table.setColumnCount(2)
-        self.global_table.setHorizontalHeaderLabels(["Globale Bedingung", "Tags (Pflicht / '-' = Sperre)"])
+        self.global_table.setHorizontalHeaderLabels([self.t("category.column.global_condition", "Global condition"), self.t("category.column.global_condition_tags", "Tags (required / '-' = blocked)")])
         self.global_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.global_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.global_table.setEditTriggers(
@@ -385,7 +388,7 @@ class CategoryTab(QWidget):
 
         self.right_layout.addWidget(self.rules_box, stretch=1)
 
-        self.show_advanced_check = QCheckBox("Erweiterte Felder anzeigen")
+        self.show_advanced_check = QCheckBox(self.t("category.checkbox.show_advanced", "Show advanced fields"))
         self.show_advanced_check.setChecked(True)
         self.show_advanced_check.stateChanged.connect(self.apply_advanced_visibility)
         self.right_layout.addWidget(self.show_advanced_check)
@@ -396,11 +399,12 @@ class CategoryTab(QWidget):
 
         self.main_layout.addWidget(self.splitter, stretch=1)
 
-        self.hint_label = QLabel(
-            "Links bestimmt die Kategorie-Reihenfolge den Gewinner. Rechts gilt: mehrere Include-Regeln sind Alternativen; "
-            "innerhalb einer Zeile müssen alle positiven Tags passen, Tags mit '-' dürfen nicht vorkommen. "
-            "Globale Bedingungen werden zusätzlich auf jede Include-Regel gelegt."
-        )
+        self.hint_label = QLabel(self.t(
+            "category.bottom_hint",
+            "On the left, category order decides the winner. On the right, multiple include rules are alternatives; "
+            "inside one row, all positive tags must match and tags with '-' must not occur. "
+            "Global conditions are applied to every include rule as well.",
+        ))
         self.hint_label.setWordWrap(True)
         self.hint_label.setStyleSheet("color: #9aa0a6;")
         self.main_layout.addWidget(self.hint_label)
@@ -409,14 +413,17 @@ class CategoryTab(QWidget):
         self.reload_all()
         self.apply_advanced_visibility()
 
+    def t(self, key: str, default: str, **kwargs: Any) -> str:
+        return tr(key, default, config=self.config, **kwargs)
+
     def safe(self, action: Callable[[], None]) -> None:
         try:
             action()
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Fehler im Kategorie-Tab",
-                f"{exc}\n\nDetails:\n{traceback.format_exc()}",
+                self.t("category.error.title", "Category tab error"),
+                self.t("category.error.details", "{error}\n\nDetails:\n{details}", error=exc, details=traceback.format_exc()),
             )
 
 
@@ -480,26 +487,26 @@ class CategoryTab(QWidget):
             self.global_table.setRowCount(len(global_groups))
 
             for row_index, group in enumerate(groups):
-                name_item = QTableWidgetItem(f"Include-Regel {row_index + 1}")
+                name_item = QTableWidgetItem(self.t("category.rule.include_label", "Include rule {index}", index=row_index + 1))
                 name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
                 name_item.setTextAlignment(Qt.AlignCenter)
                 self.groups_table.setItem(row_index, 0, name_item)
 
                 expression_item = QTableWidgetItem(group.expression())
                 expression_item.setToolTip(
-                    "Include-Regel: Tags ohne '-' müssen vorhanden sein, Tags mit '-' dürfen nicht vorhanden sein."
+                    self.t("category.rule.include_tooltip", "Include rule: Tags without '-' must be present, tags with '-' must not be present.")
                 )
                 self.groups_table.setItem(row_index, 1, expression_item)
 
             for row_index, group in enumerate(global_groups):
-                name_item = QTableWidgetItem(f"Globale Bedingung {row_index + 1}")
+                name_item = QTableWidgetItem(self.t("category.rule.global_label", "Global condition {index}", index=row_index + 1))
                 name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
                 name_item.setTextAlignment(Qt.AlignCenter)
                 self.global_table.setItem(row_index, 0, name_item)
 
                 expression_item = QTableWidgetItem(group.expression())
                 expression_item.setToolTip(
-                    "Diese globale Bedingung wird zusätzlich mit jeder Include-Regel kombiniert."
+                    self.t("category.rule.global_tooltip", "This global condition is combined with every include rule.")
                 )
                 self.global_table.setItem(row_index, 1, expression_item)
         finally:
@@ -565,7 +572,7 @@ class CategoryTab(QWidget):
                 label_widget.setVisible(visible)
 
     def add_category(self) -> None:
-        name, ok = QInputDialog.getText(self, "Kategorie hinzufügen", "Name:")
+        name, ok = QInputDialog.getText(self, self.t("category.dialog.add.title", "Add category"), self.t("category.dialog.add.name", "Name:"))
         if not ok or not name.strip():
             return
 
@@ -576,7 +583,7 @@ class CategoryTab(QWidget):
     def save_selected_category(self) -> None:
         category_id = self.selected_category_id()
         if category_id is None:
-            QMessageBox.information(self, "Kategorie speichern", "Bitte zuerst eine Kategorie auswählen.")
+            QMessageBox.information(self, self.t("category.dialog.save.title", "Save category"), self.t("category.warning.select_category", "Select a category first."))
             return
 
         current_row = self.db.execute(
@@ -603,8 +610,8 @@ class CategoryTab(QWidget):
 
         result = QMessageBox.question(
             self,
-            "Kategorie löschen",
-            "Kategorie wirklich löschen? Zugehörige Regeln werden ebenfalls gelöscht.",
+            self.t("category.dialog.delete.title", "Delete category"),
+            self.t("category.dialog.delete.message", "Really delete this category? Associated rules will be deleted as well."),
         )
         if result != QMessageBox.Yes:
             return
@@ -642,7 +649,7 @@ class CategoryTab(QWidget):
     def save_rule_groups(self) -> None:
         category_id = self.selected_category_id()
         if category_id is None:
-            QMessageBox.information(self, "Regeln speichern", "Bitte zuerst eine Kategorie auswählen.")
+            QMessageBox.information(self, self.t("category.dialog.save_rules.title", "Save rules"), self.t("category.warning.select_category", "Select a category first."))
             return
 
         self.db.replace_category_rule_groups(
@@ -678,11 +685,11 @@ class CategoryTab(QWidget):
         return row
 
     def add_group_row(self) -> None:
-        row = self.add_expression_row(self.groups_table, "Include-Regel")
+        row = self.add_expression_row(self.groups_table, self.t("category.rule.include_prefix", "Include rule"))
         self.groups_table.editItem(self.groups_table.item(row, 1))
 
     def add_global_row(self) -> None:
-        row = self.add_expression_row(self.global_table, "Globale Bedingung")
+        row = self.add_expression_row(self.global_table, self.t("category.rule.global_prefix", "Global condition"))
         self.global_table.editItem(self.global_table.item(row, 1))
 
     def add_expression_from_input(self, edit: QLineEdit, table: QTableWidget, label_prefix: str) -> None:
@@ -698,16 +705,16 @@ class CategoryTab(QWidget):
         self.save_rule_groups()
 
     def add_group_from_input(self) -> None:
-        self.add_expression_from_input(self.new_group_edit, self.groups_table, "Include-Regel")
+        self.add_expression_from_input(self.new_group_edit, self.groups_table, self.t("category.rule.include_prefix", "Include rule"))
 
     def add_global_from_input(self) -> None:
-        self.add_expression_from_input(self.new_global_edit, self.global_table, "Globale Bedingung")
+        self.add_expression_from_input(self.new_global_edit, self.global_table, self.t("category.rule.global_prefix", "Global condition"))
 
 
     def move_selected_rule_rows(self, table: QTableWidget, direction: int) -> None:
         rows = self.selected_rows(table)
         if len(rows) != 1:
-            QMessageBox.information(self, "Include-Regel verschieben", "Bitte genau eine Zeile auswählen.")
+            QMessageBox.information(self, self.t("category.dialog.move_rule.title", "Move rule"), self.t("category.warning.select_one_row", "Select exactly one row."))
             return
 
         row = rows[0]

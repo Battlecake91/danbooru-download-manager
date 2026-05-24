@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.i18n.i18n import tr
 from app.services.existing_file_import_service import (
     ExistingFileImportProgress,
     ExistingFileImportService,
@@ -68,7 +69,7 @@ class ExistingFileImportWorker(QObject):
 
             service = ExistingFileImportService(self.config, worker_db, progress_callback=self.progress.emit)
             if self.mode == "import":
-                self.log.emit("Bestehende Dateien importieren gestartet.")
+                self.log.emit(tr("import.log.import_started", "Existing file import started.", config=self.config))
                 result = service.import_folder(
                     self.folder,
                     self.category_id,
@@ -78,8 +79,8 @@ class ExistingFileImportWorker(QObject):
                 )
             elif self.mode == "repair":
                 if self.old_category_id is None:
-                    raise RuntimeError("Keine alte Kategorie fuer die Reparatur gesetzt")
-                self.log.emit("Import-Kategorie reparieren gestartet.")
+                    raise RuntimeError(tr("import.error.no_old_category_for_repair", "No old category set for repair.", config=self.config))
+                self.log.emit(tr("import.log.repair_started", "Import category repair started.", config=self.config))
                 result = service.repair_imported_category(
                     self.folder,
                     self.old_category_id,
@@ -88,10 +89,10 @@ class ExistingFileImportWorker(QObject):
                     rename_after_repair=self.rename_after_import,
                 )
             elif self.mode == "rename":
-                self.log.emit("Gespeicherte Dateien nach aktuellem Schema umbenennen gestartet.")
+                self.log.emit(tr("import.log.rename_started", "Renaming saved files using the current filename schema started.", config=self.config))
                 result = service.rename_saved_files_for_category(self.category_id)
             else:
-                raise RuntimeError(f"Unbekannter Import-Modus: {self.mode}")
+                raise RuntimeError(tr("import.error.unknown_mode", "Unknown import mode: {mode}", config=self.config, mode=self.mode))
 
             self.finished.emit(result)
         except Exception:
@@ -116,17 +117,11 @@ class ImportTab(QWidget):
 
         self.main_layout = QVBoxLayout(self)
 
-        self.info_label = QLabel(
-            "Importer für bereits heruntergeladene Dateien. Der MD5-Hash oder die Post-ID wird aus dem Dateinamen gelesen, "
-            "der Danbooru-Post wird nachgeladen und als gespeichert in die Datenbank übernommen. "
-            "Optional werden Dateien direkt im bestehenden Ordner nach dem aktuellen Dateinamensschema umbenannt."
-        )
+        self.info_label = QLabel(tr("import.info", config=self.config))
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
 
-        self.warning_label = QLabel(
-            "⚠ Achtung: Der Import kann nur funktionieren, wenn die Danbooru-Post-ID oder der MD5-Hash im Dateinamen steht."
-        )
+        self.warning_label = QLabel(tr("import.warning_filename_id_md5", config=self.config))
         self.warning_label.setWordWrap(True)
         self.warning_label.setStyleSheet(
             "QLabel { background: #fff4c2; color: #4f3600; border: 1px solid #d6a800; "
@@ -134,71 +129,68 @@ class ImportTab(QWidget):
         )
         self.main_layout.addWidget(self.warning_label)
 
-        self.import_group = QGroupBox("Importquelle")
+        self.import_group = QGroupBox(tr("import.group.source", config=self.config))
         self.import_layout = QFormLayout(self.import_group)
 
         folder_row = QHBoxLayout()
         self.folder_edit = QLineEdit()
-        self.folder_edit.setPlaceholderText("Ordner mit bestehenden Downloads")
+        self.folder_edit.setPlaceholderText(tr("import.folder.placeholder", config=self.config))
         folder_row.addWidget(self.folder_edit, stretch=1)
-        self.browse_button = QPushButton("Ordner wählen…")
+        self.browse_button = QPushButton(tr("import.button.choose_folder", config=self.config))
         self.browse_button.clicked.connect(self.choose_folder)
         folder_row.addWidget(self.browse_button)
-        self.import_layout.addRow("Ordner:", folder_row)
+        self.import_layout.addRow(tr("import.label.folder", config=self.config), folder_row)
 
         self.category_combo = QComboBox()
         self.category_combo.setMinimumWidth(260)
-        self.import_layout.addRow("Kategorie:", self.category_combo)
+        self.import_layout.addRow(tr("import.label.category", config=self.config), self.category_combo)
 
-        self.recursive_checkbox = QCheckBox("Unterordner einbeziehen")
+        self.recursive_checkbox = QCheckBox(tr("import.checkbox.recursive", config=self.config))
         self.recursive_checkbox.setChecked(True)
-        self.import_layout.addRow("Scan:", self.recursive_checkbox)
+        self.import_layout.addRow(tr("import.label.scan", config=self.config), self.recursive_checkbox)
 
-        self.rename_after_import_checkbox = QCheckBox("Nach Import/Reparatur im bestehenden Ordner nach aktuellem Dateinamensschema umbenennen")
+        self.rename_after_import_checkbox = QCheckBox(tr("import.checkbox.rename_after_import", config=self.config))
         self.rename_after_import_checkbox.setChecked(False)
-        self.import_layout.addRow("Umbenennen:", self.rename_after_import_checkbox)
+        self.import_layout.addRow(tr("import.label.rename", config=self.config), self.rename_after_import_checkbox)
 
-        self.update_existing_checkbox = QCheckBox("Vorhandene Post-IDs aktualisieren: Pfad und Kategorie überschreiben")
+        self.update_existing_checkbox = QCheckBox(tr("import.checkbox.update_existing", config=self.config))
         self.update_existing_checkbox.setChecked(True)
-        self.import_layout.addRow("Vorhandene Posts:", self.update_existing_checkbox)
+        self.import_layout.addRow(tr("import.label.existing_posts", config=self.config), self.update_existing_checkbox)
 
-        self.repair_group = QGroupBox("Import reparieren")
+        self.repair_group = QGroupBox(tr("import.group.repair", config=self.config))
         self.repair_layout = QFormLayout(self.repair_group)
 
         self.old_category_combo = QComboBox()
         self.old_category_combo.setMinimumWidth(260)
-        self.repair_layout.addRow("Falsch importiert als:", self.old_category_combo)
+        self.repair_layout.addRow(tr("import.label.wrongly_imported_as", config=self.config), self.old_category_combo)
 
-        self.repair_hint_label = QLabel(
-            "Nutzt den oben gewählten Ordner, sucht gespeicherte Dateien mit der alten Kategorie "
-            "und setzt sie auf die oben gewählte neue Kategorie. Dateien werden nicht verschoben."
-        )
+        self.repair_hint_label = QLabel(tr("import.repair_hint", config=self.config))
         self.repair_hint_label.setWordWrap(True)
-        self.repair_layout.addRow("Hinweis:", self.repair_hint_label)
+        self.repair_layout.addRow(tr("import.label.note", config=self.config), self.repair_hint_label)
 
         self.main_layout.addWidget(self.import_group)
         self.main_layout.addWidget(self.repair_group)
 
         button_row = QHBoxLayout()
-        self.import_button = QPushButton("Ordner importieren")
+        self.import_button = QPushButton(tr("import.button.import_folder", config=self.config))
         self.import_button.clicked.connect(self.start_import)
         button_row.addWidget(self.import_button)
 
-        self.repair_button = QPushButton("Import-Kategorie im Ordner reparieren")
+        self.repair_button = QPushButton(tr("import.button.repair_category", config=self.config))
         self.repair_button.clicked.connect(self.start_repair_category)
         button_row.addWidget(self.repair_button)
 
-        self.rename_category_button = QPushButton("Gespeicherte Dateien dieser Kategorie im bestehenden Ordner umbenennen")
+        self.rename_category_button = QPushButton(tr("import.button.rename_category", config=self.config))
         self.rename_category_button.clicked.connect(self.start_rename_category)
         button_row.addWidget(self.rename_category_button)
 
-        self.refresh_categories_button = QPushButton("Kategorien neu laden")
+        self.refresh_categories_button = QPushButton(tr("import.button.reload_categories", config=self.config))
         self.refresh_categories_button.clicked.connect(self.load_categories)
         button_row.addWidget(self.refresh_categories_button)
         button_row.addStretch(1)
         self.main_layout.addLayout(button_row)
 
-        self.progress_label = QLabel("Bereit.")
+        self.progress_label = QLabel(tr("common.ready", "Ready.", config=self.config))
         self.progress_label.setWordWrap(True)
         self.main_layout.addWidget(self.progress_label)
 
@@ -214,7 +206,7 @@ class ImportTab(QWidget):
         self.load_categories()
 
     def choose_folder(self) -> None:
-        selected = QFileDialog.getExistingDirectory(self, "Import-Ordner wählen", self.folder_edit.text().strip() or str(Path.home()))
+        selected = QFileDialog.getExistingDirectory(self, tr("import.dialog.choose_folder.title", config=self.config), self.folder_edit.text().strip() or str(Path.home()))
         if selected:
             self.folder_edit.setText(selected)
 
@@ -283,15 +275,15 @@ class ImportTab(QWidget):
     def start_import(self) -> None:
         folder = self.folder_edit.text().strip()
         if not folder:
-            QMessageBox.warning(self, "Import", "Bitte einen Import-Ordner auswählen.")
+            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.select_import_folder", config=self.config))
             return
         if not Path(folder).expanduser().is_dir():
-            QMessageBox.warning(self, "Import", f"Ordner nicht gefunden:\n{folder}")
+            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.folder_not_found", config=self.config, folder=folder))
             return
 
         category_id = self.current_category_id()
         if category_id is None:
-            QMessageBox.warning(self, "Import", "Bitte eine Kategorie auswählen.")
+            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.select_category", config=self.config))
             return
 
         self.start_worker(
@@ -306,31 +298,27 @@ class ImportTab(QWidget):
     def start_repair_category(self) -> None:
         folder = self.folder_edit.text().strip()
         if not folder:
-            QMessageBox.warning(self, "Import reparieren", "Bitte den betroffenen Import-Ordner auswählen.")
+            QMessageBox.warning(self, tr("import.repair_title", config=self.config), tr("import.warning.select_affected_folder", config=self.config))
             return
         if not Path(folder).expanduser().is_dir():
-            QMessageBox.warning(self, "Import reparieren", f"Ordner nicht gefunden:\n{folder}")
+            QMessageBox.warning(self, tr("import.repair_title", config=self.config), tr("import.warning.folder_not_found", config=self.config, folder=folder))
             return
 
         old_category_id = self.old_category_id()
         new_category_id = self.current_category_id()
         if old_category_id is None or new_category_id is None:
-            QMessageBox.warning(self, "Import reparieren", "Bitte alte und neue Kategorie auswählen.")
+            QMessageBox.warning(self, tr("import.repair_title", config=self.config), tr("import.warning.select_old_new_category", config=self.config))
             return
         if old_category_id == new_category_id:
-            QMessageBox.warning(self, "Import reparieren", "Alte und neue Kategorie sind identisch.")
+            QMessageBox.warning(self, tr("import.repair_title", config=self.config), tr("import.warning.old_new_category_same", config=self.config))
             return
 
         old_name = self.old_category_combo.currentText()
         new_name = self.category_combo.currentText()
         if QMessageBox.question(
             self,
-            "Import-Kategorie reparieren",
-            "Kategorie für gespeicherte Dateien im gewählten Ordner ändern?\n\n"
-            f"Ordner: {folder}\n"
-            f"Von: {old_name}\n"
-            f"Nach: {new_name}\n\n"
-            "Dateien werden nicht verschoben. Optional wird danach nur im bestehenden Ordner umbenannt.",
+            tr("import.confirm_repair.title", config=self.config),
+            tr("import.confirm_repair.message", config=self.config, folder=folder, old_name=old_name, new_name=new_name),
         ) != QMessageBox.Yes:
             return
 
@@ -347,16 +335,14 @@ class ImportTab(QWidget):
     def start_rename_category(self) -> None:
         category_id = self.current_category_id()
         if category_id is None:
-            QMessageBox.warning(self, "Umbenennen", "Bitte eine Kategorie auswählen.")
+            QMessageBox.warning(self, tr("import.rename_title", config=self.config), tr("import.warning.select_category", config=self.config))
             return
 
         category_name = self.category_combo.currentText()
         if QMessageBox.question(
             self,
-            "Dateien umbenennen",
-            "Alle bereits gespeicherten Dateien dieser Kategorie nach dem aktuellen Dateinamensschema umbenennen?\n\n"
-            f"Kategorie: {category_name}\n\n"
-            "Bestehende Dateipfade in der Datenbank werden aktualisiert.",
+            tr("import.confirm_rename.title", config=self.config),
+            tr("import.confirm_rename.message", config=self.config, category_name=category_name),
         ) != QMessageBox.Yes:
             return
 
@@ -380,15 +366,15 @@ class ImportTab(QWidget):
         update_existing: bool = True,
     ) -> None:
         if self.thread is not None:
-            QMessageBox.information(self, "Importer", "Es läuft bereits ein Import/Umbenennen.")
+            QMessageBox.information(self, tr("import.importer_title", config=self.config), tr("import.info.already_running", config=self.config))
             return
 
         self.set_controls_enabled(False)
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
-        self.progress_label.setText("Starte…")
-        self.log_text.append("Starte Importer-Aktion…")
+        self.progress_label.setText(tr("common.starting", "Starting…", config=self.config))
+        self.log_text.append(tr("import.log.action_starting", config=self.config))
 
         worker_config = copy.deepcopy(self.config)
         self.thread = QThread(self)
@@ -428,10 +414,20 @@ class ImportTab(QWidget):
             self.progress_bar.setRange(0, 0)
 
         self.progress_label.setText(
-            f"Datei {current}/{total} | Importiert: {progress.imported} | Aktualisiert: {progress.updated} | "
-            f"Repariert: {progress.repaired} | Umbenannt: {progress.renamed} | "
-            f"Vorhanden übersprungen: {progress.skipped_existing} | Ohne ID/MD5: {progress.skipped_no_md5} | "
-            f"Nicht gefunden: {progress.not_found} | Fehler: {progress.errors}"
+            tr(
+                "import.progress.status",
+                config=self.config,
+                current=current,
+                total=total,
+                imported=progress.imported,
+                updated=progress.updated,
+                repaired=progress.repaired,
+                renamed=progress.renamed,
+                skipped_existing=progress.skipped_existing,
+                skipped_no_md5=progress.skipped_no_md5,
+                not_found=progress.not_found,
+                errors=progress.errors,
+            )
         )
         if progress.message:
             self.log_text.append(progress.message)
@@ -439,20 +435,21 @@ class ImportTab(QWidget):
     def on_finished(self, result: object) -> None:
         self.set_controls_enabled(True)
         self.progress_bar.setVisible(True)
-        summary = (
-            "\nImporter-Zusammenfassung:\n"
-            f"  Kategorie: {getattr(result, 'category_name', '')}\n"
-            f"  Vorherige Kategorie: {getattr(result, 'old_category_name', '')}\n"
-            f"  Dateien geprüft: {getattr(result, 'scanned_files', 0)}\n"
-            f"  Importiert: {getattr(result, 'imported_posts', 0)}\n"
-            f"  Aktualisiert: {getattr(result, 'updated_posts', 0)}\n"
-            f"  Repariert: {getattr(result, 'repaired_posts', 0)}\n"
-            f"  Umbenannt: {getattr(result, 'renamed_files', 0)}\n"
-            f"  Name bereits aktuell/übersprungen: {getattr(result, 'skipped_rename', 0)}\n"
-            f"  Vorhanden übersprungen: {getattr(result, 'skipped_existing', 0)}\n"
-            f"  Ohne ID/MD5: {getattr(result, 'skipped_no_md5', 0)}\n"
-            f"  Nicht gefunden: {getattr(result, 'not_found', 0)}\n"
-            f"  Fehler: {getattr(result, 'errors', 0)}"
+        summary = tr(
+            "import.summary",
+            config=self.config,
+            category=getattr(result, "category_name", ""),
+            old_category=getattr(result, "old_category_name", ""),
+            scanned=getattr(result, "scanned_files", 0),
+            imported=getattr(result, "imported_posts", 0),
+            updated=getattr(result, "updated_posts", 0),
+            repaired=getattr(result, "repaired_posts", 0),
+            renamed=getattr(result, "renamed_files", 0),
+            skipped_rename=getattr(result, "skipped_rename", 0),
+            skipped_existing=getattr(result, "skipped_existing", 0),
+            skipped_no_md5=getattr(result, "skipped_no_md5", 0),
+            not_found=getattr(result, "not_found", 0),
+            errors=getattr(result, "errors", 0),
         )
         self.log_text.append(summary)
         self.progress_label.setText(summary.replace("\n", " | "))
@@ -461,9 +458,9 @@ class ImportTab(QWidget):
     def on_failed(self, traceback_text: str) -> None:
         self.set_controls_enabled(True)
         self.progress_bar.setVisible(False)
-        self.progress_label.setText("Importer fehlgeschlagen.")
+        self.progress_label.setText(tr("import.failed", config=self.config))
         self.log_text.append(traceback_text)
-        QMessageBox.critical(self, "Importer fehlgeschlagen", traceback_text)
+        QMessageBox.critical(self, tr("import.failed", config=self.config), traceback_text)
 
     def cleanup_thread(self) -> None:
         if self.worker is not None:

@@ -11,6 +11,7 @@ from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
 from app.core.filename_builder import FilenameBuilder
 from app.danbooru.api import DanbooruApi
+from app.i18n.i18n import tr
 from app.services.post_import_service import PostImportService
 
 IMAGE_EXTENSIONS = {
@@ -97,7 +98,7 @@ class ExistingFileImportService:
     ) -> ExistingFileImportResult:
         root = Path(folder).expanduser()
         if not root.exists() or not root.is_dir():
-            raise RuntimeError(f"Import-Ordner nicht gefunden: {root}")
+            raise RuntimeError(tr("import.error.import_folder_not_found", config=self.config, root=root))
 
         category = self.category_match_for_id(category_id)
         result = ExistingFileImportResult(
@@ -111,7 +112,7 @@ class ExistingFileImportService:
             ExistingFileImportProgress(
                 phase="start",
                 total=len(files),
-                message=f"Import gestartet: {len(files)} Dateien, Kategorie {result.category_name}",
+                message=tr("import.service.import_started", config=self.config, count=len(files), category=result.category_name),
             )
         )
 
@@ -143,7 +144,7 @@ class ExistingFileImportService:
                 result.skipped_no_md5 += 1
                 base_progress.phase = "skip"
                 base_progress.skipped_no_md5 = result.skipped_no_md5
-                base_progress.message = f"Übersprungen, keine Post-ID und kein MD5 im Dateinamen: {path.name}"
+                base_progress.message = tr("import.service.skipped_no_id_md5", config=self.config, filename=path.name)
                 self.emit_progress(base_progress)
                 continue
 
@@ -159,7 +160,7 @@ class ExistingFileImportService:
                     result.not_found += 1
                     base_progress.phase = "not_found"
                     base_progress.not_found = result.not_found
-                    base_progress.message = f"Kein Danbooru-Post für {lookup_description}: {path.name}"
+                    base_progress.message = tr("import.service.no_danbooru_post", config=self.config, lookup=lookup_description, filename=path.name)
                     self.emit_progress(base_progress)
                     continue
 
@@ -193,7 +194,7 @@ class ExistingFileImportService:
                             skipped_existing=result.skipped_existing,
                             not_found=result.not_found,
                             errors=result.errors,
-                            message=f"Post {post_id} bereits vorhanden, nicht aktualisiert: {path.name}",
+                            message=tr("import.service.post_exists_not_updated", config=self.config, post_id=post_id, filename=path.name),
                         )
                     )
                     continue
@@ -214,26 +215,26 @@ class ExistingFileImportService:
                         if rename_result.renamed:
                             result.renamed_files += 1
                             current_path = rename_result.final_path
-                            rename_message = f"; umbenannt: {rename_result.final_path.name}"
+                            rename_message = tr("import.service.renamed_suffix", config=self.config, filename=rename_result.final_path.name)
                         else:
                             result.skipped_rename += 1
-                            rename_message = "; Name bereits aktuell"
+                            rename_message = tr("import.service.name_already_current_suffix", config=self.config)
                     except Exception as exc:
                         result.errors += 1
-                        rename_message = f"; Umbenennen fehlgeschlagen: {exc}"
+                        rename_message = tr("import.service.rename_failed_suffix", config=self.config, error=exc)
 
                 if existing is None:
                     result.imported_posts += 1
                     phase = "imported"
-                    action = "importiert"
+                    action = tr("import.service.action_imported", config=self.config)
                 else:
                     result.updated_posts += 1
                     phase = "updated"
                     old_path = str(existing["final_file_path"] or "")
                     if old_path and old_path != str(path):
-                        action = "aktualisiert (Pfad/Kategorie überschrieben)"
+                        action = tr("import.service.action_updated_path_category", config=self.config)
                     else:
-                        action = "aktualisiert"
+                        action = tr("import.service.action_updated", config=self.config)
 
                 self.emit_progress(
                     ExistingFileImportProgress(
@@ -254,7 +255,7 @@ class ExistingFileImportService:
                         skipped_existing=result.skipped_existing,
                         not_found=result.not_found,
                         errors=result.errors,
-                        message=f"Post {post_id} {action}: {path.name}{rename_message}",
+                        message=tr("import.service.post_action", config=self.config, post_id=post_id, action=action, filename=path.name, suffix=rename_message),
                     )
                 )
             except Exception as exc:
@@ -277,7 +278,7 @@ class ExistingFileImportService:
                         skipped_existing=result.skipped_existing,
                         not_found=result.not_found,
                         errors=result.errors,
-                        message=f"Fehler bei {path.name}: {exc}",
+                        message=tr("import.service.error_file", config=self.config, filename=path.name, error=exc),
                     )
                 )
 
@@ -294,7 +295,7 @@ class ExistingFileImportService:
                 skipped_existing=result.skipped_existing,
                 not_found=result.not_found,
                 errors=result.errors,
-                message="Import abgeschlossen.",
+                message=tr("import.service.import_done", config=self.config),
             )
         )
         return result
@@ -318,7 +319,7 @@ class ExistingFileImportService:
             ExistingFileImportProgress(
                 phase="start",
                 total=len(rows),
-                message=f"Umbenennen gestartet: {len(rows)} gespeicherte Dateien, Kategorie {category.name}",
+                message=tr("import.service.rename_started", config=self.config, count=len(rows), category=category.name),
             )
         )
 
@@ -330,11 +331,11 @@ class ExistingFileImportService:
                 if rename_result.renamed:
                     result.renamed_files += 1
                     phase = "renamed"
-                    message = f"Post {post_id} umbenannt: {rename_result.source_path.name} -> {rename_result.final_path.name}"
+                    message = tr("import.service.post_renamed", config=self.config, post_id=post_id, old_name=rename_result.source_path.name, new_name=rename_result.final_path.name)
                 else:
                     result.skipped_rename += 1
                     phase = "skip_rename"
-                    message = f"Post {post_id}: Name bereits aktuell"
+                    message = tr("import.service.post_name_current", config=self.config, post_id=post_id)
 
                 self.emit_progress(
                     ExistingFileImportProgress(
@@ -362,7 +363,7 @@ class ExistingFileImportService:
                         renamed=result.renamed_files,
                         skipped_rename=result.skipped_rename,
                         errors=result.errors,
-                        message=f"Fehler beim Umbenennen von Post {post_id}: {exc}",
+                        message=tr("import.service.rename_error_post", config=self.config, post_id=post_id, error=exc),
                     )
                 )
 
@@ -374,7 +375,7 @@ class ExistingFileImportService:
                 renamed=result.renamed_files,
                 skipped_rename=result.skipped_rename,
                 errors=result.errors,
-                message="Umbenennen abgeschlossen.",
+                message=tr("import.service.rename_done", config=self.config),
             )
         )
         return result
@@ -390,7 +391,7 @@ class ExistingFileImportService:
     ) -> ExistingFileImportResult:
         root = Path(folder).expanduser()
         if not root.exists() or not root.is_dir():
-            raise RuntimeError(f"Reparatur-Ordner nicht gefunden: {root}")
+            raise RuntimeError(tr("import.error.repair_folder_not_found", config=self.config, root=root))
 
         old_category = self.category_match_for_id(old_category_id)
         new_category = self.category_match_for_id(new_category_id)
@@ -408,8 +409,7 @@ class ExistingFileImportService:
                 phase="start",
                 total=len(rows),
                 message=(
-                    f"Kategorie-Reparatur gestartet: {len(rows)} Posts unter {root}, "
-                    f"{old_category.name} -> {new_category.name}"
+                    tr("import.service.category_repair_started", config=self.config, count=len(rows), root=root, old_category=old_category.name, new_category=new_category.name)
                 ),
             )
         )
@@ -427,7 +427,7 @@ class ExistingFileImportService:
         for index, row in enumerate(rows, start=1):
             post_id = int(row["id"])
             current_path = Path(str(row["final_file_path"] or ""))
-            message = f"Post {post_id}: Kategorie repariert {old_category.name} -> {new_category.name}"
+            message = tr("import.service.post_category_repaired", config=self.config, post_id=post_id, old_category=old_category.name, new_category=new_category.name)
 
             if rename_after_repair:
                 try:
@@ -435,13 +435,13 @@ class ExistingFileImportService:
                     if rename_result.renamed:
                         result.renamed_files += 1
                         current_path = rename_result.final_path
-                        message += f"; umbenannt: {rename_result.final_path.name}"
+                        message += tr("import.service.renamed_suffix", config=self.config, filename=rename_result.final_path.name)
                     else:
                         result.skipped_rename += 1
-                        message += "; Name bereits aktuell"
+                        message += tr("import.service.name_already_current_suffix", config=self.config)
                 except Exception as exc:
                     result.errors += 1
-                    message += f"; Umbenennen fehlgeschlagen: {exc}"
+                    message += tr("import.service.rename_failed_suffix", config=self.config, error=exc)
 
             self.emit_progress(
                 ExistingFileImportProgress(
@@ -468,7 +468,7 @@ class ExistingFileImportService:
                 renamed=result.renamed_files,
                 skipped_rename=result.skipped_rename,
                 errors=result.errors,
-                message="Kategorie-Reparatur abgeschlossen.",
+                message=tr("import.service.category_repair_done", config=self.config),
             )
         )
         return result
@@ -479,26 +479,26 @@ class ExistingFileImportService:
             (int(category_id),),
         ).fetchone()
         if row is None:
-            raise RuntimeError(f"Kategorie nicht gefunden: ID {category_id}")
+            raise RuntimeError(tr("import.error.category_not_found", config=self.config, category_id=category_id))
         return CategoryMatch(
             id=int(row["id"]),
             name=str(row["name"]),
             folder_name=str(row["folder_name"]),
             output_path=row["output_path"],
             matched=False,
-            reason="Importer",
+            reason=tr("import.importer_title", config=self.config),
         )
 
     def rename_saved_post_file(self, post_id: int, *, category: CategoryMatch | None = None) -> RenameExistingFileResult:
         row = self.db.get_post_detail(post_id)
         if row is None:
-            raise RuntimeError(f"Post {post_id} ist nicht in der Datenbank")
+            raise RuntimeError(tr("import.error.post_not_in_db", config=self.config, post_id=post_id))
         if not row["final_file_path"]:
-            raise RuntimeError(f"Post {post_id} hat keinen gespeicherten Dateipfad")
+            raise RuntimeError(tr("import.error.post_no_saved_path", config=self.config, post_id=post_id))
 
         source_path = Path(str(row["final_file_path"]))
         if not source_path.exists():
-            raise RuntimeError(f"Datei fehlt: {source_path}")
+            raise RuntimeError(tr("import.error.file_missing", config=self.config, path=source_path))
 
         if category is None:
             assigned = self.db.get_assigned_category_for_post(post_id)
@@ -511,7 +511,7 @@ class ExistingFileImportService:
                     folder_name=str(assigned["folder_name"]),
                     output_path=assigned["output_path"],
                     matched=False,
-                    reason="Zugewiesene Kategorie",
+                    reason=tr("import.service.assigned_category_reason", config=self.config),
                 )
 
         # Wichtig: Der Importer darf bestehende Dateien beim reinen Umbenennen nicht in

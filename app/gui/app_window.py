@@ -78,7 +78,13 @@ class AppWindow(QMainWindow):
 
 
     def _tab_title(self, key: str) -> str:
-        return tr(f"tabs.{key}", config=self.config)
+        # Internal tab ids are not always identical to translation ids.
+        # Keep the legacy internal key "import" stable, but translate it as
+        # "importer" so the visible tab title never falls back to a raw key.
+        translation_key = {
+            "import": "importer",
+        }.get(key, key)
+        return tr(f"tabs.{translation_key}", config=self.config)
 
     def _startup_log(self, message: str) -> None:
         if not self.debug_startup:
