@@ -562,15 +562,12 @@ class ConfigTab(QWidget):
         self.llm_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.llm_api_key_edit.setPlaceholderText("Optional: OpenAI/API-Key direkt speichern, z. B. sk-...; bleibt lokal in SQLite")
         self.llm_api_key_edit.setToolTip(
-            "Optionaler direkter API-Key. Wenn leer, wird API-Key Env genutzt. "
-            "Der Key wird maskiert angezeigt und nicht in Logs geschrieben, liegt aber lokal in der SQLite-Konfiguration."
+            "Optionaler API-Key. Der Key wird maskiert angezeigt und nicht in Logs geschrieben, "
+            "liegt aber lokal in der SQLite-Konfiguration."
         )
 
         self.show_llm_api_key_checkbox = QCheckBox("LLM-API-Key anzeigen")
         self.show_llm_api_key_checkbox.toggled.connect(self.toggle_llm_api_key_visibility)
-
-        self.llm_api_key_env_edit = QLineEdit(str(llm_config.get("api_key_env", "LLM_API_KEY") or "LLM_API_KEY"))
-        self.llm_api_key_env_edit.setPlaceholderText("Fallback: Name der Umgebungsvariable, z. B. OPENAI_API_KEY")
 
         self.llm_timeout_spin = QSpinBox()
         self.llm_timeout_spin.setRange(1, 600)
@@ -679,7 +676,7 @@ class ConfigTab(QWidget):
             "LLM-Debug ist hier in der Konfiguration gesammelt: Beispiel-Payload und letzte Fetch-Payloads. "
             "Gesendet wird je nach Backend automatisch nach dem Fetch. Ablauf: Original-Tag -> Alias/Canonical -> optional Salted Hash. "
             "Kategorien werden separat anonymisiert und vor dem Speichern wieder zurueckgemappt. "
-            "API-Keys koennen direkt lokal gespeichert oder per Umgebungsvariable gelesen werden. "
+            "API-Keys werden direkt lokal in SQLite gespeichert. "
             "Der Salt bleibt lokal in app_settings. Hashes sind Pseudonymisierung, kein magischer Tarnumhang."
         )
         llm_help.setWordWrap(True)
@@ -692,7 +689,6 @@ class ConfigTab(QWidget):
         self.scoring_llm_form.addRow("Modell:", self.llm_model_edit)
         self.scoring_llm_form.addRow("API-Key:", self.llm_api_key_edit)
         self.scoring_llm_form.addRow("", self.show_llm_api_key_checkbox)
-        self.scoring_llm_form.addRow("API-Key Env:", self.llm_api_key_env_edit)
         self.scoring_llm_form.addRow("Timeout:", self.llm_timeout_spin)
         self.scoring_llm_form.addRow("Nach Fetch:", self.llm_run_after_fetch_checkbox)
         self.scoring_llm_form.addRow("", self.llm_skip_scored_checkbox)
@@ -1262,7 +1258,6 @@ class ConfigTab(QWidget):
         self.llm_endpoint_url_edit.setText(str(self.runtime_value("llm.endpoint_url", "") or ""))
         self.llm_model_edit.setText(str(self.runtime_value("llm.model", "") or ""))
         self.llm_api_key_edit.setText(str(self.runtime_value("llm.api_key", "") or ""))
-        self.llm_api_key_env_edit.setText(str(self.runtime_value("llm.api_key_env", "LLM_API_KEY") or "LLM_API_KEY"))
         self.llm_timeout_spin.setValue(int(self.runtime_value("llm.request_timeout_seconds", 60)))
         self.llm_run_after_fetch_checkbox.setChecked(bool(self.runtime_value("llm.run_after_fetch", False)))
         self.llm_skip_scored_checkbox.setChecked(bool(self.runtime_value("llm.skip_already_scored", True)))
@@ -1350,7 +1345,6 @@ class ConfigTab(QWidget):
             "llm.endpoint_url": self.llm_endpoint_url_edit.text().strip(),
             "llm.model": self.llm_model_edit.text().strip(),
             "llm.api_key": self.llm_api_key_edit.text().strip(),
-            "llm.api_key_env": self.llm_api_key_env_edit.text().strip() or "LLM_API_KEY",
             "llm.request_timeout_seconds": int(self.llm_timeout_spin.value()),
             "llm.run_after_fetch": self.llm_run_after_fetch_checkbox.isChecked(),
             "llm.skip_already_scored": self.llm_skip_scored_checkbox.isChecked(),

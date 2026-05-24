@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
@@ -208,16 +207,14 @@ class LLMBatchPreselectionService:
 
         timeout = int(llm_config.get("request_timeout_seconds", 60) or 60)
         model = str(llm_config.get("model", "") or "").strip()
-        direct_api_key = str(llm_config.get("api_key", "") or "").strip()
-        api_key_env = str(llm_config.get("api_key_env", "LLM_API_KEY") or "LLM_API_KEY").strip()
-        api_key = direct_api_key or (os.getenv(api_key_env, "") if api_key_env else "")
+        api_key = str(llm_config.get("api_key", "") or "").strip()
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         elif backend == "openai_compatible":
             raise RuntimeError(
                 "OpenAI-kompatibles Backend braucht einen API-Key. "
-                "Trage ihn in der Konfiguration bei LLM/API-Key ein oder setze die angegebene API-Key-Env-Variable."
+                "Trage ihn in der Konfiguration bei LLM/API-Key ein. Environment-Fallback wurde entfernt."
             )
 
         if backend == "openai_compatible":

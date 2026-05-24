@@ -22,17 +22,7 @@ def setup_logging(debug: bool) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Danbooru Manager - SQLite-Konfiguration, API-Import, Thumbnail-Cache und Preview-GUI"
-    )
-    parser.add_argument(
-        "--config",
-        default="config.yaml",
-        help="Optionaler Pfad zu einer alten YAML-Konfiguration als Start-Overlay",
-    )
-    parser.add_argument(
-        "--env-file",
-        default=".env",
-        help="Pfad zur optionalen .env-Datei",
+        description="Danbooru Manager - SQLite configuration, API import, thumbnail cache and preview GUI"
     )
     parser.add_argument(
         "--init-db",
@@ -71,10 +61,7 @@ def main() -> int:
     args = parse_args()
     setup_logging(args.debug)
 
-    config_path = Path(args.config)
-    env_path = Path(args.env_file)
-
-    config = load_config(config_path, env_path)
+    config = load_config()
     config["debug_startup"] = bool(args.debug_startup)
     ensure_runtime_dirs(config)
 
@@ -83,25 +70,23 @@ def main() -> int:
     db.initialize_schema()
 
     # SQLite/app_settings is the leading GUI configuration once the database
-    # exists. Apply it before CLI fetch/import style actions and before the GUI
-    # creates API clients. database_file itself cannot be changed here anymore,
-    # because we had to open a database first. Reality, this rude little detail.
+    # exists. External config files and .env files are intentionally not read.
     db.apply_app_settings_to_config(config)
     ensure_runtime_dirs(config)
 
     if args.init_db:
-        logging.info("Datenbank initialisiert: %s", config["database_file"])
+        logging.info("Database initialized: %s", config["database_file"])
 
     if args.import_history:
         history_file = Path(config.get("history_file", "downloaded_ids.txt"))
         imported = import_downloaded_ids_history(db, history_file)
-        logging.info("History-Import abgeschlossen: %s Einträge", imported)
+        logging.info("History import finished: %s entries", imported)
 
     if args.fetch:
         service = PostImportService(config, db)
         result = service.fetch_and_store()
         logging.info(
-            "Fetch abgeschlossen: queries=%s, gesehen=%s, neu=%s, aktualisiert=%s, thumbnails=%s",
+            "Fetch finished: queries=%s, seen=%s, inserted=%s, updated=%s, thumbnails=%s",
             result.queries,
             result.seen_posts,
             result.inserted_posts,
@@ -118,7 +103,7 @@ def main() -> int:
         return exit_code
 
     if not args.init_db and not args.import_history and not args.fetch and not args.gui:
-        logging.info("Nichts zu tun. Nutze --init-db, --import-history, --fetch oder --gui.")
+        logging.info("Nothing to do. Use --init-db, --import-history, --fetch or --gui.")
 
     db.close()
     return 0

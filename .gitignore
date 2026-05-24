@@ -1,7 +1,5 @@
-config.yaml
 danbooru_downloads/
 downloaded_ids.txt
-.env
 danbooru_manager_data/
 danbooru_saved
 # OS files
@@ -9,9 +7,6 @@ danbooru_saved
 humbs.db
 
 # Environment / secrets
-.env
-.env.*
-.env.example
 
 # Logs
 *.log

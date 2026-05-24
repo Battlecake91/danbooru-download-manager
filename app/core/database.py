@@ -491,47 +491,6 @@ class Database:
         if column_name not in existing:
             self.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {declaration}")
 
-    def sync_static_config(self, config: dict[str, Any]) -> None:
-        categories = normalize_categories(config.get("categories", []) or [])
-
-        for index, category in enumerate(categories):
-            category_id = self.upsert_category(
-                name=category["name"],
-                folder_name=category.get("folder_name", category["name"]),
-                output_path=category.get("output_path"),
-                hotkey=category.get("hotkey"),
-                sort_order=index,
-            )
-
-            for tag in category.get("include", []) or []:
-                self.add_category_rule(category_id, "include", str(tag))
-
-            for tag in category.get("exclude", []) or []:
-                self.add_category_rule(category_id, "exclude", str(tag))
-
-            include_groups = category.get("include_groups", []) or []
-            for group_index, group in enumerate(include_groups):
-                for tag in group:
-                    self.add_category_rule(category_id, f"include_group_{group_index}", str(tag))
-
-        filename = config.get("filename", {}) or {}
-        for tag in filename.get("excluded_tags", []) or []:
-            self.add_filename_excluded_tag(str(tag), "config-import")
-
-        llm = config.get("llm", {}) or {}
-        aliases = llm.get("tag_aliases", {}) or {}
-        for original, alias in aliases.items():
-            self.set_tag_alias(str(original), str(alias))
-
-        self.execute(
-            """
-            INSERT INTO config_imports (source_name, note)
-            VALUES (?, ?)
-            """,
-            ("config.yaml", "non-destructive import"),
-        )
-        self.commit()
-
     def upsert_category(
         self,
         name: str,

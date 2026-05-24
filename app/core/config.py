@@ -1,16 +1,8 @@
 from __future__ import annotations
 
 import copy
-import os
 from pathlib import Path
 from typing import Any
-
-try:
-    import yaml  # type: ignore[import-untyped]
-except Exception:  # PyYAML ist nur noch optional fuer Alt-Imports.
-    yaml = None
-
-from dotenv import load_dotenv
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -97,7 +89,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "endpoint_url": "",
         "model": "",
         "api_key": "",
-        "api_key_env": "LLM_API_KEY",
         "request_timeout_seconds": 60,
         "run_after_fetch": False,
         "after_fetch_statuses": ["new", "potential"],
@@ -135,35 +126,15 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
 
 
 def load_config(config_path: Path | None = None, env_path: Path | None = None) -> dict[str, Any]:
-    """Load runtime config.
+    """Return the internal default runtime config.
 
-    SQLite/app_settings is the leading configuration inside the GUI. YAML is no
-    longer required; an existing YAML file is only used as an optional legacy
-    import/default overlay at startup. Yes, finally, one less file pretending to
-    be a database.
+    The GUI configuration lives in SQLite/app_settings. External YAML and .env
+    files are intentionally ignored now. The optional parameters stay in the
+    signature for older call sites and scripts, but they do nothing. Yes, even
+    configuration files eventually have to move out of their parents' basement.
     """
-    if env_path and env_path.exists():
-        load_dotenv(env_path)
-
-    loaded: dict[str, Any] = {}
-    if config_path is not None and config_path.exists():
-        if yaml is None:
-            raise RuntimeError(
-                f"YAML-Konfiguration gefunden ({config_path}), aber PyYAML ist nicht installiert. "
-                "Installiere PyYAML oder entferne/ignoriere die YAML-Datei."
-            )
-        with config_path.open("r", encoding="utf-8") as handle:
-            loaded = yaml.safe_load(handle) or {}
-
-    config = deep_merge(copy.deepcopy(DEFAULT_CONFIG), loaded)
-
-    env_username = os.getenv("DANBOORU_USERNAME")
-    env_api_key = os.getenv("DANBOORU_API_KEY")
-
-    if env_username:
-        config["username"] = env_username
-    if env_api_key:
-        config["api_key"] = env_api_key
+    _ = config_path, env_path
+    config = copy.deepcopy(DEFAULT_CONFIG)
 
     if not config.get("active_thumbnail_dir"):
         config["active_thumbnail_dir"] = config.get("thumbnail_dir")

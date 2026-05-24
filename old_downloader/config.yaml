@@ -1,0 +1,347 @@
+base_url: "https://danbooru.donmai.us"
+
+# Für Saved Searches notwendig.
+# Für normale Suche optional, aber trotzdem sinnvoll.
+username: "Battlecake"
+api_key: "UCuLJvvX5Y5nM5az66sKDS2b"
+
+# Normale Suche, wenn use_saved_searches: false
+search_tags: "underwear -otoko_no_ko -futanari -fujigaya_arctia -matsuo_yukihiro"
+
+# Saved Searches aus deinem Profil benutzen
+use_saved_searches: true
+
+# Leer = alle Labels erlauben
+# Beispiel aus deinem Test: ["artists"]
+saved_search_labels:
+  - "default"
+
+# Leer = alle Queries erlauben
+# Sonst nur exakt diese Queries:
+# saved_search_queries:
+#   - "makuran"
+#   - "taitai"
+saved_search_queries: []
+
+# Wird an jede Saved Search gehängt
+saved_search_extra_tags: "( rating:q or rating:e )"
+
+output_dir: "./danbooru_downloads"
+history_file: "./downloaded_ids.txt"
+
+limit: 100
+max_posts_per_query: 150
+max_total_posts: 5000
+
+delay_seconds: 0.05
+
+# first = erste passende Kategorie
+# copy_all = in alle passenden Kategorien kopieren/hardlinken
+multi_match_mode: "first"
+
+unmatched_folder: "_unsorted"
+
+download_only_matching_categories: true
+delete_staging_file_after_sort: true
+
+# Dateiname aus wichtigen Tags bauen
+filename_tags_count: 10
+filename_max_length: 180
+
+filename_excluded_tags:
+  - "1girl"
+  - "2girls"
+  - "3girls"
+  - "1boy"
+  - "2boys"
+  - "3boys"
+  - "solo"
+  - "looking_at_viewer"
+  - "breasts"
+  - "barefoot"
+  - "cape"
+  - "toenails"
+  - "soles"
+  - "toes"
+  - "female_public_hair"
+  - "black_cape"
+  - "cape"
+  - "feet"
+  - "large_breasts"
+  - "poke_ball"
+  - "poke_ball_(basic)"
+  - "fur_trim"
+  - "fur-trimmed_coat"
+  - "coat"
+  - "original"
+  - "bare_arms"
+  - "blush"
+  - "bedwetting"
+  - "bouncing_breasts"
+  - "embarrassed"
+  - "grabbing_another's_breast"
+  - "grabbing_from_behind"
+  - "groping"
+  - "armpits"
+  - "brown_horns"
+  - "black_horns"
+  - "bound_ankles"
+  - "ahoge"
+  - "one-peace_swimsuit"
+  - "blue_one-peace_swimsuit"
+  - "black_one-peace_swimsuit"
+  - "white_one-peace_swimsuit" 
+  - "bare_shoulders"
+  - "covered_navel"
+  - "inverted_nipples"
+  - "bar_censor"
+  - "mosaic_censoring"
+  - "age_difference"
+  - "claw_pose"
+  - "crossed_bangs"
+  - "heart_censor"
+  - "wolf_ears"
+  - "cat_ears"
+  - "fox_ears"
+  - "peeing_self"
+  - "pillow"
+  - "twintails"
+  - "blue_sky"
+  - "day"
+  - "night"
+  - "hairclip"
+  - "maebari"
+  - "thighhighs"
+  - "topless_female"
+  - "yellow_halo"
+  - "blue_halo"
+  - "white_thighhighs"
+  - "ribbon"
+  - "power_symbol"
+  - "pasties"
+  - "heart_maebari"
+  - "heart_pasties"
+  - "indoors"
+  - "navel"
+  - "frilled_headband"
+  - "covered_nipples"
+  - "bow_panties"
+  - "bow"
+  - "blue_ribbon"
+  - "@_@"
+  - ":D"
+  - "furry_female"
+  - "rabbit_ears"
+  - "animal_ear_fluff"
+  - "animal_ear_piercing"
+  - "teeth"
+  - "thick_eyebrows"
+  - "twin_braids"
+  - "uneven_eyes"
+  - "upper_teeth_only"
+  - "white_background"
+  - "simple_background"
+  - "bangs_pinned_back"
+  - "oppai_loli"
+  - "horns"
+  - "white_panties"
+  - "black_panties"
+  - ":d"
+  - "clothes_pull"
+  - "male_public_hair"
+  - "public_hair"
+  - "smile"
+  - "white_hat"
+  - "white_pantyhose"
+  - "hetero"
+  - "nurse_cap"
+  - "capelet"
+  - "jingle_bell"
+  - "multiple_boys"
+  - "multiple_girls"
+  - "capelet"
+  - "red_capelet"
+  - "red_gloves"
+  - "gloves"
+  - "short_eyebrows"
+  - "red_hat"
+  - "hat"
+  - "calico_(pattern)"
+  - "fur-trimmed_capelet"
+  - "fur-trimmed_gloves"
+  - "cat_tail"
+  - "^_^"
+  - "blurry"
+  - "blurry_background"
+  - "christmas_tree"
+  - "hood"
+  - "hoodie"
+  - "hood_up"
+  - "long_sleeves"
+  - "silhouette"
+  - "sweat"
+  - "naked_hoodie"
+  - "black_bikini"
+  - "white_bikini"
+  - "heart"
+  - "gauze"
+  - "gauze_on_cheek"
+  - "gauze_on_face"
+  - "animal_hands"
+  - "string_bikini"
+  - "red_collar"
+  - "paw_gloves"
+  - "wolf_ears"
+  - "cosplay"
+  - "fang"
+  - "bandaids_on_nipples"
+  - "kigurumi"
+  - "nail_polish"
+  - "parallel_hairclips"
+  - "skin_fang"
+  - "pink_nails"
+  - "unzipped"
+  - "toenail_polish"
+  - "toenails"
+  - "hair_ornament"
+  - "animal_ear_hood"
+  - "black_buruma"
+  - "red_buruma"
+  - "gym_uniform"
+  - "pee_stain"
+  - "shirt_lift"
+  - "shirt"
+  - "stomach"
+  - "wet_buruma"
+  - "wet_clothes"
+  - "white_shirt"
+  - "window"
+  - "futon"
+  - "hand_on_own_stomach"
+  - "short_sleeves"
+  - "naughty_face"
+  - ":p"
+  - "tongue_out"
+  - "tan"
+  - "tanlines"
+  - "school_swimsuit"
+  - "!"
+  - "crime_prevention_buzzer"
+  - "smalldom"
+  - "red_bag"
+  - "randoseru"
+  - "pom_pom_(clothes)"
+  - "pom_pom_hair_ornament"
+  - "talking"
+  - "toes"
+  - "virtual_youtuber"
+  - "closed_eyes"
+  - "footjob"
+  - "ejaculation"
+  - "bag"
+  - "backpack"
+  - "locker"
+  - "locker_room"
+  - "white_skirt"
+  - "white_socks"
+  - "spoken_interrobang"
+  - "speech_bubble"
+  - "pink_halo"
+  - "nose_blush"
+  - "clothes_lift"
+  - "halo"
+  - "hairband"
+  - "cheerleader"
+  - "black_hairband"
+  - "animal_print"
+  - "arched_bangs"
+  - "earrings"
+  - "ear_piercing"
+  - "grey_shorts"
+  - "jewelry"
+  - "mole"
+  - "mole_on_breast"
+  - "one-piece_tan"
+  - "piercing"
+  - "print_bikini"
+  - "purple_bikini"
+  - "bikini"
+  - "thigh_strap"
+  - "trembling"
+  - "stomach_bulge"
+  - "streaked_hair"
+  - "heart_earrings"
+  - "leopard_print"
+  - "leopard_print_bikini"
+  - "leopard_print_bow"
+  - "gyaru"
+  - "presenting_own_foot"
+  - "legs"
+  - "hair_bow"
+  - "hair_intakes"
+  - "collarbone"
+  - "foot_focus"
+  - "foot_out_of_frame"
+  - "black_bow"
+  - "antenna_hair"
+  - "hair_between_eyes"
+  - "gradient_hair"
+  - "golden_bikini"
+  - "commentary"
+  - "highres"
+  - "absurdres"
+  - "blue_archive"
+  - "yuzu_(maid)_(blue_archive)"
+  - "cleft_of_venus"
+  - "closed_mouth"
+  - "open_mouth"
+  - "maid_headdress"
+
+categories:
+  video:
+    include_groups:
+      - ["video"]
+      - ["animated"]
+    include_mode: "any"
+    exclude: []
+
+  ll:
+    include:
+      - "loli"
+    include_groups_mode: "all"
+    exclude: []
+
+  rape:
+    include:
+      - "rape"
+    include_groups_mode: "all"
+    exclude: []
+    
+  uncensored:
+    include_groups:
+      - ["uncensored", "pussy"]
+    include_groups_mode: "any"
+    exclude:
+      - "censored"
+      - "mosaic_censoring"
+      - "bar_censor"
+      
+  censored:
+    include_groups:
+      - ["censored", "pussy"]
+      - ["bar_censor"]
+      - ["mosaic_censoring"]
+    include_groups_mode: "any"
+    exclude: []
+    
+  soft:
+    include:
+      - "underwear"
+      - "cameltoe"
+      - "swimsuit"
+      - "hot_pants"
+      - "bandaid_on_pussy"
+    exclude: 
+      - "pussy"
+      
+    

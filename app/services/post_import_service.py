@@ -60,8 +60,6 @@ class PostImportService:
             self.progress_callback(progress)
 
     def fetch_and_store(self) -> FetchResult:
-        self.db.sync_static_config(self.config)
-
         queries = build_search_queries(self.config, self.api)
         if not queries:
             raise RuntimeError("Keine Suchqueries vorhanden")
