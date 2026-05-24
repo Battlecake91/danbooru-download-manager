@@ -480,36 +480,6 @@ class ImageViewerWindow(QMainWindow):
         self.related_list.hide()
         self.side_layout.addWidget(self.related_list)
 
-        self.final_path_title_label = QLabel("Zielpfad")
-        self.final_path_title_label.setStyleSheet("QLabel { font-weight: bold; margin-top: 4px; }")
-        self.side_layout.addWidget(self.final_path_title_label)
-
-        self.final_path_label = QLabel()
-        self.final_path_label.setWordWrap(True)
-        self.final_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.final_path_label.setMaximumHeight(78)
-        self.final_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.final_path_label.setStyleSheet(
-            "QLabel { background: transparent; color: #eeeeee; border: 1px solid #eeeeee; "
-            "border-radius: 5px; padding: 6px; }"
-        )
-        self.side_layout.addWidget(self.final_path_label)
-
-        self.filename_preview_button = QPushButton("Dateiname-Vorschau anzeigen")
-        self.filename_preview_button.setCheckable(True)
-        self.filename_preview_button.toggled.connect(self.toggle_filename_preview)
-        self.filename_preview_button.hide()
-        self.side_layout.addWidget(self.filename_preview_button)
-
-        self.filename_preview_label = QLabel()
-        self.filename_preview_label.setWordWrap(True)
-        self.filename_preview_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.filename_preview_label.setStyleSheet(
-            "QLabel { background: #202020; border: 1px solid #555; border-radius: 6px; padding: 6px; }"
-        )
-        self.filename_preview_label.hide()
-        self.side_layout.addWidget(self.filename_preview_label)
-
         self.tags_widget = TypedTagListWidget()
         for list_widget in self.tags_widget.lists.values():
             list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -545,6 +515,50 @@ class ImageViewerWindow(QMainWindow):
         self.splitter.setStretchFactor(0, 4)
         self.splitter.setStretchFactor(1, 1)
         self.central_layout.addWidget(self.splitter, stretch=1)
+
+        self.path_footer = QWidget()
+        self.path_footer_layout = QVBoxLayout(self.path_footer)
+        self.path_footer_layout.setContentsMargins(0, 4, 0, 0)
+        self.path_footer_layout.setSpacing(4)
+
+        self.path_footer_header = QHBoxLayout()
+        self.path_footer_header.setContentsMargins(0, 0, 0, 0)
+        self.final_path_title_label = QLabel("Zielpfad")
+        self.final_path_title_label.setStyleSheet("QLabel { font-weight: bold; margin-top: 2px; }")
+        self.path_footer_header.addWidget(self.final_path_title_label)
+        self.path_footer_header.addStretch(1)
+
+        self.filename_preview_button = QPushButton("Dateiname-Vorschau anzeigen")
+        self.filename_preview_button.setCheckable(True)
+        self.filename_preview_button.toggled.connect(self.toggle_filename_preview)
+        self.filename_preview_button.hide()
+        self.path_footer_header.addWidget(self.filename_preview_button)
+        self.path_footer_layout.addLayout(self.path_footer_header)
+
+        self.final_path_label = QLabel()
+        self.final_path_label.setWordWrap(True)
+        self.final_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.final_path_label.setMaximumHeight(52)
+        self.final_path_label.setMinimumWidth(0)
+        self.final_path_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.final_path_label.setStyleSheet(
+            "QLabel { background: transparent; color: #eeeeee; border: 1px solid #eeeeee; "
+            "border-radius: 5px; padding: 6px; }"
+        )
+        self.path_footer_layout.addWidget(self.final_path_label)
+
+        self.filename_preview_label = QLabel()
+        self.filename_preview_label.setWordWrap(True)
+        self.filename_preview_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.filename_preview_label.setMinimumWidth(0)
+        self.filename_preview_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.filename_preview_label.setStyleSheet(
+            "QLabel { background: #202020; border: 1px solid #555; border-radius: 6px; padding: 6px; }"
+        )
+        self.filename_preview_label.hide()
+        self.path_footer_layout.addWidget(self.filename_preview_label)
+
+        self.central_layout.addWidget(self.path_footer, stretch=0)
 
         self.setCentralWidget(self.central_container)
 
