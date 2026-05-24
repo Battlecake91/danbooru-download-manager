@@ -184,6 +184,7 @@ class TypedTagListWidget(QWidget):
     def _create_list(self, tag_type: str) -> QListWidget:
         list_widget = ToggleSelectListWidget()
         list_widget.setSelectionMode(QListWidget.ExtendedSelection)
+        list_widget.itemSelectionChanged.connect(self._sync_detail_row_selection_colors)
         list_widget.setUniformItemSizes(True)
         list_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         list_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -239,6 +240,7 @@ class TypedTagListWidget(QWidget):
             for tag_type in ("artist", "copyright", "character", "general", "meta"):
                 self._fill_list(tag_type, self._visible_tags_for_type(tag_type))
             self._autosize_lists()
+            self._sync_detail_row_selection_colors()
         finally:
             for list_widget in self.lists.values():
                 list_widget.setUpdatesEnabled(True)
@@ -336,6 +338,7 @@ class TypedTagListWidget(QWidget):
         tag_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         tag_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         tag_label.setFont(base_font)
+        tag_label.setProperty("tag_row_role", "tag")
         tag_label.setStyleSheet(f"color: {TAG_TYPE_COLORS[tag_type]}; background: transparent;")
         row_layout.addWidget(tag_label, stretch=1)
 
@@ -353,11 +356,42 @@ class TypedTagListWidget(QWidget):
             # Keep proportional font like the tag lists. The fixed label widths
             # provide alignment; a separate monospace font just made the rows
             # look like they escaped from another UI.
+            label.setProperty("tag_row_role", "detail")
             label.setStyleSheet("color: #dddddd; background: transparent;")
             row_layout.addWidget(label)
 
         row.setStyleSheet("background: transparent;")
         return row
+
+    def _sync_detail_row_selection_colors(self) -> None:
+        """Keep custom General/Meta row widgets readable while selected.
+
+        QListWidget::item:selected changes the palette for plain item text, but
+        embedded widgets keep their own QLabel stylesheet. Without this sync,
+        selected General/Meta rows can end up with purple/grey text on a
+        purple/grey selection background. Naturally Qt made the easy thing the
+        one thing it refuses to do automatically.
+        """
+        for tag_type in ("general", "meta"):
+            list_widget = self.lists.get(tag_type)
+            if list_widget is None:
+                continue
+            normal_tag_color = TAG_TYPE_COLORS[tag_type]
+            for row_index in range(list_widget.count()):
+                item = list_widget.item(row_index)
+                widget = list_widget.itemWidget(item)
+                if widget is None:
+                    continue
+                selected = item.isSelected()
+                for label in widget.findChildren(QLabel):
+                    role = label.property("tag_row_role")
+                    if selected:
+                        color = "#000000"
+                    elif role == "tag":
+                        color = normal_tag_color
+                    else:
+                        color = "#dddddd"
+                    label.setStyleSheet(f"color: {color}; background: transparent;")
 
     @staticmethod
     def _format_score(value: Any) -> str:

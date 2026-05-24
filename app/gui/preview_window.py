@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QLabel,
     QLineEdit,
@@ -234,6 +235,29 @@ class PreviewWindow(QMainWindow):
         # Sortierung ebenfalls passiv, damit Filtersetzen nicht sofort neu rendert.
         self.sort_combo.currentIndexChanged.connect(self.on_passive_filter_changed)
         self.toolbar.addWidget(self.sort_combo)
+
+        self.toolbar.addSeparator()
+
+        self.recommendation_filter_checkbox = QCheckBox("Vorauswahl ≥")
+        self.recommendation_filter_checkbox.setToolTip(
+            "Filtert die geladenen Preview-Kandidaten nach lokalem Vorauswahl-Score. "
+            "Ausgeschaltet bedeutet: kein Score-Filter."
+        )
+        self.recommendation_filter_checkbox.stateChanged.connect(self.on_passive_filter_changed)
+        self.toolbar.addWidget(self.recommendation_filter_checkbox)
+
+        self.recommendation_min_spin = QDoubleSpinBox()
+        self.recommendation_min_spin.setRange(-10.0, 10.0)
+        self.recommendation_min_spin.setSingleStep(0.5)
+        self.recommendation_min_spin.setDecimals(1)
+        self.recommendation_min_spin.setValue(0.0)
+        self.recommendation_min_spin.setKeyboardTracking(False)
+        self.recommendation_min_spin.setToolTip(
+            "Mindestwert fuer die lokale Vorauswahl. Der Filter greift nur, "
+            "wenn die Checkbox links aktiv ist."
+        )
+        self.recommendation_min_spin.valueChanged.connect(self.on_passive_filter_changed)
+        self.toolbar.addWidget(self.recommendation_min_spin)
 
         self.toolbar.addSeparator()
 
@@ -515,6 +539,11 @@ class PreviewWindow(QMainWindow):
         value = self.sort_combo.currentData()
         return str(value) if value is not None else "id_desc"
 
+    def selected_recommendation_minimum(self) -> float | None:
+        if not self.recommendation_filter_checkbox.isChecked():
+            return None
+        return float(self.recommendation_min_spin.value())
+
     def load_category_rule_cache(self) -> None:
         categories = self.db.list_categories_full()
         rules = self.db.list_category_rules()
@@ -643,6 +672,37 @@ class PreviewWindow(QMainWindow):
             return category_name in {"", "_unmatched", "None"}
 
         return category_name == category_filter
+
+    def recommendation_matches_filter(self, row: dict[str, Any], minimum: float | None) -> bool:
+        if minimum is None:
+            return True
+        try:
+            score = float(row.get("recommendation_score") or 0.0)
+        except (TypeError, ValueError):
+            score = 0.0
+        return score >= minimum
+
+    def preview_score_summary(self, rows: list[dict[str, Any]]) -> str:
+        if not rows:
+            return "Vorauswahl: keine Treffer"
+
+        scores: list[float] = []
+        for row in rows:
+            try:
+                scores.append(float(row.get("recommendation_score") or 0.0))
+            except (TypeError, ValueError):
+                scores.append(0.0)
+
+        positive = sum(1 for score in scores if score > 0.0)
+        negative = sum(1 for score in scores if score < 0.0)
+        neutral = len(scores) - positive - negative
+        best = max(scores) if scores else 0.0
+        worst = min(scores) if scores else 0.0
+        average = sum(scores) / len(scores) if scores else 0.0
+        return (
+            f"Vorauswahl: +{positive} / 0:{neutral} / -{negative} | "
+            f"Ø {average:+.1f} | Best {best:+.1f} | Worst {worst:+.1f}"
+        )
 
     def assign_category_to_posts(self, post_ids: list[int], category_name: str) -> None:
         if not post_ids:
@@ -813,6 +873,7 @@ class PreviewWindow(QMainWindow):
             statuses = self.selected_statuses()
             text_filter = self.current_search_text()
             category_filter = self.selected_category_filter()
+            recommendation_minimum = self.selected_recommendation_minimum()
             sort_key = self.selected_sort_key()
             self.current_limit = int(self.limit_spin.value())
 
@@ -831,6 +892,7 @@ class PreviewWindow(QMainWindow):
                 row
                 for row in enriched
                 if self.category_matches_filter(row, category_filter)
+                and self.recommendation_matches_filter(row, recommendation_minimum)
             ]
             filtered = self.sort_preview_rows_in_python(filtered, sort_key)
 
@@ -843,13 +905,21 @@ class PreviewWindow(QMainWindow):
 
             status_text = self.status_filter_description(statuses)
             category_text = self.category_filter.currentText()
+            recommendation_filter_text = (
+                f"Vorauswahl ≥ {recommendation_minimum:+.1f}"
+                if recommendation_minimum is not None
+                else "Vorauswahl: alle"
+            )
+            score_summary = self.preview_score_summary(filtered)
 
             self.info_label.setText(
                 f"Ansicht: {VIEW_LABELS.get(self.selected_view_mode(), self.selected_view_mode())} | "
                 f"Angezeigt: {len(posts)} / Treffer im geladenen Bereich: {total} | "
                 f"Status: {status_text} | Kategorie: {category_text} | "
+                f"{recommendation_filter_text} | "
                 f"Sortierung: {self.sort_combo.currentText()} | "
-                f"Thumbnail: {self.grid.thumbnail_size}px"
+                f"Thumbnail: {self.grid.thumbnail_size}px\n"
+                f"{score_summary}"
             )
             if posts:
                 self.status_bar.showMessage(f"Lädt Preview-Karten… 0/{len(posts)}")
