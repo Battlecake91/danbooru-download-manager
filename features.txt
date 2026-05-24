@@ -1,0 +1,5 @@
+api key and username in konfig
+llm feature
+splashscreen
+better previewer buttons (zu breit alles)
+

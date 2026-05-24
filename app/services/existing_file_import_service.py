@@ -36,8 +36,10 @@ class ExistingFileImportProgress:
     imported: int = 0
     updated: int = 0
     renamed: int = 0
+    repaired: int = 0
     skipped_rename: int = 0
     skipped_no_md5: int = 0
+    skipped_existing: int = 0
     not_found: int = 0
     errors: int = 0
     message: str = ""
@@ -49,11 +51,14 @@ class ExistingFileImportResult:
     imported_posts: int = 0
     updated_posts: int = 0
     renamed_files: int = 0
+    repaired_posts: int = 0
     skipped_rename: int = 0
     skipped_no_md5: int = 0
+    skipped_existing: int = 0
     not_found: int = 0
     errors: int = 0
     category_name: str = ""
+    old_category_name: str = ""
 
 
 class ExistingFileImportService:
@@ -82,6 +87,7 @@ class ExistingFileImportService:
         *,
         recursive: bool = True,
         rename_after_import: bool = False,
+        update_existing: bool = True,
     ) -> ExistingFileImportResult:
         root = Path(folder).expanduser()
         if not root.exists() or not root.is_dir():
@@ -116,6 +122,7 @@ class ExistingFileImportService:
                 renamed=result.renamed_files,
                 skipped_rename=result.skipped_rename,
                 skipped_no_md5=result.skipped_no_md5,
+                skipped_existing=result.skipped_existing,
                 not_found=result.not_found,
                 errors=result.errors,
             )
@@ -139,13 +146,44 @@ class ExistingFileImportService:
                     continue
 
                 post_id = int(post["id"])
-                existing = self.db.execute("SELECT id FROM posts WHERE id = ?", (post_id,)).fetchone()
+                existing = self.db.execute(
+                    """
+                    SELECT id, final_file_path
+                    FROM posts
+                    WHERE id = ?
+                    """,
+                    (post_id,),
+                ).fetchone()
+
+                if existing is not None and not update_existing:
+                    result.skipped_existing += 1
+                    self.emit_progress(
+                        ExistingFileImportProgress(
+                            phase="skip_existing",
+                            current=index,
+                            total=len(files),
+                            path=str(path),
+                            md5_hash=md5_hash,
+                            post_id=post_id,
+                            imported=result.imported_posts,
+                            updated=result.updated_posts,
+                            renamed=result.renamed_files,
+                            skipped_rename=result.skipped_rename,
+                            skipped_no_md5=result.skipped_no_md5,
+                            skipped_existing=result.skipped_existing,
+                            not_found=result.not_found,
+                            errors=result.errors,
+                            message=f"Post {post_id} bereits vorhanden, nicht aktualisiert: {path.name}",
+                        )
+                    )
+                    continue
+
                 self.post_import_service.store_post(post)
                 self.db.import_existing_saved_file(
                     post_id=post_id,
                     category_id=int(category_id),
                     file_path=str(path),
-                    source="existing-file-import",
+                    source="existing-file-import-update" if existing is not None else "existing-file-import",
                 )
 
                 current_path = path
@@ -171,7 +209,11 @@ class ExistingFileImportService:
                 else:
                     result.updated_posts += 1
                     phase = "updated"
-                    action = "aktualisiert"
+                    old_path = str(existing["final_file_path"] or "")
+                    if old_path and old_path != str(path):
+                        action = "aktualisiert (Pfad/Kategorie überschrieben)"
+                    else:
+                        action = "aktualisiert"
 
                 self.emit_progress(
                     ExistingFileImportProgress(
@@ -187,6 +229,7 @@ class ExistingFileImportService:
                         renamed=result.renamed_files,
                         skipped_rename=result.skipped_rename,
                         skipped_no_md5=result.skipped_no_md5,
+                        skipped_existing=result.skipped_existing,
                         not_found=result.not_found,
                         errors=result.errors,
                         message=f"Post {post_id} {action}: {path.name}{rename_message}",
@@ -206,6 +249,7 @@ class ExistingFileImportService:
                         renamed=result.renamed_files,
                         skipped_rename=result.skipped_rename,
                         skipped_no_md5=result.skipped_no_md5,
+                        skipped_existing=result.skipped_existing,
                         not_found=result.not_found,
                         errors=result.errors,
                         message=f"Fehler bei {path.name}: {exc}",
@@ -222,6 +266,7 @@ class ExistingFileImportService:
                 renamed=result.renamed_files,
                 skipped_rename=result.skipped_rename,
                 skipped_no_md5=result.skipped_no_md5,
+                skipped_existing=result.skipped_existing,
                 not_found=result.not_found,
                 errors=result.errors,
                 message="Import abgeschlossen.",
@@ -295,6 +340,100 @@ class ExistingFileImportService:
                 skipped_rename=result.skipped_rename,
                 errors=result.errors,
                 message="Umbenennen abgeschlossen.",
+            )
+        )
+        return result
+
+    def repair_imported_category(
+        self,
+        folder: str | Path,
+        old_category_id: int,
+        new_category_id: int,
+        *,
+        recursive: bool = True,
+        rename_after_repair: bool = False,
+    ) -> ExistingFileImportResult:
+        root = Path(folder).expanduser()
+        if not root.exists() or not root.is_dir():
+            raise RuntimeError(f"Reparatur-Ordner nicht gefunden: {root}")
+
+        old_category = self.category_match_for_id(old_category_id)
+        new_category = self.category_match_for_id(new_category_id)
+        candidate_rows = self.db.fetch_saved_file_posts_for_category(old_category_id)
+        rows = [row for row in candidate_rows if path_is_inside_folder(row["final_file_path"], root, recursive=recursive)]
+
+        result = ExistingFileImportResult(
+            scanned_files=len(rows),
+            category_name=new_category.name,
+            old_category_name=old_category.name,
+        )
+
+        self.emit_progress(
+            ExistingFileImportProgress(
+                phase="start",
+                total=len(rows),
+                message=(
+                    f"Kategorie-Reparatur gestartet: {len(rows)} Posts unter {root}, "
+                    f"{old_category.name} -> {new_category.name}"
+                ),
+            )
+        )
+
+        post_ids = [int(row["id"]) for row in rows]
+        if post_ids:
+            self.db.reassign_posts_category(
+                post_ids,
+                int(old_category_id),
+                int(new_category_id),
+                source="import-repair",
+            )
+            result.repaired_posts = len(post_ids)
+
+        for index, row in enumerate(rows, start=1):
+            post_id = int(row["id"])
+            current_path = Path(str(row["final_file_path"] or ""))
+            message = f"Post {post_id}: Kategorie repariert {old_category.name} -> {new_category.name}"
+
+            if rename_after_repair:
+                try:
+                    rename_result = self.rename_saved_post_file(post_id, category=new_category)
+                    if rename_result.renamed:
+                        result.renamed_files += 1
+                        current_path = rename_result.final_path
+                        message += f"; umbenannt: {rename_result.final_path.name}"
+                    else:
+                        result.skipped_rename += 1
+                        message += "; Name bereits aktuell"
+                except Exception as exc:
+                    result.errors += 1
+                    message += f"; Umbenennen fehlgeschlagen: {exc}"
+
+            self.emit_progress(
+                ExistingFileImportProgress(
+                    phase="repaired",
+                    current=index,
+                    total=len(rows),
+                    path=str(current_path),
+                    target_path=str(current_path),
+                    post_id=post_id,
+                    repaired=result.repaired_posts,
+                    renamed=result.renamed_files,
+                    skipped_rename=result.skipped_rename,
+                    errors=result.errors,
+                    message=message,
+                )
+            )
+
+        self.emit_progress(
+            ExistingFileImportProgress(
+                phase="done",
+                current=len(rows),
+                total=len(rows),
+                repaired=result.repaired_posts,
+                renamed=result.renamed_files,
+                skipped_rename=result.skipped_rename,
+                errors=result.errors,
+                message="Kategorie-Reparatur abgeschlossen.",
             )
         )
         return result
@@ -373,6 +512,30 @@ class RenameExistingFileResult:
     source_path: Path
     final_path: Path
     renamed: bool
+
+
+def path_is_inside_folder(path_value: object, folder: Path, *, recursive: bool) -> bool:
+    if not path_value:
+        return False
+
+    try:
+        file_path = Path(str(path_value)).expanduser().resolve(strict=False)
+        folder_path = folder.expanduser().resolve(strict=False)
+    except Exception:
+        file_path = Path(str(path_value)).expanduser()
+        folder_path = folder.expanduser()
+
+    try:
+        if recursive:
+            file_path.relative_to(folder_path)
+            return True
+        return file_path.parent == folder_path
+    except ValueError:
+        file_text = str(file_path).casefold()
+        folder_text = str(folder_path).rstrip("\\/ ").casefold()
+        if recursive:
+            return file_text == folder_text or file_text.startswith(folder_text + "/") or file_text.startswith(folder_text + "\\")
+        return str(file_path.parent).casefold() == folder_text
 
 
 def extract_md5_from_filename(filename: str) -> str | None:

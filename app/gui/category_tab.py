@@ -422,8 +422,7 @@ class CategoryTab(QWidget):
 
     def setup_tag_completer(self) -> None:
         try:
-            rows = self.db.fetch_tag_overview(limit=5000)
-            tags = sorted({str(row["tag"]) for row in rows if row["tag"]})
+            tags = self.db.suggest_tags(limit=5000)
         except Exception:
             tags = []
 

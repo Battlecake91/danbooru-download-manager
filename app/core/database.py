@@ -1282,6 +1282,62 @@ class Database:
             raise RuntimeError(f"Kategorie nicht gefunden: {category_name}")
         self.assign_post_category(post_id, int(category["id"]), source)
 
+    def reassign_posts_category(
+        self,
+        post_ids: list[int],
+        old_category_id: int,
+        new_category_id: int,
+        source: str = "import-repair",
+    ) -> None:
+        clean_ids: list[int] = []
+        seen: set[int] = set()
+        for post_id in post_ids:
+            post_id_int = int(post_id)
+            if post_id_int in seen:
+                continue
+            seen.add(post_id_int)
+            clean_ids.append(post_id_int)
+
+        if not clean_ids:
+            return
+
+        affected_tags = self._fetch_tags_for_posts(clean_ids)
+        placeholders = ", ".join("?" for _ in clean_ids)
+        parameters: list[Any] = [int(old_category_id), *clean_ids]
+
+        self.execute(
+            f"""
+            DELETE FROM post_categories
+            WHERE category_id = ?
+              AND post_id IN ({placeholders})
+            """,
+            parameters,
+        )
+
+        self.executemany(
+            """
+            INSERT INTO post_categories (post_id, category_id, source)
+            VALUES (?, ?, ?)
+            ON CONFLICT(post_id, category_id) DO UPDATE SET
+                source = excluded.source
+            """,
+            [(post_id, int(new_category_id), source) for post_id in clean_ids],
+        )
+
+        self.execute(
+            f"""
+            UPDATE posts
+            SET last_seen_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+            """,
+            clean_ids,
+        )
+
+        if affected_tags:
+            self.refresh_tag_statistics_for_tags(affected_tags)
+
+        self.commit()
+
     def import_existing_saved_file(self, post_id: int, category_id: int, file_path: str, source: str = "import") -> None:
         """Mark an already downloaded local file as saved and feed its tags into scoring.
 
@@ -2253,31 +2309,104 @@ class Database:
         self.commit()
 
     def suggest_tags(self, prefix: str = "", limit: int = 300) -> list[str]:
-        clean = prefix.strip()
-        if clean:
-            rows = self.execute(
-                """
-                SELECT pt.tag, COUNT(*) AS post_count
-                FROM post_tags pt
-                WHERE pt.tag LIKE ?
-                GROUP BY pt.tag
-                ORDER BY post_count DESC, pt.tag ASC
-                LIMIT ?
-                """,
-                (f"{clean}%", int(limit)),
-            ).fetchall()
+        """Return tag suggestions without letting general tags drown out identity tags.
+
+        Fetch/preview/category search fields keep a local completion list. If that
+        list is filled purely by global post_count, broad general tags win almost
+        every slot and useful character/copyright/artist tags never appear. Cute,
+        if the goal is to autocomplete only noise.
+
+        The returned list therefore reserves slots per Danbooru tag type. The UI
+        still performs its own contains-filtering on this list, but the list now
+        actually contains series, character and artist tags in the first place.
+        """
+        clean = str(prefix or "").strip()
+        max_limit = max(1, int(limit))
+
+        if max_limit <= 20:
+            type_limits = {
+                "copyright": max(1, max_limit // 4),
+                "character": max(1, max_limit // 4),
+                "artist": max(1, max_limit // 5),
+                "meta": max(1, max_limit // 10),
+                "general": max(1, max_limit),
+            }
         else:
-            rows = self.execute(
-                """
-                SELECT pt.tag, COUNT(*) AS post_count
-                FROM post_tags pt
-                GROUP BY pt.tag
-                ORDER BY post_count DESC, pt.tag ASC
-                LIMIT ?
-                """,
-                (int(limit),),
-            ).fetchall()
-        return [str(row["tag"]) for row in rows]
+            type_limits = {
+                "copyright": max(80, max_limit // 5),
+                "character": max(80, max_limit // 5),
+                "artist": max(80, max_limit // 6),
+                "meta": max(40, max_limit // 12),
+                "general": max(120, max_limit // 3),
+            }
+
+        type_order = ["copyright", "character", "artist", "meta", "general"]
+        suggestions: list[str] = []
+        seen: set[str] = set()
+
+        def add_rows(rows: list[sqlite3.Row]) -> None:
+            for row in rows:
+                tag = str(row["tag"] or "").strip()
+                if tag and tag not in seen:
+                    seen.add(tag)
+                    suggestions.append(tag)
+
+        for tag_type in type_order:
+            per_type_limit = min(type_limits[tag_type], max_limit)
+            if clean:
+                rows = self.execute(
+                    """
+                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
+                    FROM post_tags pt
+                    WHERE pt.tag_type = ? AND pt.tag LIKE ?
+                    GROUP BY pt.tag
+                    ORDER BY post_count DESC, pt.tag ASC
+                    LIMIT ?
+                    """,
+                    (tag_type, f"%{clean}%", per_type_limit),
+                ).fetchall()
+            else:
+                rows = self.execute(
+                    """
+                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
+                    FROM post_tags pt
+                    WHERE pt.tag_type = ?
+                    GROUP BY pt.tag
+                    ORDER BY post_count DESC, pt.tag ASC
+                    LIMIT ?
+                    """,
+                    (tag_type, per_type_limit),
+                ).fetchall()
+            add_rows(rows)
+
+        remaining = max_limit - len(suggestions)
+        if remaining > 0:
+            if clean:
+                rows = self.execute(
+                    """
+                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
+                    FROM post_tags pt
+                    WHERE pt.tag LIKE ?
+                    GROUP BY pt.tag
+                    ORDER BY post_count DESC, pt.tag ASC
+                    LIMIT ?
+                    """,
+                    (f"%{clean}%", remaining * 2),
+                ).fetchall()
+            else:
+                rows = self.execute(
+                    """
+                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
+                    FROM post_tags pt
+                    GROUP BY pt.tag
+                    ORDER BY post_count DESC, pt.tag ASC
+                    LIMIT ?
+                    """,
+                    (remaining * 2,),
+                ).fetchall()
+            add_rows(rows)
+
+        return suggestions[:max_limit]
 
 
 def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
