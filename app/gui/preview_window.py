@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shlex
 import sqlite3
 import traceback
@@ -238,6 +239,7 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_filters.addSeparator()
 
+        self.toolbar_filters.addWidget(QLabel("Vorauswahl: "))
         self.recommendation_filter_checkbox = QCheckBox("≥")
         self.recommendation_filter_checkbox.setToolTip(
             "Filtert die geladenen Preview-Kandidaten nach lokalem Vorauswahl-Score. "
@@ -287,8 +289,12 @@ class PreviewWindow(QMainWindow):
         self.sort_combo.setMinimumWidth(240)
         for sort_key, sort_label in SORT_LABELS.items():
             self.sort_combo.addItem(sort_label, sort_key)
-        self.sort_combo.setCurrentIndex(self.sort_combo.findData("id_desc"))
-        self.sort_combo.currentIndexChanged.connect(self.on_passive_filter_changed)
+        saved_sort_key = str(gui_config.get("preview_sort_order", "id_desc") or "id_desc")
+        saved_sort_index = self.sort_combo.findData(saved_sort_key)
+        if saved_sort_index < 0:
+            saved_sort_index = self.sort_combo.findData("id_desc")
+        self.sort_combo.setCurrentIndex(saved_sort_index)
+        self.sort_combo.currentIndexChanged.connect(self.on_sort_order_changed)
         self.toolbar_sort.addWidget(self.sort_combo)
 
         self.toolbar_sort.addSeparator()
@@ -306,6 +312,7 @@ class PreviewWindow(QMainWindow):
 
         self.toolbar_sort.addSeparator()
 
+        self.toolbar_sort.addWidget(QLabel("Thumbnail: "))
         self.thumbnail_size_spin = QSpinBox()
         self.thumbnail_size_spin.setToolTip("Thumbnailgröße")
         self.thumbnail_size_spin.setRange(
@@ -872,6 +879,21 @@ class PreviewWindow(QMainWindow):
     # -------------------------------------------------------------------------
     # Reload / Filter
     # -------------------------------------------------------------------------
+
+    def on_sort_order_changed(self, *_args) -> None:
+        sort_key = self.selected_sort_key()
+        gui_config = self.config.setdefault("gui", {})
+        if isinstance(gui_config, dict):
+            gui_config["preview_sort_order"] = sort_key
+
+        try:
+            self.db.set_app_setting("gui.preview_sort_order", json.dumps(sort_key, ensure_ascii=False))
+        except Exception as exc:
+            # Sortierung soll nicht den ganzen Previewer zerlegen, nur weil SQLite
+            # gerade beleidigt ist. Der sichtbare Reload bleibt trotzdem korrekt.
+            self.status_bar.showMessage(f"Sortierung konnte nicht gespeichert werden: {exc}", 8000)
+
+        self.on_passive_filter_changed()
 
     def on_passive_filter_changed(self, *_args) -> None:
         self._filters_dirty = True
