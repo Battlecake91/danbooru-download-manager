@@ -13,11 +13,10 @@ from app.gui.icon_utils import ensure_app_icon
 class AppWindow(QMainWindow):
     """Main window with lazy tab creation.
 
-    Only the Fetch tab is created during startup. The other tabs are built on
-    first use, because some of them run large database queries in their
-    constructors. Humanity has somehow decided constructors should do real
-    work. This class politely refuses to participate until a tab is actually
-    opened.
+    Fetch and Preview are created during startup so existing/saved posts can
+    be searched immediately without running a Fetch first. The heavier admin
+    tabs are still built on first use, because constructors doing database
+    workouts remain one of humanity's stranger little rituals.
     """
 
     def __init__(self, config: dict[str, Any], db: Database) -> None:
@@ -54,12 +53,18 @@ class AppWindow(QMainWindow):
         self._tab_widgets["fetch"] = self.fetch_tab
         self._tab_indices["fetch"] = 0
 
+        self._startup_log("PreviewTab: begin")
+        self.preview_window = self._create_preview_tab()
+        self._startup_log("PreviewTab: end")
+        self.tabs.addTab(self.preview_window, "Preview / Review")
+        self._tab_widgets["preview"] = self.preview_window
+        self._tab_indices["preview"] = 1
+
         self.fetch_tab.fetch_started.connect(self.on_fetch_started)
         self.fetch_tab.fetch_finished.connect(self.on_fetch_finished)
         self.fetch_tab.fetch_failed_signal.connect(self.on_fetch_failed)
         self.fetch_tab.open_preview_requested.connect(self.open_preview_tab)
 
-        self._add_lazy_tab("preview", "Preview / Review")
         self._add_lazy_tab("import", "Importer")
         self._add_lazy_tab("tags", "Tags")
         self._add_lazy_tab("categories", "Kategorien")

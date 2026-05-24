@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import shlex
+import traceback
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -30,7 +32,7 @@ from app.core.category_engine import build_category_match_groups
 from app.core.recommendation_engine import RecommendationEngine
 from app.gui.image_viewer import ImageViewerWindow
 from app.gui.icon_utils import ensure_app_icon
-from app.gui.fetch_tab import TagQueryLineEdit
+from app.gui.fetch_tab import TagQueryLineEdit, TagSuggestionWorker
 from app.gui.thumbnail_grid import ThumbnailGrid
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
@@ -151,6 +153,9 @@ class PreviewWindow(QMainWindow):
 
         self.status_checkboxes: dict[str, QCheckBox] = {}
         self.category_rule_cache: list[dict[str, Any]] = []
+        self.suggestion_thread: QThread | None = None
+        self.suggestion_worker: TagSuggestionWorker | None = None
+        self.pending_suggestion_token: str | None = None
 
         self.reload_timer = QTimer(self)
         self.reload_timer.setSingleShot(True)
@@ -264,6 +269,7 @@ class PreviewWindow(QMainWindow):
         self.toolbar.addWidget(QLabel("Suche: "))
         self.search_edit = TagQueryLineEdit()
         self.search_edit.setPlaceholderText("Exakte Tags suchen, z. B. brown_eyes -red_hair")
+        self.search_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.search_edit.returnPressed.connect(self.reload_posts)
         self.search_edit.setMinimumWidth(260)
         self.toolbar.addWidget(self.search_edit)
@@ -343,8 +349,7 @@ class PreviewWindow(QMainWindow):
 
         self.sync_all_checkbox_from_statuses()
         self.reload_category_filter()
-        self.reload_tag_suggestions()
-        self.show_preview_loading("Preview bereit. Öffne den Tab oder klicke auf Neu laden.")
+        self.show_preview_loading("Preview bereit. Wähle eine Ansicht oder klicke auf Neu laden.")
 
 
 
@@ -425,11 +430,47 @@ class PreviewWindow(QMainWindow):
 
 
 
-    def reload_tag_suggestions(self) -> None:
-        try:
-            self.search_edit.set_tag_suggestions(self.db.suggest_tags(limit=2500))
-        except Exception:
-            self.search_edit.set_tag_suggestions([])
+    def request_tag_suggestions(self, token: str) -> None:
+        token = str(token or "").strip()
+        if len(token) < 2:
+            return
+
+        if self.suggestion_thread is not None:
+            self.pending_suggestion_token = token
+            return
+
+        self.start_tag_suggestion_worker(token)
+
+    def start_tag_suggestion_worker(self, token: str) -> None:
+        database_file = Path(str(self.config["database_file"]))
+        self.suggestion_thread = QThread(self)
+        self.suggestion_worker = TagSuggestionWorker(database_file, token, limit=120)
+        self.suggestion_worker.moveToThread(self.suggestion_thread)
+        self.suggestion_thread.started.connect(self.suggestion_worker.run)
+        self.suggestion_worker.finished.connect(self.on_tag_suggestions_loaded)
+        self.suggestion_worker.failed.connect(self.on_tag_suggestions_failed)
+        self.suggestion_worker.finished.connect(self.suggestion_thread.quit)
+        self.suggestion_worker.failed.connect(self.suggestion_thread.quit)
+        self.suggestion_thread.finished.connect(self.cleanup_suggestion_thread)
+        self.suggestion_thread.start()
+
+    def on_tag_suggestions_loaded(self, token: str, tags: list[str]) -> None:
+        self.search_edit.set_tag_suggestions(token, tags)
+
+    def on_tag_suggestions_failed(self, token: str, traceback_text: str) -> None:
+        if bool(self.config.get("debug_startup")):
+            self.status_bar.showMessage(f"Tag-Vorschläge für '{token}' konnten nicht geladen werden.", 5000)
+            print(traceback_text, flush=True)
+
+    def cleanup_suggestion_thread(self) -> None:
+        self.suggestion_thread = None
+        self.suggestion_worker = None
+        pending = self.pending_suggestion_token
+        self.pending_suggestion_token = None
+        if pending and pending != self.search_edit.current_token():
+            pending = self.search_edit.current_token()
+        if pending and len(pending) >= 2 and self.search_edit.hasFocus():
+            self.start_tag_suggestion_worker(pending)
 
     def on_grid_build_started(self, total: int) -> None:
         if total > 0:

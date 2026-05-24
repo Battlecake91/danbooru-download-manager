@@ -209,6 +209,7 @@ class Database:
 
         CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag);
         CREATE INDEX IF NOT EXISTS idx_post_tags_post_id ON post_tags(post_id);
+        CREATE INDEX IF NOT EXISTS idx_post_tags_type_tag ON post_tags(tag_type, tag);
         CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
         CREATE INDEX IF NOT EXISTS idx_posts_parent_id ON posts(parent_id);
 
@@ -2415,16 +2416,12 @@ class Database:
         self.commit()
 
     def suggest_tags(self, prefix: str = "", limit: int = 300) -> list[str]:
-        """Return tag suggestions without letting general tags drown out identity tags.
+        """Return tag suggestions quickly enough that the GUI does not feel cursed.
 
-        Fetch/preview/category search fields keep a local completion list. If that
-        list is filled purely by global post_count, broad general tags win almost
-        every slot and useful character/copyright/artist tags never appear. Cute,
-        if the goal is to autocomplete only noise.
-
-        The returned list therefore reserves slots per Danbooru tag type. The UI
-        still performs its own contains-filtering on this list, but the list now
-        actually contains series, character and artist tags in the first place.
+        This is used for interactive completion. The old version ranked every
+        candidate by COUNT(DISTINCT post_id), which is fine for a report and
+        absurd for a keypress. This version keeps the useful per-type mix, but
+        avoids global grouping/counting while the user is typing.
         """
         clean = str(prefix or "").strip()
         max_limit = max(1, int(limit))
@@ -2439,11 +2436,11 @@ class Database:
             }
         else:
             type_limits = {
-                "copyright": max(80, max_limit // 5),
-                "character": max(80, max_limit // 5),
-                "artist": max(80, max_limit // 6),
-                "meta": max(40, max_limit // 12),
-                "general": max(120, max_limit // 3),
+                "copyright": max(20, max_limit // 5),
+                "character": max(20, max_limit // 5),
+                "artist": max(15, max_limit // 6),
+                "meta": max(10, max_limit // 12),
+                "general": max(30, max_limit // 3),
             }
 
         type_order = ["copyright", "character", "artist", "meta", "general"]
@@ -2457,63 +2454,63 @@ class Database:
                     seen.add(tag)
                     suggestions.append(tag)
 
+        def query_rows(tag_type: str | None, pattern: str, row_limit: int) -> list[sqlite3.Row]:
+            if tag_type is None:
+                return list(
+                    self.execute(
+                        """
+                        SELECT DISTINCT tag
+                        FROM post_tags
+                        WHERE tag LIKE ?
+                        ORDER BY tag COLLATE NOCASE ASC
+                        LIMIT ?
+                        """,
+                        (pattern, row_limit),
+                    ).fetchall()
+                )
+            return list(
+                self.execute(
+                    """
+                    SELECT DISTINCT tag
+                    FROM post_tags
+                    WHERE tag_type = ? AND tag LIKE ?
+                    ORDER BY tag COLLATE NOCASE ASC
+                    LIMIT ?
+                    """,
+                    (tag_type, pattern, row_limit),
+                ).fetchall()
+            )
+
+        if clean:
+            prefix_pattern = f"{clean}%"
+            contains_pattern = f"%{clean}%"
+        else:
+            prefix_pattern = "%"
+            contains_pattern = "%"
+
         for tag_type in type_order:
-            per_type_limit = min(type_limits[tag_type], max_limit)
-            if clean:
-                rows = self.execute(
-                    """
-                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
-                    FROM post_tags pt
-                    WHERE pt.tag_type = ? AND pt.tag LIKE ?
-                    GROUP BY pt.tag
-                    ORDER BY post_count DESC, pt.tag ASC
-                    LIMIT ?
-                    """,
-                    (tag_type, f"%{clean}%", per_type_limit),
-                ).fetchall()
-            else:
-                rows = self.execute(
-                    """
-                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
-                    FROM post_tags pt
-                    WHERE pt.tag_type = ?
-                    GROUP BY pt.tag
-                    ORDER BY post_count DESC, pt.tag ASC
-                    LIMIT ?
-                    """,
-                    (tag_type, per_type_limit),
-                ).fetchall()
-            add_rows(rows)
+            if len(suggestions) >= max_limit:
+                break
+            per_type_limit = min(type_limits[tag_type], max_limit - len(suggestions))
+            if per_type_limit <= 0:
+                continue
+            add_rows(query_rows(tag_type, prefix_pattern, per_type_limit))
+
+        # Prefix hits are cheap and usually what a completion field should do.
+        # If the user types the middle of a tag, do a smaller contains fallback.
+        # Humanity survives both cases, barely.
+        if clean and len(suggestions) < max_limit:
+            for tag_type in type_order:
+                if len(suggestions) >= max_limit:
+                    break
+                per_type_limit = min(max(5, type_limits[tag_type] // 2), max_limit - len(suggestions))
+                add_rows(query_rows(tag_type, contains_pattern, per_type_limit))
 
         remaining = max_limit - len(suggestions)
         if remaining > 0:
-            if clean:
-                rows = self.execute(
-                    """
-                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
-                    FROM post_tags pt
-                    WHERE pt.tag LIKE ?
-                    GROUP BY pt.tag
-                    ORDER BY post_count DESC, pt.tag ASC
-                    LIMIT ?
-                    """,
-                    (f"%{clean}%", remaining * 2),
-                ).fetchall()
-            else:
-                rows = self.execute(
-                    """
-                    SELECT pt.tag, COUNT(DISTINCT pt.post_id) AS post_count
-                    FROM post_tags pt
-                    GROUP BY pt.tag
-                    ORDER BY post_count DESC, pt.tag ASC
-                    LIMIT ?
-                    """,
-                    (remaining * 2,),
-                ).fetchall()
-            add_rows(rows)
+            add_rows(query_rows(None, prefix_pattern, remaining))
 
         return suggestions[:max_limit]
-
 
 def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
     if raw_categories is None:

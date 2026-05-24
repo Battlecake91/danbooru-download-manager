@@ -83,22 +83,56 @@ class FetchWorker(QObject):
                     pass
 
 
-class TagQueryLineEdit(QLineEdit):
-    suggestions_requested = Signal()
+class TagSuggestionWorker(QObject):
+    finished = Signal(str, list)
+    failed = Signal(str, str)
 
-    """Line edit with Danbooru-tag completion for the current token.
+    def __init__(self, database_file: Path, prefix: str, limit: int = 120) -> None:
+        super().__init__()
+        self.database_file = database_file
+        self.prefix = prefix
+        self.limit = limit
+
+    @Slot()
+    def run(self) -> None:
+        worker_db: Database | None = None
+        try:
+            worker_db = Database(self.database_file)
+            worker_db.connect()
+            tags = worker_db.suggest_tags(prefix=self.prefix, limit=self.limit)
+            self.finished.emit(self.prefix, tags)
+        except Exception:
+            self.failed.emit(self.prefix, traceback.format_exc())
+        finally:
+            if worker_db is not None:
+                try:
+                    worker_db.close()
+                except Exception:
+                    pass
+
+
+class TagQueryLineEdit(QLineEdit):
+    suggestions_requested = Signal(str)
+
+    """Line edit with asynchronous Danbooru-tag completion for the current token.
 
     Tags are separated by whitespace. A leading '-' belongs to the current
-    token and is preserved when a completion is inserted. Qt's normal QLineEdit
-    completion only understands the whole line, because naturally the useful
-    case is the one it does not do by itself.
+    token and is preserved when a completion is inserted. Completion data is
+    requested for the current token only, instead of loading a giant tag list
+    when the field gains focus. Because apparently a text box should not freeze
+    the whole application just because someone clicked into it.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._all_tags: list[str] = []
-        self._suggestions_loaded = False
+        self._last_requested_token = ""
+        self._last_result_token = ""
         self._model = QStringListModel(self)
+        self._request_timer = QTimer(self)
+        self._request_timer.setSingleShot(True)
+        self._request_timer.setInterval(220)
+        self._request_timer.timeout.connect(self.request_current_token_suggestions)
+
         self._completer = QCompleter(self._model, self)
         self._completer.setWidget(self)
         self._completer.setCaseSensitivity(Qt.CaseInsensitive)
@@ -108,26 +142,47 @@ class TagQueryLineEdit(QLineEdit):
         self._completer.popup().setMinimumWidth(420)
         self.textEdited.connect(self.schedule_completion_update)
 
-    def set_tag_suggestions(self, tags: list[str]) -> None:
-        self._all_tags = sorted({tag for tag in tags if tag}, key=str.lower)
-        self._suggestions_loaded = True
+    def set_tag_suggestions(self, token: str, tags: list[str]) -> None:
+        current = self.current_token().lower()
+        result_token = str(token or "").lower()
+        if result_token != current:
+            return
+        self._last_result_token = result_token
+        self._model.setStringList(sorted({tag for tag in tags if tag}, key=str.lower))
         self.update_completion_popup()
 
     def focusInEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().focusInEvent(event)
-        if not self._suggestions_loaded:
-            self.suggestions_requested.emit()
+        self.schedule_completion_update()
 
     def keyPressEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().keyPressEvent(event)
-        QTimer.singleShot(0, self.update_completion_popup)
+        QTimer.singleShot(0, self.schedule_completion_update)
 
     def focusOutEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        self._request_timer.stop()
         self._completer.popup().hide()
         super().focusOutEvent(event)
 
     def schedule_completion_update(self, *_args: Any) -> None:
-        QTimer.singleShot(0, self.update_completion_popup)
+        token = self.current_token()
+        if len(token) < 2 or not self.hasFocus():
+            self._request_timer.stop()
+            self._completer.popup().hide()
+            return
+        self._request_timer.start()
+
+    def request_current_token_suggestions(self) -> None:
+        token = self.current_token().strip()
+        if len(token) < 2 or not self.hasFocus():
+            self._completer.popup().hide()
+            return
+        token_lower = token.lower()
+        if token_lower == self._last_requested_token and token_lower == self._last_result_token:
+            self.update_completion_popup()
+            return
+        self._last_requested_token = token_lower
+        self.suggestions_requested.emit(token)
 
     def current_token_bounds(self) -> tuple[int, int, str, str]:
         text = self.text()
@@ -153,15 +208,10 @@ class TagQueryLineEdit(QLineEdit):
             self._completer.popup().hide()
             return
 
-        token_lower = token.lower()
-        matches = [tag for tag in self._all_tags if token_lower in tag.lower()]
-        matches = matches[:150]
-
-        if not matches:
+        if not self._model.rowCount():
             self._completer.popup().hide()
             return
 
-        self._model.setStringList(matches)
         self._completer.setCompletionPrefix("")
 
         popup = self._completer.popup()
@@ -227,6 +277,9 @@ class FetchTab(QWidget):
         self.db = db
         self.thread: QThread | None = None
         self.worker: FetchWorker | None = None
+        self.suggestion_thread: QThread | None = None
+        self.suggestion_worker: TagSuggestionWorker | None = None
+        self.pending_suggestion_token: str | None = None
 
         self.main_layout = QVBoxLayout(self)
 
@@ -273,7 +326,7 @@ class FetchTab(QWidget):
 
         self.manual_query_edit = TagQueryLineEdit()
         self.manual_query_edit.setPlaceholderText("z. B. 1girl cute smile -red_hair")
-        self.manual_query_edit.suggestions_requested.connect(self.reload_tag_suggestions)
+        self.manual_query_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.manual_layout.addRow("Tags / Query:", self.manual_query_edit)
 
         self.main_layout.addWidget(self.manual_group)
@@ -379,13 +432,47 @@ class FetchTab(QWidget):
         self.load_initial_values()
         self.on_source_mode_changed()
 
-    def reload_tag_suggestions(self) -> None:
-        if self.manual_query_edit._suggestions_loaded:
+    def request_tag_suggestions(self, token: str) -> None:
+        token = str(token or "").strip()
+        if len(token) < 2:
             return
-        try:
-            self.manual_query_edit.set_tag_suggestions(self.db.suggest_tags(limit=1500))
-        except Exception:
-            self.manual_query_edit.set_tag_suggestions([])
+
+        if self.suggestion_thread is not None:
+            self.pending_suggestion_token = token
+            return
+
+        self.start_tag_suggestion_worker(token)
+
+    def start_tag_suggestion_worker(self, token: str) -> None:
+        database_file = Path(str(self.config["database_file"]))
+        self.suggestion_thread = QThread(self)
+        self.suggestion_worker = TagSuggestionWorker(database_file, token, limit=120)
+        self.suggestion_worker.moveToThread(self.suggestion_thread)
+        self.suggestion_thread.started.connect(self.suggestion_worker.run)
+        self.suggestion_worker.finished.connect(self.on_tag_suggestions_loaded)
+        self.suggestion_worker.failed.connect(self.on_tag_suggestions_failed)
+        self.suggestion_worker.finished.connect(self.suggestion_thread.quit)
+        self.suggestion_worker.failed.connect(self.suggestion_thread.quit)
+        self.suggestion_thread.finished.connect(self.cleanup_suggestion_thread)
+        self.suggestion_thread.start()
+
+    def on_tag_suggestions_loaded(self, token: str, tags: list[str]) -> None:
+        self.manual_query_edit.set_tag_suggestions(token, tags)
+
+    def on_tag_suggestions_failed(self, token: str, traceback_text: str) -> None:
+        self.log_text.append(f"Tag-Vorschläge für '{token}' konnten nicht geladen werden.")
+        if bool(self.config.get("debug_startup")):
+            self.log_text.append(traceback_text)
+
+    def cleanup_suggestion_thread(self) -> None:
+        self.suggestion_thread = None
+        self.suggestion_worker = None
+        pending = self.pending_suggestion_token
+        self.pending_suggestion_token = None
+        if pending and pending != self.manual_query_edit.current_token():
+            pending = self.manual_query_edit.current_token()
+        if pending and len(pending) >= 2 and self.manual_query_edit.hasFocus():
+            self.start_tag_suggestion_worker(pending)
 
     def load_presets(self) -> None:
         current = self.preset_combo.currentText()
@@ -704,7 +791,6 @@ class FetchTab(QWidget):
         self.fetch_progress_label.setToolTip(summary)
         self.fetch_progress_label.setVisible(True)
         self.fetch_finished.emit()
-        self.reload_tag_suggestions()
         self.open_preview_requested.emit()
 
     def on_fetch_failed(self, traceback_text: str) -> None:
