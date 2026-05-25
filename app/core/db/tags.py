@@ -34,20 +34,20 @@ class DatabaseTagMixin:
         parameters: list[Any] = []
 
         if search_text:
-            where_parts.append("tag LIKE ?")
+            where_parts.append("merged.tag LIKE ?")
             parameters.append(f"%{search_text.strip()}%")
 
         if tag_type and tag_type != "all":
-            where_parts.append("tag_type = ?")
+            where_parts.append("merged.tag_type = ?")
             parameters.append(tag_type)
 
         source = str(source or "local").lower()
         if source == "local":
-            where_parts.append("local_post_count > 0")
+            where_parts.append("merged.local_post_count > 0")
         elif source == "catalog":
-            where_parts.append("catalog_post_count > 0")
+            where_parts.append("merged.catalog_post_count > 0")
         elif source == "catalog_only":
-            where_parts.append("catalog_post_count > 0 AND local_post_count = 0")
+            where_parts.append("merged.catalog_post_count > 0 AND merged.local_post_count = 0")
 
         where_sql = ""
         if where_parts:
