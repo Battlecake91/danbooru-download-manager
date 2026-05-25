@@ -38,6 +38,7 @@ Depending on the available information, the importer can:
 
 - detect existing files,
 - extract Danbooru post IDs from filenames,
+- recognize Danbooru MD5 hashes in filenames when no post ID is available,
 - assign an initial category based on the folder structure,
 - register the local file path in the database,
 - mark imported files with an import/local status,
@@ -69,7 +70,7 @@ The exact supported formats may depend on the current application configuration 
 
 ## 🔢 Post ID detection
 
-The importer tries to detect Danbooru post IDs from filenames.
+The importer tries to detect Danbooru post IDs from filenames. If no post ID is available, filenames containing a Danbooru-style MD5 hash can also be useful for matching or later metadata repair. Tiny mercy from the hash gremlins.
 
 Examples of useful filenames:
 
@@ -78,9 +79,11 @@ Examples of useful filenames:
 1234567_artist_character.png
 danbooru_1234567.jpg
 post_1234567.webp
+9f86d081884c7d659a2feaa0c55ad015.jpg
+artist_character_9f86d081884c7d659a2feaa0c55ad015.png
 ```
 
-If a post ID is detected, the application can later fetch metadata from Danbooru and generate the original post link from the configured base URL.
+If a post ID is detected, the application can later fetch metadata from Danbooru and generate the original post link from the configured base URL. If only an MD5 hash is detected, the file can still be registered and may be matched later against known or fetched Danbooru metadata.
 
 Files without a detected post ID can still be tracked locally, but they may remain metadata-limited until manually matched or enriched later.
 
@@ -117,6 +120,7 @@ This avoids large-scale cleanup after a wrong assumption. Databases are very goo
 - Avoid moving imported files manually after import unless you also update or repair their paths in the application.
 - Files are registered in the database; they are not automatically re-downloaded just because they were imported.
 - A valid post ID improves metadata quality, original link generation and tag-based search.
+- A Danbooru MD5 hash in the filename can help identify files that no longer have a post ID in their filename.
 
 ---
 

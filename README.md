@@ -218,4 +218,3 @@ Planned follow-up work includes:
 - Keep backups of important local collections.
 - Do not publish databases that contain API credentials.
 - Treat LLM suggestions as suggestions.
-- Upload large release ZIP files as GitHub release assets, not as normal Git-tracked files. GitHub gets cranky, and for once it has a point.
