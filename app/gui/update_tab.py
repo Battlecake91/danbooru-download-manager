@@ -4,7 +4,6 @@ from typing import Any
 
 from PySide6.QtWidgets import (
     QApplication,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -25,7 +24,7 @@ from app.version import __version__
 
 
 class UpdateTab(QWidget):
-    """Portable update and future help tab."""
+    """Portable update page used inside the Help tab."""
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
@@ -35,7 +34,7 @@ class UpdateTab(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
 
-        title = QLabel("Updates & Help")
+        title = QLabel("Update")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(title)
 
@@ -47,26 +46,6 @@ class UpdateTab(QWidget):
         intro.setWordWrap(True)
         intro.setStyleSheet("font-size: 13px; color: #c7c7c7;")
         layout.addWidget(intro)
-
-        help_box = QFrame()
-        help_box.setFrameShape(QFrame.Shape.StyledPanel)
-        help_box.setStyleSheet(
-            "QFrame { border: 1px solid #555; border-radius: 8px; padding: 10px; }"
-        )
-        help_layout = QVBoxLayout(help_box)
-
-        help_title = QLabel("Help section")
-        help_title.setStyleSheet("font-weight: bold;")
-        help_layout.addWidget(help_title)
-
-        help_text = QLabel(
-            "More built-in help will follow in a future version. For now, use the README "
-            "and the documents in /docs for setup, configuration and workflow notes."
-        )
-        help_text.setWordWrap(True)
-        help_layout.addWidget(help_text)
-
-        layout.addWidget(help_box)
 
         info = QLabel(f"Installed version: {__version__}")
         info.setStyleSheet("font-weight: bold;")

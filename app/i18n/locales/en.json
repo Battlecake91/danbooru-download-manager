@@ -494,12 +494,14 @@
   "tabs.categories": "Categories",
   "tabs.config": "Configuration",
   "tabs.fetch": "Fetch / Search",
+  "tabs.help": "Help",
   "tabs.import": "Importer",
   "tabs.importer": "Importer",
   "tabs.maintenance": "Maintenance / DB",
   "tabs.preview": "Preview / Review",
   "tabs.preview_fetch_running": "Preview / Review · Fetch running",
   "tabs.tags": "Tags",
+  "tabs.updates": "Updates / Help",
   "tags.action.add_category_exclude": "Add tags as category exclude",
   "tags.action.add_filename_exclude": "Add tags to filename exclude",
   "tags.action.add_to_category": "Add tags to category",
@@ -739,6 +741,5 @@
   "viewer.use_all_auto_scores_again": "Use for All Automatic Scores Again",
   "viewer.use_category_hint_again": "Use Category Hint Again",
   "viewer.window_title": "Danbooru Manager - Viewer",
-  "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}",
-  "tabs.updates": "Updates / Help"
+  "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}"
 }

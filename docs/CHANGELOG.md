@@ -1,5 +1,14 @@
 # Changelog
 
+
+## 1.3.143 - Help tab structure fix
+
+- Removed the remaining top-level Help menu.
+- Added a dedicated Help tab with internal sub-tabs for About, Update and future How-to pages.
+- Moved About information into the Help tab.
+- Fixed lazy tab loading by importing QApplication in the main window module.
+- Kept portable update handling inside the new Help -> Update page.
+
 ## 1.3.142 - Update Tab
 
 - **Update workflow UI** - Moves the GitHub release update check out of the Help menu into a dedicated Updates / Help tab.

@@ -1,6 +1,6 @@
 # Danbooru Download Manager
 
-**Version:** `1.3.142`  
+**Version:** `1.3.143`  
 **First public release:** `1.3.135`
 
 Danbooru Download Manager is a desktop application for managing local Danbooru downloads with a review-first workflow: fetch metadata and thumbnails, inspect posts in a fast preview grid, rate them, categorize them, and finally save originals into clean local folders.
