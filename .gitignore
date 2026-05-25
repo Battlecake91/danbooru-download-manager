@@ -4,7 +4,8 @@ danbooru_manager_data/
 danbooru_saved
 # OS files
 .DS_Store
-humbs.db
+Thumbs.db
+release/
 
 # Logs
 *.log
@@ -12,6 +13,7 @@ humbs.db
 __pycache__/
 *.py[cod]
 *$py.class
+
 
 # Python packaging / build
 build/
