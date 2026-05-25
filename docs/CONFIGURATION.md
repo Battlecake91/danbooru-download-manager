@@ -1,0 +1,140 @@
+# Configuration Setup
+
+Danbooru Download Manager `1.3.135` stores runtime configuration in the local database. YAML files are no longer the main configuration source for normal use.
+
+The application is designed around GUI-managed settings, because repeatedly hand-editing config files is how projects slowly become rituals.
+
+---
+
+## ⚙️ Main configuration areas
+
+Important configuration areas include:
+
+- 🔐 Danbooru credentials and base URL
+- 📁 output folders and local runtime data paths
+- 🖼️ thumbnail and preview behavior
+- 📝 filename pattern and tag priority
+- 🧩 categories, category priority, and output folders
+- 🏷️ tag aliases, scores, and filename exclusions
+- 🤖 optional LLM provider settings
+- 🌐 UI language and translated labels
+
+---
+
+## 🔐 Credentials
+
+Danbooru credentials are optional.
+
+Store them only if you want to use authenticated Danbooru API features such as saved searches or account-specific access.
+
+The application may store:
+
+- username,
+- API key,
+- base URL.
+
+Do not commit or publish a database that contains credentials.
+
+---
+
+## 📁 Local data and output folders
+
+The application tracks local posts, thumbnails, tags, and configuration in a local SQLite database.
+
+Typical runtime data includes:
+
+- database file,
+- thumbnail cache,
+- local post metadata,
+- saved/rejected state,
+- category decisions,
+- user ratings,
+- imported file references.
+
+Final saved files can be written into category-specific folders. This allows each category to behave like its own managed local collection.
+
+---
+
+## 📝 Filename patterns
+
+Filename generation can use patterns with placeholders.
+
+Example:
+
+```text
+%artist%_%characters%_%general%_%postid%
+```
+
+Useful placeholders include typed tag groups and the Danbooru post ID. The exact available placeholders depend on the current application version and configuration UI.
+
+Filename-related options include:
+
+- typed tag priority,
+- excluded filename tags,
+- maximum filename length,
+- replacement of unsafe filesystem characters,
+- final filename preview in the Viewer.
+
+---
+
+## 🧩 Categories and rules
+
+Categories define where saved files go and how posts are automatically assigned.
+
+A category can contain rule groups. The intended rule model is:
+
+```text
+Group A: tag1 tag2 -tag3
+Group B: tag4 tag5
+```
+
+This means:
+
+```text
+(tag1 AND tag2 AND NOT tag3) OR (tag4 AND tag5)
+```
+
+Category behavior includes:
+
+- automatic assignment,
+- manual override in the Viewer,
+- custom output folder per category,
+- category priority,
+- rule reasoning dialog,
+- include and exclude terms.
+
+---
+
+## 🖼️ Preview and Viewer display
+
+Preview cards can be configured to show selected information, such as:
+
+- post ID,
+- Danbooru rating,
+- Danbooru score,
+- parent state,
+- local status,
+- category,
+- artist tags,
+- character tags,
+- copyright tags,
+- general tags,
+- meta tags.
+
+Tags can be displayed as raw Danbooru text or as structured tag groups.
+
+---
+
+## 🤖 LLM settings
+
+LLM integration is experimental in `1.3.135`.
+
+The configuration can control provider settings and payload behavior. Depending on the setup, payloads may use:
+
+- raw tags,
+- aliases,
+- normalized tags,
+- compacted payloads,
+- privacy-oriented transformed tag data.
+
+LLM output should be treated as a suggestion, not as a final decision. Tiny machine oracle, tiny trust budget.

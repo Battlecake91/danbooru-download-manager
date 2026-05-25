@@ -2,124 +2,139 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Install Requirements",
+      "label": "Start",
       "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
       "args": [
-        "-m",
-        "pip",
-        "install",
-        "-r",
-        "requirements.txt"
+        "${workspaceFolder}\\main.py"
       ],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
+      "linux": {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/main.py"
+        ]
+      },
+      "osx": {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/main.py"
+        ]
       },
       "options": {
         "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "clear": false
       }
     },
     {
-      "label": "Init DB",
+      "label": "Release",
       "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
       "args": [
-        "main.py",
-        "--config",
-        "config.yaml",
-        "--init-db"
+        "${workspaceFolder}\\scripts\\make_release.py",
+        "--version",
+        "1.3.135",
+        "--allow-dirty"
       ],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
+      "linux": {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/scripts/make_release.py",
+          "--version",
+          "1.3.135",
+          "--allow-dirty"
+        ]
+      },
+      "osx": {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/scripts/make_release.py",
+          "--version",
+          "1.3.135",
+          "--allow-dirty"
+        ]
       },
       "options": {
         "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "clear": true
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
       }
     },
     {
-      "label": "Import History",
+      "label": "Publish",
       "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
       "args": [
-        "main.py",
-        "--config",
-        "config.yaml",
-        "--import-history"
+        "${workspaceFolder}\\scripts\\make_release.py",
+        "--version",
+        "1.3.135",
+        "--allow-dirty",
+        "--tag",
+        "--allow-existing-tag",
+        "--push",
+        "--publish",
+        "--draft",
+        "--notes-file",
+        "docs/CHANGELOG.md"
       ],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
+      "linux": {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/scripts/make_release.py",
+          "--version",
+          "1.3.135",
+          "--allow-dirty",
+          "--tag",
+          "--allow-existing-tag",
+          "--push",
+          "--publish",
+          "--draft",
+          "--notes-file",
+          "docs/CHANGELOG.md"
+        ]
+      },
+      "osx": {
+        "command": "${workspaceFolder}/.venv/bin/python",
+        "args": [
+          "${workspaceFolder}/scripts/make_release.py",
+          "--version",
+          "1.3.135",
+          "--allow-dirty",
+          "--tag",
+          "--allow-existing-tag",
+          "--push",
+          "--publish",
+          "--draft",
+          "--notes-file",
+          "docs/CHANGELOG.md"
+        ]
       },
       "options": {
         "cwd": "${workspaceFolder}"
-      }
-    },
-    {
-      "label": "Fetch",
-      "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": [
-        "main.py",
-        "--config",
-        "config.yaml",
-        "--fetch"
-      ],
+      },
       "problemMatcher": [],
       "presentation": {
+        "echo": true,
         "reveal": "always",
-        "panel": "dedicated",
+        "focus": false,
+        "panel": "shared",
         "clear": true
-      },
-      "options": {
-        "cwd": "${workspaceFolder}"
-      }
-    },
-    {
-      "label": "Fetch Debug",
-      "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": [
-        "main.py",
-        "--config",
-        "config.yaml",
-        "--fetch",
-        "--debug"
-      ],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      },
-      "options": {
-        "cwd": "${workspaceFolder}"
-      }
-    },
-    {
-      "label": "GUI",
-      "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": [
-        "main.py",
-        "--debug-startup",
-        "--gui"
-      ],
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      },
-      "options": {
-        "cwd": "${workspaceFolder}"
       }
     }
   ]

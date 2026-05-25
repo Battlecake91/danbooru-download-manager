@@ -2,29 +2,19 @@
   "VsCodeTaskButtons.showCounter": true,
   "VsCodeTaskButtons.tasks": [
     {
-      "label": "$(database) Init DB",
-      "task": "Init DB",
-      "tooltip": "SQLite-Datenbank initialisieren"
+      "label": "$(play) Start",
+      "task": "Start",
+      "tooltip": "Programm direkt mit Python starten"
     },
     {
-      "label": "$(history) Import History",
-      "task": "Import History",
-      "tooltip": "downloaded_ids.txt in die Datenbank übernehmen"
+      "label": "$(package) Release",
+      "task": "Release",
+      "tooltip": "Release-ZIP erzeugen"
     },
     {
-      "label": "$(cloud-download) Fetch",
-      "task": "Fetch",
-      "tooltip": "Posts und Thumbnails von Danbooru laden"
-    },
-    {
-      "label": "$(bug) Fetch Debug",
-      "task": "Fetch Debug",
-      "tooltip": "Posts mit Debug-Logging laden"
-    },
-    {
-      "label": "$(window) GUI",
-      "task": "GUI",
-      "tooltip": "Preview-GUI starten"
+      "label": "$(rocket) Publish",
+      "task": "Publish",
+      "tooltip": "Release-ZIP erzeugen und als GitHub-Release-Asset veröffentlichen"
     }
   ]
 }
