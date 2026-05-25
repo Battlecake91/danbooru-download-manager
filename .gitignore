@@ -6,6 +6,7 @@ danbooru_saved
 .DS_Store
 Thumbs.db
 release/
+.vscode/
 
 # Logs
 *.log
