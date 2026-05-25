@@ -1060,7 +1060,7 @@ class ConfigTab(QWidget):
             payloads_data = json.loads(raw_payloads)
             summary_data = json.loads(raw_summary)
         except Exception as exc:
-            QMessageBox.critical(self, "Letzte LLM-Payloads", f"Gespeicherte Payloads konnten nicht gelesen werden:\n{exc}")
+            QMessageBox.critical(self, "Latest LLM payloads", f"Stored payloads could not be read:\n{exc}")
             return
 
         if isinstance(payloads_data, dict):
@@ -1086,7 +1086,7 @@ class ConfigTab(QWidget):
                     info += f"\n\nNote: {reason}"
             else:
                 info = "No fetch LLM payloads are stored. Start a fetch with LLM batch preparation enabled."
-            QMessageBox.information(self, "Letzte LLM-Payloads", info)
+            QMessageBox.information(self, "Latest LLM payloads", info)
             return
 
         dialog = LastLLMPayloadsDialog(payloads, summary, self)

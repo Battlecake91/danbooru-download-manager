@@ -15,7 +15,7 @@ class AlreadySavedError(RuntimeError):
     def __init__(self, post_id: int, final_path: str | None) -> None:
         self.post_id = post_id
         self.final_path = final_path
-        message = f"Post {post_id} ist bereits gespeichert."
+        message = f"Post {post_id} is already saved."
         if final_path:
             message += f"\nPfad: {final_path}"
         super().__init__(message)
@@ -65,9 +65,9 @@ class FinalSaveService:
 
         source_path = self.source_path_for_post(post_id, download_if_missing=False)
         if source_path is None:
-            # Noch keine Anzeige-/Originaldatei vorhanden. Für die reine Vorschau reicht
-            # eine synthetische Quelle mit korrekter Extension aus, damit der Dateiname
-            # trotzdem sichtbar ist und nicht erst nach dem Download aus dem Nebel kriecht.
+            # No display/original file is available yet. For a pure preview, a synthetic
+            # source with the correct extension is enough so the filename is still
+            # visible and does not crawl out of the fog only after download.
             row = self.db.get_post_detail(post_id)
             ext = str(row["file_ext"] or "bin").strip(".") if row is not None else "bin"
             source_path = Path(f"{post_id}_preview_source.{ext or 'bin'}")
@@ -91,7 +91,7 @@ class FinalSaveService:
 
         source_path = self.source_path_for_post(post_id, download_if_missing=True, prefer_final=False)
         if source_path is None:
-            raise RuntimeError(f"Keine Quelldatei für Post {post_id}")
+            raise RuntimeError(f"No source file for post {post_id}")
 
         suggested_category = self.suggest_category(post_id)
         assigned_category_row = self.db.get_assigned_category_for_post(post_id)
@@ -124,8 +124,8 @@ class FinalSaveService:
             try:
                 old_final_path.unlink()
             except OSError:
-                # Nicht hart abbrechen. Ein übrig gebliebenes altes Bild ist lästig,
-                # aber ein abgebrochener Speichervorgang wäre noch dümmer.
+                # Do not fail hard. A leftover old image is annoying,
+                # but an aborted save operation would be even worse.
                 pass
 
         self.db.execute(
@@ -172,22 +172,22 @@ class FinalSaveService:
         """
         row = self.db.get_post_detail(post_id)
         if row is None:
-            raise RuntimeError(f"Post {post_id} ist nicht in der Datenbank")
+            raise RuntimeError(f"Post {post_id} is not in the database")
 
         final_value = row["final_file_path"]
         if not final_value:
-            raise RuntimeError("final_file_path fehlt, daher ist kein Ziel zum Überschreiben bekannt")
+            raise RuntimeError("final_file_path is missing, so no overwrite target is known")
 
         final_path = Path(str(final_value))
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
         source_value = self.download_service.ensure_full_original_cached(post_id, force=force_download)
         if not source_value:
-            raise RuntimeError("Originaldatei konnte nicht geladen werden")
+            raise RuntimeError("Original file could not be downloaded")
 
         source_path = Path(source_value)
         if not source_path.exists():
-            raise RuntimeError(f"Original-Cache fehlt: {source_path}")
+            raise RuntimeError(f"Original cache is missing: {source_path}")
 
         tmp_path = final_path.with_name(final_path.name + ".replace_tmp")
         shutil.copy2(source_path, tmp_path)
@@ -238,9 +238,9 @@ class FinalSaveService:
         if not download_if_missing:
             return None
 
-        # Für finales Speichern darf niemals ein Thumbnail, Preview oder
-        # Danbooru-large/sample als Quelle dienen. Die Viewer-Datei kann kleiner
-        # sein, final wird aber immer aus file_url neu bzw. separat geladen.
+        # Final save must never use a thumbnail, preview, or Danbooru large/sample
+        # variant as the source. The viewer file may be smaller, but final save
+        # is always downloaded freshly or separately from file_url.
         downloaded = self.download_service.ensure_full_original_cached(post_id)
         if downloaded:
             path = Path(downloaded)

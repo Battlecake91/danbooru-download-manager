@@ -182,34 +182,34 @@ def validate_config(config: dict[str, Any]) -> None:
 
     missing = [key for key in required if not config.get(key)]
     if missing:
-        raise ValueError(f"Pflichtwerte fehlen in Config: {', '.join(missing)}")
+        raise ValueError(f"Required config values are missing: {', '.join(missing)}")
 
     limit = int(config.get("limit", 100))
     if limit < 1:
-        raise ValueError("limit muss >= 1 sein")
+        raise ValueError("limit must be >= 1")
     if limit > 200:
         config["limit"] = 200
 
     if int(config.get("max_posts_per_query", 1)) < 1:
-        raise ValueError("max_posts_per_query muss >= 1 sein")
+        raise ValueError("max_posts_per_query must be >= 1")
 
     if int(config.get("max_total_posts", 1)) < 1:
-        raise ValueError("max_total_posts muss >= 1 sein")
+        raise ValueError("max_total_posts must be >= 1")
 
     source = str(config.get("thumbnail_download_source", "large")).lower()
     if source not in {"preview", "large", "file", "best"}:
-        raise ValueError("thumbnail_download_source muss preview, large, file oder best sein")
+        raise ValueError("thumbnail_download_source must be preview, large, file, or best")
     config["thumbnail_download_source"] = source
 
     viewer_source = str(config.get("viewer_download_source", "file")).lower()
     if viewer_source not in {"large", "file", "best"}:
-        raise ValueError("viewer_download_source muss large, file oder best sein")
+        raise ValueError("viewer_download_source must be large, file, or best")
     config["viewer_download_source"] = viewer_source
 
     workflow = config.get("workflow", {}) or {}
     worklist_statuses = workflow.get("worklist_statuses", [])
     if not isinstance(worklist_statuses, list) or not worklist_statuses:
-        raise ValueError("workflow.worklist_statuses muss eine nicht-leere Liste sein")
+        raise ValueError("workflow.worklist_statuses must be a non-empty list")
 
     gui = config.get("gui", {}) or {}
     thumb_min = int(gui.get("thumbnail_size_min", 120))
@@ -217,57 +217,57 @@ def validate_config(config: dict[str, Any]) -> None:
     thumb_size = int(gui.get("thumbnail_size", 280))
 
     if thumb_min < 32:
-        raise ValueError("gui.thumbnail_size_min muss >= 32 sein")
+        raise ValueError("gui.thumbnail_size_min must be >= 32")
     if thumb_max < thumb_min:
-        raise ValueError("gui.thumbnail_size_max muss >= gui.thumbnail_size_min sein")
+        raise ValueError("gui.thumbnail_size_max must be >= gui.thumbnail_size_min")
     if thumb_size < thumb_min or thumb_size > thumb_max:
-        raise ValueError("gui.thumbnail_size muss zwischen thumbnail_size_min und thumbnail_size_max liegen")
+        raise ValueError("gui.thumbnail_size must be between thumbnail_size_min and thumbnail_size_max")
 
     filename = config.get("filename", {}) or {}
     if int(filename.get("max_length", 180)) < 32:
-        raise ValueError("filename.max_length muss >= 32 sein")
+        raise ValueError("filename.max_length must be >= 32")
     if int(filename.get("tags_count", 8)) < 0:
-        raise ValueError("filename.tags_count muss >= 0 sein")
+        raise ValueError("filename.tags_count must be >= 0")
     if int(filename.get("hash_length", 8)) < 1:
-        raise ValueError("filename.hash_length muss >= 1 sein")
+        raise ValueError("filename.hash_length must be >= 1")
 
     llm = config.get("llm", {}) or {}
     backend = str(llm.get("backend", "none")).lower()
     if backend not in {"none", "openai_compatible", "local"}:
-        raise ValueError("llm.backend muss none, openai_compatible oder local sein")
+        raise ValueError("llm.backend must be none, openai_compatible, or local")
     llm["backend"] = backend
 
     tag_export_mode = str(llm.get("tag_export_mode", "hashed_alias")).lower()
     if tag_export_mode not in {"original", "alias", "hashed_alias"}:
-        raise ValueError("llm.tag_export_mode muss original, alias oder hashed_alias sein")
+        raise ValueError("llm.tag_export_mode must be original, alias, or hashed_alias")
     llm["tag_export_mode"] = tag_export_mode
 
     if int(llm.get("hash_length", 12)) < 4:
-        raise ValueError("llm.hash_length muss >= 4 sein")
+        raise ValueError("llm.hash_length must be >= 4")
 
     category_export_mode = str(llm.get("category_export_mode", "hashed")).lower()
     if category_export_mode not in {"original", "hashed"}:
-        raise ValueError("llm.category_export_mode muss original oder hashed sein")
+        raise ValueError("llm.category_export_mode must be original or hashed")
     llm["category_export_mode"] = category_export_mode
 
     if int(llm.get("category_hash_length", llm.get("hash_length", 12))) < 4:
-        raise ValueError("llm.category_hash_length muss >= 4 sein")
+        raise ValueError("llm.category_hash_length must be >= 4")
     if int(llm.get("request_timeout_seconds", 60)) < 1:
-        raise ValueError("llm.request_timeout_seconds muss >= 1 sein")
+        raise ValueError("llm.request_timeout_seconds must be >= 1")
     after_fetch_statuses = llm.get("after_fetch_statuses", ["new", "potential"])
     if not isinstance(after_fetch_statuses, list):
         llm["after_fetch_statuses"] = ["new", "potential"]
     if int(llm.get("max_posts_per_request", 20)) < 1:
-        raise ValueError("llm.max_posts_per_request muss >= 1 sein")
+        raise ValueError("llm.max_posts_per_request must be >= 1")
     if int(llm.get("max_tags_per_post", 80)) < 1:
-        raise ValueError("llm.max_tags_per_post muss >= 1 sein")
+        raise ValueError("llm.max_tags_per_post must be >= 1")
     if int(llm.get("max_preference_tags", 80)) < 0:
-        raise ValueError("llm.max_preference_tags muss >= 0 sein")
+        raise ValueError("llm.max_preference_tags must be >= 0")
     if int(llm.get("max_positive_examples", 8)) < 0:
-        raise ValueError("llm.max_positive_examples muss >= 0 sein")
+        raise ValueError("llm.max_positive_examples must be >= 0")
     if int(llm.get("max_negative_examples", 8)) < 0:
-        raise ValueError("llm.max_negative_examples muss >= 0 sein")
+        raise ValueError("llm.max_negative_examples must be >= 0")
     if int(llm.get("max_category_examples", 3)) < 0:
-        raise ValueError("llm.max_category_examples muss >= 0 sein")
+        raise ValueError("llm.max_category_examples must be >= 0")
     if int(llm.get("max_example_tags", 30)) < 1:
-        raise ValueError("llm.max_example_tags muss >= 1 sein")
+        raise ValueError("llm.max_example_tags must be >= 1")

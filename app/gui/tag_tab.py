@@ -685,7 +685,7 @@ class TagTab(QWidget):
         item = self.table.item(row_index, column)
         if item is None:
             return False
-        return item.text().strip().lower() in {"ja", "yes", "true", "1", "x"}
+        return item.text().strip().lower() in {"yes", "true", "1", "x"}
 
     def handle_option_cell_click(self, item: QTableWidgetItem) -> None:
         if item is None:
@@ -779,7 +779,7 @@ class TagTab(QWidget):
             finally:
                 self.table.blockSignals(False)
                 self._suppress_item_changed = False
-            self.log_message(f"Alias direkt aktualisiert fuer tag={tag!r}. Kein automatischer Voll-Reload.")
+            self.log_message(f"Alias updated directly for tag={tag!r}. No automatic full reload.")
             return
 
         raw_text = item.text().strip().replace(",", ".")
@@ -862,7 +862,7 @@ class TagTab(QWidget):
                 return False
 
             value = exclude_item.text().strip().lower()
-            return value in {"ja", "yes", "true", "1", "x"}
+            return value in {"yes", "true", "1", "x"}
 
         # Fallback for invisible/missing rows. This is mostly defensive.
         for row in self.current_rows:
@@ -1037,7 +1037,7 @@ class TagTab(QWidget):
             ignore_recommendation_score=ignore_recommendation_score,
             ignore_llm_input=ignore_llm_input,
         )
-        self.log_message(f"Scoring-Flags lokal aktualisiert fuer {len(clean_tags)} Tag(s). Kein automatischer Voll-Reload.")
+        self.log_message(f"Scoring flags updated locally for {len(clean_tags)} Tag(s). No automatic full reload.")
 
     # ------------------------------------------------------------------
     # Context menu
@@ -1304,7 +1304,7 @@ class TagTab(QWidget):
             self.log_message(f"db.add_filename_excluded_tag: end tag={tag!r}")
 
         self.update_filename_exclude_cells(tags, excluded=True)
-        self.log_message(f"Filename-Exclude gesetzt fuer {len(tags)} Tag(s). Kein automatischer Voll-Reload.")
+        self.log_message(f"Filename exclude set for {len(tags)} Tag(s). No automatic full reload.")
 
     def remove_tags_from_filename_exclude(self, tags: list[str]) -> None:
         if not tags:
@@ -1316,7 +1316,7 @@ class TagTab(QWidget):
             self.log_message(f"db.remove_filename_excluded_tag: end tag={tag!r}")
 
         self.update_filename_exclude_cells(tags, excluded=False)
-        self.log_message(f"Filename-Exclude entfernt fuer {len(tags)} Tag(s). Kein automatischer Voll-Reload.")
+        self.log_message(f"Filename exclude removed for {len(tags)} Tag(s). No automatic full reload.")
 
     def add_selected_tags_to_filename_exclude(self) -> None:
         self.safe(lambda: self.add_tags_to_filename_exclude(self.selected_tags()), self.t("tags.action.exclude_selected", "Exclude selected tags"))

@@ -292,10 +292,10 @@ class AppWindow(QMainWindow):
             self._pending_preview_reload = True
 
     def on_config_changed(self) -> None:
-        # Laufende Widgets haben Referenz auf dasselbe config-dict.
-        # Nach Config-Änderungen reicht für jetzt ein Preview-Reload, aber nur
-        # wenn der Preview-Tab wirklich schon existiert. Sonst sparen wir uns
-        # den Startzeit-Klotz, wegen dem wir überhaupt hier sind.
+        # Active widgets keep a reference to the same config dict.
+        # After config changes, a preview reload is enough for now, but only
+        # if the preview tab already exists. Otherwise we avoid the startup
+        # cost that caused this lazy-loading setup in the first place.
         if self.preview_window is not None:
             self.preview_window.reload_category_filter()
             self.preview_window.schedule_reload()

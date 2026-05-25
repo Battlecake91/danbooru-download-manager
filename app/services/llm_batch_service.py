@@ -210,7 +210,7 @@ class LLMBatchPreselectionService:
         llm_config = self.config.get("llm", {}) or {}
         endpoint = str(llm_config.get("endpoint_url", "") or "").strip()
         if not endpoint:
-            raise RuntimeError("LLM endpoint_url fehlt.")
+            raise RuntimeError("LLM endpoint_url is missing.")
 
         timeout = int(llm_config.get("request_timeout_seconds", 60) or 60)
         model = str(llm_config.get("model", "") or "").strip()
@@ -220,8 +220,8 @@ class LLMBatchPreselectionService:
             headers["Authorization"] = f"Bearer {api_key}"
         elif backend == "openai_compatible":
             raise RuntimeError(
-                "OpenAI-kompatibles Backend braucht einen API-Key. "
-                "Trage ihn in der Konfiguration bei LLM/API-Key ein. Environment-Fallback wurde entfernt."
+                "OpenAI-compatible backend requires an API key. "
+                "Enter it in the LLM/API key configuration. Environment fallback has been removed."
             )
 
         if backend == "openai_compatible":
@@ -242,7 +242,7 @@ class LLMBatchPreselectionService:
             data = response.json()
             content = data.get("choices", [{}])[0].get("message", {}).get("content")
             if content is None:
-                raise RuntimeError("OpenAI-kompatible Antwort enthaelt keinen message.content.")
+                raise RuntimeError("OpenAI-compatible response does not contain message.content.")
             parsed = self._parse_jsonish_content(str(content))
             return self._extract_decisions(parsed)
 
@@ -259,7 +259,7 @@ class LLMBatchPreselectionService:
                 return self._extract_decisions(self._parse_jsonish_content(str(data["response"])))
             return self._extract_decisions(data)
 
-        raise RuntimeError(f"Unbekanntes LLM-Backend: {backend}")
+        raise RuntimeError(f"Unknown LLM backend: {backend}")
 
     @staticmethod
     def _parse_jsonish_content(content: str) -> dict[str, Any]:
@@ -276,14 +276,14 @@ class LLMBatchPreselectionService:
                 raise
             data = json.loads(text[start:end + 1])
         if not isinstance(data, dict):
-            raise RuntimeError("LLM-Antwort ist kein JSON-Objekt.")
+            raise RuntimeError("LLM response is not a JSON object.")
         return data
 
     @staticmethod
     def _extract_decisions(data: dict[str, Any]) -> list[dict[str, Any]]:
         posts = data.get("posts")
         if not isinstance(posts, list):
-            raise RuntimeError("LLM-Antwort enthaelt keine posts-Liste.")
+            raise RuntimeError("LLM response does not contain a posts list.")
         result: list[dict[str, Any]] = []
         allowed_decisions = {"reject", "maybe", "keep", "save_candidate"}
         for item in posts:

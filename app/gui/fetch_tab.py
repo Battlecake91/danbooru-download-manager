@@ -433,9 +433,9 @@ class FetchTab(QWidget):
         self.log_text.setMinimumHeight(180)
         self.main_layout.addWidget(self.log_text, stretch=1)
 
-        # Tag-Suggestions sind eine potenziell teure GROUP-BY-Abfrage über post_tags.
-        # Nicht beim Programmstart laden, sondern erst wenn das Suchfeld wirklich benutzt wird.
-        # Ja, Arbeit erst bei Bedarf zu machen ist offenbar eine Innovation.
+        # Tag suggestions are a potentially expensive GROUP BY query over post_tags.
+        # Do not load this at application startup; load it only when the search field is actually used.
+        # Apparently doing work only when needed still counts as innovation.
         self.load_presets()
         self.load_initial_values()
         self.on_source_mode_changed()

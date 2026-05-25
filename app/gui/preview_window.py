@@ -588,9 +588,9 @@ class PreviewWindow(QMainWindow):
         self.update()
 
     def on_tab_activated(self) -> None:
-        # Nicht mehr bei jedem Tabwechsel stumpf neu laden. Wenn schon gültige
-        # Thumbnails da sind, werden sie nur wieder eingeblendet. Reload nur bei
-        # erstem Öffnen oder geänderten Filtern. Revolutionär: nicht unnötig arbeiten.
+        # Stop blindly reloading on every tab switch. If valid thumbnails already
+        # exist, just show them again. Reload only on first open or changed filters.
+        # Revolutionary concept: do not do pointless work.
         if not self.preview_needs_reload():
             self.show_preview_grid_without_reload()
             self.status_bar.showMessage(tr("preview.ready", "Preview ready.", config=self.config), 3000)
@@ -606,7 +606,7 @@ class PreviewWindow(QMainWindow):
 
 
 
-    # Kategorie-Filter / Kategorie-Vorschlag
+    # Category filter / category suggestion
     # -------------------------------------------------------------------------
 
     def reload_category_filter(self) -> None:
@@ -868,7 +868,7 @@ class PreviewWindow(QMainWindow):
 
         self.db.commit()
 
-        # Absichtlich kein Popup. Review-Workflow soll nicht von Dialogen zerhackt werden.
+        # Intentionally no popup. The review workflow should not be shredded by dialogs.
         self.status_bar.showMessage(tr("preview.category_assigned", "{count} post(s) → category {category}", config=self.config, count=len(post_ids), category=category_name))
 
     # -------------------------------------------------------------------------
@@ -968,8 +968,8 @@ class PreviewWindow(QMainWindow):
         try:
             self.db.set_app_setting("gui.preview_sort_order", json.dumps(sort_key, ensure_ascii=False))
         except Exception as exc:
-            # Sortierung soll nicht den ganzen Previewer zerlegen, nur weil SQLite
-            # gerade beleidigt ist. Der sichtbare Reload bleibt trotzdem korrekt.
+            # Sorting should not tear down the whole previewer just because SQLite
+            # is currently offended. The visible reload still stays correct.
             self.status_bar.showMessage(tr("preview.sort_save_failed", "Sorting could not be saved: {error}", config=self.config, error=exc), 8000)
 
         self.on_passive_filter_changed()
@@ -1037,10 +1037,10 @@ class PreviewWindow(QMainWindow):
                 or sort_key in {"category", "recommendation_desc", "recommendation_asc"}
             )
 
-            # Kategorie und Vorauswahl werden aktuell in Python berechnet. Dafür brauchen
-            # wir mehr als nur die sichtbaren 50 Zeilen, sonst wäre "Angezeigt: 50/256"
-            # wieder eine hübsche Lüge mit UI-Rahmen. Obergrenze verhindert, dass eine
-            # riesige DB den Previewer als Geisel nimmt.
+            # Category and preselection are currently calculated in Python. This needs
+            # more than just the visible 50 rows, otherwise "Shown: 50/256" would be
+            # another pretty lie with a UI frame. The upper bound prevents a huge DB
+            # from taking the previewer hostage.
             analysis_cap = 10000
             if python_filtered_or_sorted:
                 internal_limit = max(self.current_limit, min(base_total, analysis_cap))
@@ -1124,7 +1124,7 @@ class PreviewWindow(QMainWindow):
 
         # Statusfilter gilt immer, auch bei Tag-/Textsuche.
         # Wer gespeicherte lokale Bilder suchen will, aktiviert den Status "saved"
-        # oder die Ansicht "Alle bekannten Posts". Revolutionäres Konzept: Filter filtern.
+        # or the "All known posts" view. Revolutionary concept: filters filter.
         if not statuses:
             where_parts.append("1 = 0")
         elif set(statuses) != set(STATUS_ORDER):
@@ -1327,7 +1327,7 @@ class PreviewWindow(QMainWindow):
         )
 
     # -------------------------------------------------------------------------
-    # Thumbnail-Reparatur aus Preview
+    # Thumbnail repair from preview
     # -------------------------------------------------------------------------
 
     def reload_selected_thumbnails(self) -> None:
@@ -1341,7 +1341,7 @@ class PreviewWindow(QMainWindow):
             return
 
         self.reload_thumbnails_button.setEnabled(False)
-        self.status_bar.showMessage(f"Lade {len(clean_ids)} Thumbnail(s) neu…")
+        self.status_bar.showMessage(f"Reloading {len(clean_ids)} thumbnail(s)…")
         QApplication.processEvents()
 
         api = DanbooruApi(self.config)
@@ -1404,9 +1404,9 @@ class PreviewWindow(QMainWindow):
         }
 
         if not (post["file_url"] or post["large_file_url"] or post["preview_file_url"]):
-            # Alte DB-Zeilen können kaputte/fehlende URLs haben. Dann holen wir
-            # den Post frisch nach. Manchmal muss man Daten eben nochmal fragen,
-            # weil sie sich beim ersten Mal dumm gestellt haben.
+            # Old DB rows can contain broken or missing URLs. In that case, refetch
+            # the post. Sometimes data needs to be asked again because it acted
+            # clueless the first time.
             post = api_post = DanbooruApi(self.config).get_post(int(post_id))
             self.db.execute(
                 """
@@ -1427,7 +1427,7 @@ class PreviewWindow(QMainWindow):
         return post
 
     # -------------------------------------------------------------------------
-    # Speichern aus Preview
+    # Save from preview
     # -------------------------------------------------------------------------
 
     def final_save_selected_posts(self) -> None:

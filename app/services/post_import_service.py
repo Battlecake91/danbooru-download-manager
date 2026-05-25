@@ -62,7 +62,7 @@ class PostImportService:
     def fetch_and_store(self) -> FetchResult:
         queries = build_search_queries(self.config, self.api)
         if not queries:
-            raise RuntimeError("Keine Suchqueries vorhanden")
+            raise RuntimeError("No search queries available")
 
         min_unknown_per_query = max(0, int(self.config.get("min_unknown_posts_per_query", 0) or 0))
         result = FetchResult(
@@ -100,7 +100,7 @@ class PostImportService:
 
             result.processed_queries += 1
 
-            LOGGER.info("Lade Query %s/%s: %s", query_index, len(queries), query)
+            LOGGER.info("Loading query %s/%s: %s", query_index, len(queries), query)
             page = None
             seen_for_query = 0
             inserted_for_query = 0
@@ -156,7 +156,7 @@ class PostImportService:
                     else:
                         result.updated_posts += 1
 
-                    # Für entschiedene Posts keine aktiven Thumbnails neu laden.
+                    # Do not reload active thumbnails for posts that already have a decision.
                     status = self.get_status(post_id)
                     if status in {"new", "potential", "review", "selected_save"}:
                         thumbnail_path = self.thumbnail_cache.cache_thumbnail(post)

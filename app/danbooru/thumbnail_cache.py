@@ -26,7 +26,7 @@ class ThumbnailCache:
 
         selected = choose_thumbnail_url(post, self.source)
         if not selected:
-            LOGGER.debug("Kein Thumbnail-URL für Post %s", post_id)
+            LOGGER.debug("No thumbnail URL for post %s", post_id)
             return None
 
         url, source_label = selected
@@ -51,7 +51,7 @@ class ThumbnailCache:
         except Exception:
             if part.exists():
                 part.unlink(missing_ok=True)
-            LOGGER.exception("Thumbnail konnte nicht geladen werden für Post %s", post_id)
+            LOGGER.exception("Thumbnail could not be loaded for post %s", post_id)
             return None
 
 

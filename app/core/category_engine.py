@@ -182,7 +182,7 @@ class CategoryEngine:
                     folder_name=str(row["folder_name"]),
                     output_path=row["output_path"],
                     matched=False,
-                    reason="Manuelle Auswahl",
+                    reason="Manual selection",
                 )
             )
 
@@ -211,7 +211,7 @@ class CategoryEngine:
             folder_name=str(row["folder_name"]),
             output_path=row["output_path"],
             matched=False,
-            reason="Manuelle Auswahl",
+            reason="Manual selection",
         )
 
     def suggest_category_for_post(self, post_id: int) -> CategoryMatch:
@@ -249,7 +249,7 @@ class CategoryEngine:
                     folder_name=str(category["folder_name"]),
                     output_path=category["output_path"],
                     matched=True,
-                    reason="Kategorie-Regel passt",
+                    reason="Category rule matches",
                 )
 
         unmatched = self.category_by_name("_unmatched")
@@ -260,7 +260,7 @@ class CategoryEngine:
                 folder_name=unmatched.folder_name,
                 output_path=unmatched.output_path,
                 matched=False,
-                reason="Keine Kategorie-Regel passt, Fallback",
+                reason="No category rule matches, fallback",
             )
 
         return CategoryMatch(
@@ -269,7 +269,7 @@ class CategoryEngine:
             folder_name="_unmatched",
             output_path=None,
             matched=False,
-            reason="Keine Kategorie-Regel passt, interner Fallback",
+            reason="No category rule matches, internal fallback",
         )
 
     def get_post_tags(self, post_id: int) -> set[str]:
@@ -408,7 +408,7 @@ class CategoryEngine:
             )
             reason_parts = [f"{item['display']} ({item['hits']}x)" for item in tags_sorted[:8]]
             if len(tags_sorted) > 8:
-                reason_parts.append(f"+{len(tags_sorted) - 8} weitere")
+                reason_parts.append(f"+{len(tags_sorted) - 8} more")
             score = round(float(bucket["score"]), 2)
             if score <= 0:
                 continue
@@ -419,7 +419,7 @@ class CategoryEngine:
                     score=score,
                     matched_tags=len(canonical_seen_by_category.get(category_id, set())),
                     examples=int(bucket["examples"]),
-                    reason=", ".join(reason_parts) if reason_parts else "keine verwertbaren Treffer",
+                    reason=", ".join(reason_parts) if reason_parts else "no usable matches",
                 )
             )
 
@@ -433,7 +433,7 @@ class CategoryEngine:
     ) -> str:
         tags = self.get_post_tags(post_id)
         if not tags:
-            return f"Post {post_id} wurde nicht gefunden oder hat keine gespeicherten Tags."
+            return f"Post {post_id} was not found or has no stored tags."
 
         return self.build_category_decision_report(
             tags,
@@ -497,46 +497,46 @@ class CategoryEngine:
 
         automatic_name = winner_name or "_unmatched"
         lines: list[str] = [title]
-        lines.append(f"Automatik: {automatic_name}")
+        lines.append(f"Automatic: {automatic_name}")
         if top_influence is not None:
-            lines.append(f"Tag-Einfluss: {top_influence.name} (+{top_influence.score:g})")
+            lines.append(f"Tag influence: {top_influence.name} (+{top_influence.score:g})")
             if automatic_name != "_unmatched" and top_influence.name != automatic_name:
-                lines.append("Hinweis: Harte Kategorie-Regeln haben Vorrang vor dem Tag-Einfluss.")
+                lines.append("Note: Hard category rules take precedence over tag influence.")
             elif automatic_name == "_unmatched":
-                lines.append("Hinweis: Tag-Einfluss ist aktuell nur ein Hinweis und ersetzt noch keine Regel.")
+                lines.append("Note: tag influence is currently only a hint and does not replace a rule yet.")
         if selected_category_name:
-            lines.append(f"Aktuell gewählt: {selected_category_name}")
+            lines.append(f"Currently selected: {selected_category_name}")
             if selected_category_name != automatic_name:
-                lines.append("Abweichung: manuelle Auswahl überschreibt den automatischen Vorschlag.")
-        lines.append(f"Tags im Post: {len(tags)}")
+                lines.append("Deviation: manual selection overrides the automatic suggestion.")
+        lines.append(f"Tags in post: {len(tags)}")
         if ignored_influence_tags:
-            lines.append(f"Für Kategorie-Hinweis ignoriert: {', '.join(ignored_influence_tags[:20])}" + (f" … +{len(ignored_influence_tags) - 20}" if len(ignored_influence_tags) > 20 else ""))
-        lines.append("Reihenfolge: Die erste passende Kategorie gewinnt.")
+            lines.append(f"Ignored for category hint: {', '.join(ignored_influence_tags[:20])}" + (f" … +{len(ignored_influence_tags) - 20}" if len(ignored_influence_tags) > 20 else ""))
+        lines.append("Order: The first matching category wins.")
         lines.append("")
 
-        lines.append("Kurzübersicht")
+        lines.append("Quick overview")
         if matched_names:
-            lines.append(f"Passt: {', '.join(matched_names)}")
+            lines.append(f"Matches: {', '.join(matched_names)}")
             if len(matched_names) > 1:
-                lines.append(f"Weitere passende Kategorien nach dem Gewinner: {', '.join(matched_names[1:])}")
+                lines.append(f"Additional matching categories after the winner: {', '.join(matched_names[1:])}")
         else:
-            lines.append("Passt: keine Kategorie, daher Fallback _unmatched")
+            lines.append("Match: no category, therefore fallback _unmatched")
         if influences:
             preview = "; ".join(
                 f"{entry.name} +{entry.score:g}" for entry in influences[:5]
             )
-            lines.append(f"Tag-Einfluss Top: {preview}")
+            lines.append(f"Top tag influence: {preview}")
         else:
-            lines.append("Tag-Einfluss: keine verwertbaren früheren Kategorie-Beispiele")
+            lines.append("Tag influence: no usable earlier category examples")
         lines.append("")
 
         if influences:
-            lines.append("Tag-Einfluss, Details")
+            lines.append("Tag influence details")
             for entry in influences[:5]:
                 lines.append(
-                    f"[{entry.name}] +{entry.score:g} | Tags: {entry.matched_tags} | Beispiele: {entry.examples}"
+                    f"[{entry.name}] +{entry.score:g} | Tags: {entry.matched_tags} | Examples: {entry.examples}"
                 )
-                lines.append(f"  Treffer: {entry.reason}")
+                lines.append(f"  Matches: {entry.reason}")
             lines.append("")
 
         important_names: list[str] = []
@@ -550,14 +550,14 @@ class CategoryEngine:
 
         important_blocks = [entry for entry in evaluations if entry["name"] in important_names]
         if important_blocks:
-            lines.append("Relevante Details")
+            lines.append("Relevant details")
             for entry in important_blocks:
                 lines.append(str(entry["block"]))
                 lines.append("")
 
         blocked_entries = [entry for entry in evaluations if not entry["matched"] and entry["name"] not in important_names]
         if blocked_entries:
-            lines.append("Nicht passende Kategorien, Kurzfassung")
+            lines.append("Non-matching categories, short summary")
             for entry in blocked_entries:
                 lines.append(f"[{entry['position']}] {entry['name']}: {entry['summary']}")
 
@@ -577,8 +577,8 @@ class CategoryEngine:
         block.append(f"[{position}] {name}")
 
         if not groups and not global_required:
-            summary = "keine positive Gruppe oder globale Muss-Bedingung"
-            block.append(f"  Ergebnis: passt nicht, {summary}")
+            summary = "no positive group or global required condition"
+            block.append(f"  Result: no match, {summary}")
             return False, "\n".join(block), summary
 
         global_missing = sorted(global_required.difference(tags), key=str.casefold)
@@ -587,23 +587,23 @@ class CategoryEngine:
         if global_missing or global_blocked:
             reasons: list[str] = []
             if global_missing:
-                reasons.append("fehlt global: " + ", ".join(global_missing))
+                reasons.append("globally missing: " + ", ".join(global_missing))
             if global_blocked:
-                reasons.append("blockiert global: " + ", ".join(f"-{tag}" for tag in global_blocked))
+                reasons.append("globally blocked: " + ", ".join(f"-{tag}" for tag in global_blocked))
             summary = "; ".join(reasons)
-            block.append(f"  Ergebnis: passt nicht, {summary}")
+            block.append(f"  Result: no match, {summary}")
             return False, "\n".join(block), summary
 
         if global_required or global_forbidden:
-            block.append("  Globale Bedingungen: erfüllt")
+            block.append("  Global conditions: met")
             if global_required:
-                block.append("    Muss: " + ", ".join(sorted(global_required, key=str.casefold)))
+                block.append("    Required: " + ", ".join(sorted(global_required, key=str.casefold)))
             if global_forbidden:
-                block.append("    Ausschluss nicht vorhanden: " + ", ".join(f"-{tag}" for tag in sorted(global_forbidden, key=str.casefold)))
+                block.append("    Exclusion absent: " + ", ".join(f"-{tag}" for tag in sorted(global_forbidden, key=str.casefold)))
 
         if not groups and global_required:
-            summary = "globale Muss-Bedingungen erfüllt"
-            block.append(f"  Ergebnis: passt, {summary}")
+            summary = "global required conditions met"
+            block.append(f"  Result: matches, {summary}")
             return True, "\n".join(block), summary
 
         matching_groups: list[tuple[int, set[str], set[str]]] = []
@@ -627,30 +627,30 @@ class CategoryEngine:
 
         if matching_groups:
             for group_index, required_tags, forbidden_tags in matching_groups:
-                block.append(f"  ODER-Gruppe {group_index}: passt")
+                block.append(f"  OR group {group_index}: matches")
                 if required_tags:
-                    block.append("    Muss: " + ", ".join(sorted(required_tags, key=str.casefold)))
+                    block.append("    Required: " + ", ".join(sorted(required_tags, key=str.casefold)))
                 if forbidden_tags:
-                    block.append("    Ausschluss nicht vorhanden: " + ", ".join(f"-{tag}" for tag in sorted(forbidden_tags, key=str.casefold)))
-            summary = f"{len(matching_groups)} Gruppe(n) erfüllt"
-            block.append(f"  Ergebnis: passt, {summary}")
+                    block.append("    Exclusion absent: " + ", ".join(f"-{tag}" for tag in sorted(forbidden_tags, key=str.casefold)))
+            summary = f"{len(matching_groups)} group(s) met"
+            block.append(f"  Result: matches, {summary}")
             return True, "\n".join(block), summary
 
-        failed_reason = "keine ODER-Gruppe erfüllt"
-        block.append(f"  Ergebnis: passt nicht, {failed_reason}")
+        failed_reason = "no OR group met"
+        block.append(f"  Result: no match, {failed_reason}")
         if best_failed is not None:
             group_index, missing, blocked = best_failed
             details: list[str] = []
             if missing:
-                details.append("fehlt: " + ", ".join(missing[:12]))
+                details.append("missing: " + ", ".join(missing[:12]))
             if blocked:
-                details.append("blockiert: " + ", ".join(f"-{tag}" for tag in blocked[:12]))
+                details.append("blocked: " + ", ".join(f"-{tag}" for tag in blocked[:12]))
             if details:
-                block.append(f"  Nächste Gruppe {group_index}: " + "; ".join(details))
-                failed_reason += f"; Gruppe {group_index}: " + "; ".join(details)
+                block.append(f"  Closest group {group_index}: " + "; ".join(details))
+                failed_reason += f"; group {group_index}: " + "; ".join(details)
             else:
-                block.append(f"  Nächste Gruppe {group_index}: reine Ausschlussgruppe oder leere Gruppe")
-                failed_reason += f"; Gruppe {group_index}: keine positive Trefferbedingung"
+                block.append(f"  Closest group {group_index}: pure exclusion group or empty group")
+                failed_reason += f"; group {group_index}: no positive match condition"
         return False, "\n".join(block), failed_reason
 
     def output_directory_for_category(self, category: CategoryMatch) -> Path:

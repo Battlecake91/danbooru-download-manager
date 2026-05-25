@@ -114,7 +114,7 @@ class FilenameBuilder:
             value = self.filename_config().get("sort_tags_by_average_rating", False)
 
         if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "ja", "on", "j", "y"}
+            return value.strip().lower() in {"1", "true", "yes", "on", "y"}
         return bool(value)
 
     def prioritized_tags(self, tags: list[str]) -> list[str]:

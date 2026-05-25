@@ -188,8 +188,8 @@ def prettify_danbooru_tag(tag: str) -> str:
     text = str(tag or "").strip().replace("_", " ")
     if not text:
         return ""
-    # str.title() ist hier absichtlich simpel: Danbooru-Tags sind technisch,
-    # keine druckfertigen Buchtitel. Für die Preview reicht lesbarer Text.
+    # str.title() is intentionally simple here: Danbooru tags are technical,
+    # not print-ready book titles. Readable text is enough for the preview.
     return text.title()
 
 
@@ -247,7 +247,7 @@ class ThumbnailGrid(QScrollArea):
         self.setWidget(self.container)
 
         # Deckend malen. Sonst recycelt Qt beim Tabwechsel gerne den vorherigen
-        # Inhalt als Geisterbild. Natürlich nur, wenn man gerade hinsieht.
+        # content as a ghost image. Naturally only when someone is looking.
         self.setAutoFillBackground(True)
         self.viewport().setAutoFillBackground(True)
         self.container.setAutoFillBackground(True)
@@ -440,9 +440,9 @@ class ThumbnailGrid(QScrollArea):
         self._pending_rows = self._pending_rows[batch_size:]
 
         if batch:
-            # Nur den einzelnen Batch kurz einfrieren. Früher blieb UpdatesEnabled
-            # ueber mehrere QTimer-Batches aus, wodurch der Preview schwarz wirkte,
-            # obwohl die Karten schon gebaut wurden. Sehr hilfreich, danke Qt.
+            # Freeze only the current batch briefly. Older code kept UpdatesEnabled
+            # disabled across several QTimer batches, which made the preview look black,
+            # even though the cards had already been built. Very helpful, thanks Qt.
             was_updates_enabled = self.updatesEnabled()
             self.setUpdatesEnabled(False)
             try:

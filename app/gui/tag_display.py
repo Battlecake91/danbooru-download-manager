@@ -11,7 +11,7 @@ from app.i18n.i18n import tr
 TAG_TYPE_LABELS = {
     "artist": "Artist",
     "character": "Character",
-    "copyright": "Serie / Copyright",
+    "copyright": "Series / Copyright",
     "meta": "Meta",
     "general": "General",
 }
@@ -278,9 +278,9 @@ class TypedTagListWidget(QWidget):
             display_text = tag
             tooltip = tag
 
-            # Artist / Serie / Character bleiben absichtlich kompakt. Dort würde
-            # Zusatzmetadaten-Kleinkram die gerade mühsam gezähmte Aufteilung
-            # wieder sprengen. General und Meta dürfen die Details tragen.
+            # Artist / Series / Character intentionally stay compact. Extra
+            # metadata clutter would break the layout we just barely tamed.
+            # General and Meta can carry the details.
             meta_item_widget = None
             if tag_type in {"general", "meta"}:
                 meta = self._tag_metadata.get(tag, {})
@@ -288,12 +288,12 @@ class TypedTagListWidget(QWidget):
                 canonical_text = str(meta.get("canonical_tag") or tag)
                 llm_token_text = str(meta.get("llm_token") or "")
                 excluded = bool(meta.get("filename_excluded", tag in self._filename_excluded_tags))
-                excluded_text = "J" if excluded else "N"
+                excluded_text = "Y" if excluded else "N"
                 scoring_excluded = bool(meta.get("scoring_excluded", False))
                 ignore_category_influence = bool(meta.get("ignore_category_influence", False))
                 ignore_recommendation_score = bool(meta.get("ignore_recommendation_score", False))
                 ignore_llm_input = bool(meta.get("ignore_llm_input", False))
-                average_text = "aus" if scoring_excluded else self._format_average_rating(meta.get("average_rating"))
+                average_text = "off" if scoring_excluded else self._format_average_rating(meta.get("average_rating"))
                 display_text = tag
                 saved_count = int(meta.get("saved_count") or 0)
                 rejected_count = int(meta.get("rejected_count") or 0)
@@ -303,13 +303,13 @@ class TypedTagListWidget(QWidget):
                     f"Canonical/Alias: {canonical_text}\n"
                     f"LLM-Token: {llm_token_text or '-'}\n"
                     f"Score: {score_text}\n"
-                    f"Gespeichert/Abgelehnt: {saved_count}/{rejected_count} von {post_count} bekannten Posts\n"
-                    f"Filename-Exclude: {'ja' if excluded else 'nein'}\n"
-                    f"Altes Tag-Scoring ausgeschlossen: {'ja' if scoring_excluded else 'nein'}\n"
-                    f"Kategorie-Hinweis ignoriert: {'ja' if ignore_category_influence else 'nein'}\n"
-                    f"Vorauswahl ignoriert: {'ja' if ignore_recommendation_score else 'nein'}\n"
-                    f"LLM-Eingabe ignoriert: {'ja' if ignore_llm_input else 'nein'}\n"
-                    f"Durchschnittliche Sterne: {average_text}"
+                    f"Saved/rejected: {saved_count}/{rejected_count} of {post_count} known posts\n"
+                    f"Filename-Exclude: {'yes' if excluded else 'no'}\n"
+                    f"Legacy tag scoring excluded: {'yes' if scoring_excluded else 'no'}\n"
+                    f"Category hint ignored: {'yes' if ignore_category_influence else 'no'}\n"
+                    f"Preselection ignored: {'yes' if ignore_recommendation_score else 'no'}\n"
+                    f"LLM input ignored: {'yes' if ignore_llm_input else 'no'}\n"
+                    f"Average stars: {average_text}"
                 )
                 meta_item_widget = self._create_detail_row_widget(
                     tag_type=tag_type,
@@ -369,8 +369,8 @@ class TypedTagListWidget(QWidget):
 
         columns = (
             ("S:", score_text, 58, "Score"),
-            ("✖:", excluded_text, 48, "Filename-Exclude: J = ja, N = nein"),
-            ("⌀☆:", average_text, 76, "Durchschnittliche Sterne / aus = aus Scoring ausgeschlossen"),
+            ("✖:", excluded_text, 48, "Filename exclude: Y = yes, N = no"),
+            ("⌀☆:", average_text, 76, "Average stars / off = excluded from scoring"),
         )
         for prefix, value, width, tooltip in columns:
             label = QLabel(f"{prefix} {value}")

@@ -514,11 +514,11 @@ class ExistingFileImportService:
                     reason=tr("import.service.assigned_category_reason", config=self.config),
                 )
 
-        # Wichtig: Der Importer darf bestehende Dateien beim reinen Umbenennen nicht in
-        # den Kategorie-Ausgabeordner verschieben. Er soll nur den Dateinamen im
-        # bestehenden Ordner an das aktuelle Schema anpassen und den gespeicherten
-        # Pfad in der DB aktualisieren. Alles andere wirkt für den Nutzer wie
-        # „Datei aus Importordner gelöscht“, auch wenn sie nur woanders gelandet ist.
+        # Important: during rename-only imports, the importer must not move existing
+        # files into the category output folder. It should only adapt the filename in
+        # the existing folder to the current schema and update the stored DB path.
+        # Anything else looks to the user like "file deleted from import folder",
+        # even if it merely landed somewhere else.
         new_filename = self.filename_builder.build_filename(post_id, source_path)
         desired_path = source_path.with_name(new_filename)
 
@@ -581,10 +581,10 @@ def extract_md5_from_filename(filename: str) -> str | None:
 
 
 def extract_post_id_from_filename(filename: str) -> int | None:
-    # Bevorzugt explizite Muster wie post_123456 oder id-123456.
+    # Prefer explicit patterns like post_123456 or id-123456.
     # Fallback: eine alleinstehende 5- bis 12-stellige Zahl. Ja, das kann
     # theoretisch ein Datum sein. Darum steht im Importer jetzt auch ein gelber
-    # Warnhinweis, statt so zu tun, als könnten Dateinamen Gedanken lesen.
+    # warning instead of pretending filenames can read minds.
     for regex in (POST_ID_HINT_RE, POST_ID_FALLBACK_RE):
         match = regex.search(filename)
         if not match:

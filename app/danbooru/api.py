@@ -56,7 +56,7 @@ class DanbooruApi:
 
         posts = response.json()
         if not isinstance(posts, list):
-            raise RuntimeError(f"Unerwartete Danbooru-Antwort: {posts!r}")
+            raise RuntimeError(f"Unexpected Danbooru response: {posts!r}")
 
         next_page = None
         if posts:
@@ -74,20 +74,20 @@ class DanbooruApi:
 
         post = response.json()
         if not isinstance(post, dict):
-            raise RuntimeError(f"Unerwartete Danbooru-Post-Antwort: {post!r}")
+            raise RuntimeError(f"Unexpected Danbooru post response: {post!r}")
         return post
 
     def get_post_by_md5(self, md5_hash: str) -> dict[str, Any] | None:
         clean_hash = str(md5_hash or "").strip().lower()
         if len(clean_hash) != 32 or any(char not in "0123456789abcdef" for char in clean_hash):
-            raise ValueError(f"Ungültiger MD5-Hash: {md5_hash!r}")
+            raise ValueError(f"Invalid MD5 hash: {md5_hash!r}")
 
         page = self.get_posts(f"md5:{clean_hash}", limit=1)
         if not page.posts:
             return None
         post = page.posts[0]
         if not isinstance(post, dict):
-            raise RuntimeError(f"Unerwartete Danbooru-Post-Antwort: {post!r}")
+            raise RuntimeError(f"Unexpected Danbooru post response: {post!r}")
         return post
 
 
@@ -182,7 +182,7 @@ class DanbooruApi:
 
         data = response.json()
         if not isinstance(data, list):
-            raise RuntimeError(f"Unerwartete Saved-Search-Antwort: {data!r}")
+            raise RuntimeError(f"Unexpected saved search response: {data!r}")
         return data
 
 

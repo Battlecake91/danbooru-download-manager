@@ -50,11 +50,11 @@ class DownloadService:
 
         selected = choose_viewer_download_url(dict(row), self.config)
         if selected is None:
-            LOGGER.warning("Keine Download-URL für Post %s", post_id)
+            LOGGER.warning("No download URL for post %s", post_id)
             return None
 
         url, source_label = selected
-        return self._download_to_cache(post_id, url, source_label, row["file_ext"], "Viewer-Datei", force=force)
+        return self._download_to_cache(post_id, url, source_label, row["file_ext"], "viewer file", force=force)
 
     def ensure_full_original_cached(self, post_id: int, force: bool = False) -> str | None:
         """Cache the real Danbooru original file for final saving.
@@ -89,25 +89,25 @@ class DownloadService:
                 file_url,
                 FULL_ORIGINAL_SOURCE_LABEL,
                 file_ext,
-                "Originaldatei",
+                "original file",
                 force=force,
             )
 
-        # Fallback nur für Posts, bei denen Danbooru keine file_url liefert.
-        # Dann nehmen wir die beste verfügbare Variante und loggen klar, dass es
-        # eventuell nicht das echte Original sein kann.
+        # Fallback only for posts where Danbooru does not provide file_url.
+        # Then use the best available variant and log clearly that it
+        # may not be the real original.
         selected = choose_best_available_download_url(dict(row))
         if selected is None:
-            LOGGER.warning("Keine Original-URL für Post %s", post_id)
+            LOGGER.warning("No original URL for post %s", post_id)
             return None
 
         url, source_label = selected
         LOGGER.warning(
-            "Post %s hat keine file_url. Fallback auf %s, final kann kleiner als Original sein.",
+            "Post %s has no file_url. Falling back to %s; final file may be smaller than the original.",
             post_id,
             source_label,
         )
-        return self._download_to_cache(post_id, url, source_label, file_ext, "Fallback-Datei", force=force)
+        return self._download_to_cache(post_id, url, source_label, file_ext, "fallback file", force=force)
 
     def _download_to_cache(
         self,
@@ -130,7 +130,7 @@ class DownloadService:
         if force:
             part.unlink(missing_ok=True)
 
-        LOGGER.info("Lade %s für Post %s: %s", log_label, post_id, url)
+        LOGGER.info("Downloading %s for post %s: %s", log_label, post_id, url)
 
         try:
             with self.session.get(url, stream=True, timeout=self.timeout) as response:
@@ -147,7 +147,7 @@ class DownloadService:
         except Exception:
             if part.exists():
                 part.unlink(missing_ok=True)
-            LOGGER.exception("%s konnte nicht geladen werden für Post %s", log_label, post_id)
+            LOGGER.exception("%s could not be downloaded for post %s", log_label, post_id)
             return None
 
 

@@ -32,7 +32,7 @@ from typing import Iterable
 
 
 APP_NAME = "DanbooruManager"
-DEFAULT_VERSION = "1.3.135"
+DEFAULT_VERSION = "1.3.136"
 DEFAULT_RELEASE_NAME = "Danbooru Download Manager"
 DEFAULT_ENTRYPOINT_CANDIDATES = [
     "main.py",

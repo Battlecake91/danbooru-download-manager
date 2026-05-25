@@ -1538,7 +1538,7 @@ class ImageViewerWindow(QMainWindow):
 
         QMessageBox.information(
             self,
-            "Aus DB entfernt",
+            "Removed from DB",
             self.t("viewer.post_removed_from_db", "Post {post_id} was removed from the DB. Files were left untouched.\n{final_path}", post_id=post_id, final_path=final_path),
         )
 
@@ -1636,7 +1636,7 @@ class ImageViewerWindow(QMainWindow):
             menu.addAction(add_exclude_action)
 
         if exclude_state in {"all", "mixed"}:
-            remove_exclude_action = QAction("Filename-Ausschluss entfernen", menu)
+            remove_exclude_action = QAction("Remove filename exclude", menu)
             remove_exclude_action.triggered.connect(
                 lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                     0,
@@ -1658,12 +1658,12 @@ class ImageViewerWindow(QMainWindow):
                 False,
             ),
             (
-                "Vorauswahl ignorieren",
+                "Ignore preselection",
                 "ignore_recommendation_score",
                 True,
             ),
             (
-                "Vorauswahl wieder nutzen",
+                "Use preselection again",
                 "ignore_recommendation_score",
                 False,
             ),
@@ -1719,7 +1719,7 @@ class ImageViewerWindow(QMainWindow):
         )
         menu.addAction(alias_action)
 
-        score_action = QAction("Manuellen Score bearbeiten", menu)
+        score_action = QAction("Edit manual score", menu)
         score_action.triggered.connect(
             lambda checked=False, tag=frozen_tags[0]: QTimer.singleShot(
                 0,
@@ -1795,7 +1795,7 @@ class ImageViewerWindow(QMainWindow):
             "ignore_llm_input",
         }
         if flag_name not in allowed:
-            raise ValueError(f"Unbekanntes Scoring-Flag: {flag_name}")
+            raise ValueError(f"Unknown scoring flag: {flag_name}")
 
         kwargs = {
             "ignore_category_influence": None,
@@ -1889,7 +1889,7 @@ class ImageViewerWindow(QMainWindow):
 
         value, ok = QInputDialog.getDouble(
             self,
-            "Manueller Score",
+            "Manual score",
             self.t("viewer.manual_score_prompt", "Manual score for '{tag}' (-10 to +10):", tag=tag),
             current_value,
             -10.0,

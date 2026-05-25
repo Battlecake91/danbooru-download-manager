@@ -118,9 +118,9 @@ class Database:
         self.connection: sqlite3.Connection | None = None
 
     def connect(self) -> None:
-        # timeout/busy_timeout verhindern, dass zwei GUI-/Worker-Verbindungen
-        # bei kurzer Last sofort gegeneinander verlieren. SQLite kann WAL, aber
-        # Zauberei ist es nicht. Ein bisschen Geduld muss man ihm leider beibringen.
+        # timeout/busy_timeout prevents two GUI/worker connections from
+        # immediately losing against each other during short bursts. SQLite can
+        # do WAL, but it is not magic. It needs a little patience taught to it.
         self.connection = sqlite3.connect(self.path, timeout=30.0)
         self.connection.row_factory = sqlite3.Row
         self.execute("PRAGMA busy_timeout = 30000")
@@ -137,14 +137,14 @@ class Database:
         return "database is locked" in text or "database table is locked" in text
 
     def _lock_retry_delays(self) -> tuple[float, ...]:
-        # Insgesamt knapp 12 Sekunden zusätzlich zu sqlite busy_timeout. Das ist
-        # lang genug für Preview-Reloads, aber kurz genug, um echte Deadlocks nicht
-        # als meditative Übung zu tarnen.
+        # Adds roughly 12 seconds on top of sqlite busy_timeout. Long enough
+        # for preview reloads, but short enough to avoid disguising real
+        # deadlocks as a meditation exercise.
         return (0.05, 0.10, 0.20, 0.35, 0.50, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0)
 
     def execute(self, sql: str, parameters: Iterable[Any] = ()) -> sqlite3.Cursor:
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
         params = tuple(parameters)
         for delay in self._lock_retry_delays():
             try:
@@ -157,7 +157,7 @@ class Database:
 
     def executemany(self, sql: str, rows: Iterable[Iterable[Any]]) -> sqlite3.Cursor:
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
         materialized_rows = [tuple(row) for row in rows]
         for delay in self._lock_retry_delays():
             try:
@@ -170,7 +170,7 @@ class Database:
 
     def commit(self) -> None:
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
         for delay in self._lock_retry_delays():
             try:
                 self.connection.commit()
@@ -367,7 +367,7 @@ class Database:
         """
 
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
 
         self.connection.executescript(schema)
         self.migrate_schema()
@@ -472,8 +472,8 @@ class Database:
         )
 
     def create_safe_indexes(self) -> None:
-        # Alte Entwicklungsstände konnten duplicate rules erzeugen.
-        # Vor dem Unique-Index wird aufgeräumt, sonst crasht SQLite beim Start.
+        # Older development builds could create duplicate rules.
+        # Clean them up before adding the unique index, otherwise SQLite crashes on startup.
         self.execute(
             """
             DELETE FROM category_rules
@@ -541,13 +541,13 @@ class Database:
 
         row = self.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
         if row is None:
-            raise RuntimeError(f"Kategorie konnte nicht gespeichert werden: {name}")
+            raise RuntimeError(f"Category could not be saved: {name}")
         return int(row["id"])
 
     def create_category(self, name: str, folder_name: str | None = None) -> int:
         clean_name = name.strip()
         if not clean_name:
-            raise ValueError("Kategorie-Name darf nicht leer sein")
+            raise ValueError("Category name must not be empty")
 
         return self.upsert_category(
             name=clean_name,
@@ -662,7 +662,7 @@ class Database:
     def add_tag_to_category_rule(self, category_name: str, tag: str, rule_type: str = "include") -> None:
         category = self.get_category_by_name(category_name)
         if category is None:
-            raise RuntimeError(f"Kategorie nicht gefunden: {category_name}")
+            raise RuntimeError(f"Category not found: {category_name}")
         self.add_category_rule(int(category["id"]), rule_type, tag)
 
     def delete_category_rule(self, rule_id: int) -> None:
@@ -933,9 +933,9 @@ class Database:
 
         has_specific_status_filter = bool(status_filter and status_filter != "all")
 
-        # Bei aktiver Text-/Tag-Suche wird bewusst über alle Status gesucht,
-        # damit bereits lokal gespeicherte Bilder über Tags auffindbar bleiben.
-        # Sonst versteckt die Arbeitsliste exakt die Dateien, die man sucht. Klassiker.
+        # When text/tag search is active, search across all statuses on purpose
+        # so already locally saved images remain findable by tags. Otherwise the
+        # worklist hides exactly the files being searched. Classic.
         if not text_filter:
             if view_mode == "worklist" and not has_specific_status_filter:
                 statuses = worklist_statuses or sorted(ACTIVE_STATUSES)
@@ -954,7 +954,7 @@ class Database:
             elif view_mode == "all" or has_specific_status_filter:
                 pass
             else:
-                raise ValueError(f"Ungültiger view_mode: {view_mode}")
+                raise ValueError(f"Invalid view_mode: {view_mode}")
 
             if has_specific_status_filter:
                 where_parts.append("p.status = ?")
@@ -1246,7 +1246,7 @@ class Database:
             return
 
         if status not in ALL_ALLOWED_STATUSES:
-            raise ValueError(f"Ungültiger Status: {status}")
+            raise ValueError(f"Invalid status: {status}")
 
         scoring_statuses = {"saved", "rejected", "auto_rejected"}
         old_statuses = self._fetch_statuses_for_posts(clean_ids)
@@ -1258,12 +1258,11 @@ class Database:
         for post_id in clean_ids:
             self._set_post_status_no_commit(post_id, status, config)
 
-        # Wichtig fuer den Previewer: Bei 100 markierten Thumbnails darf nicht fuer
-        # jeden Post einzeln dieselbe Tag-Statistik neu aggregiert werden. Das war
-        # technisch korrekt, aber performanceseitig etwa so elegant wie ein
-        # Datenbank-Join mit Betonschuhen. Wir aktualisieren die vereinigte Tagmenge
-        # genau einmal, und nur wenn saved/rejected fuer die Score-Berechnung
-        # ueberhaupt betroffen ist.
+        # Important for the previewer: with 100 selected thumbnails, do not aggregate
+        # the same tag statistics once per post. It was technically correct, but about
+        # as elegant for performance as a database join wearing concrete shoes. Update
+        # the combined tag set exactly once, and only when saved/rejected is actually
+        # affected for score calculation.
         if affected_tags:
             self.refresh_tag_statistics_for_tags(affected_tags)
 
@@ -1295,7 +1294,7 @@ class Database:
 
     def _set_post_status_no_commit(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
         if status not in ALL_ALLOWED_STATUSES:
-            raise ValueError(f"Ungültiger Status: {status}")
+            raise ValueError(f"Invalid status: {status}")
 
         extra_sets: list[str] = []
         parameters: list[Any] = [status]
@@ -1379,7 +1378,7 @@ class Database:
     def assign_post_category_by_name(self, post_id: int, category_name: str, source: str = "manual") -> None:
         category = self.get_category_by_name(category_name)
         if category is None:
-            raise RuntimeError(f"Kategorie nicht gefunden: {category_name}")
+            raise RuntimeError(f"Category not found: {category_name}")
         self.assign_post_category(post_id, int(category["id"]), source)
 
     def reassign_posts_category(
@@ -2990,7 +2989,7 @@ class Database:
 
 
     # ------------------------------------------------------------------
-    # Datenbank-Wartung / Größenanalyse
+    # Database maintenance / size analysis
     # ------------------------------------------------------------------
 
     def database_file_sizes(self) -> dict[str, int]:
@@ -3017,7 +3016,7 @@ class Database:
         involved enjoys guessing.
         """
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
 
         page_size = int(self.execute("PRAGMA page_size").fetchone()[0])
         page_count = int(self.execute("PRAGMA page_count").fetchone()[0])
@@ -3102,7 +3101,7 @@ class Database:
     def checkpoint_wal_truncate(self) -> list[Any]:
         """Checkpoint and truncate the WAL file."""
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
         self.commit()
         row = self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
         self.commit()
@@ -3111,7 +3110,7 @@ class Database:
     def vacuum_database(self) -> None:
         """Compact the database file using VACUUM."""
         if self.connection is None:
-            raise RuntimeError("Datenbank ist nicht verbunden")
+            raise RuntimeError("Database is not connected")
         self.commit()
         self.connection.execute("VACUUM")
         self.commit()
@@ -3189,7 +3188,7 @@ class Database:
     def save_fetch_preset(self, name: str, payload: dict[str, Any]) -> None:
         clean_name = name.strip()
         if not clean_name:
-            raise ValueError("Preset-Name darf nicht leer sein")
+            raise ValueError("Preset name must not be empty")
         self.execute(
             """
             INSERT INTO fetch_presets (name, payload, updated_at)
@@ -3334,7 +3333,7 @@ def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
         for item in raw_categories:
             if isinstance(item, dict):
                 if "name" not in item:
-                    raise ValueError(f"Kategorie ohne name: {item!r}")
+                    raise ValueError(f"Category without name: {item!r}")
 
                 name = str(item["name"])
 
@@ -3364,7 +3363,7 @@ def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
                 )
 
             else:
-                raise ValueError(f"Ungültiger Kategorieeintrag: {item!r}")
+                raise ValueError(f"Invalid category entry: {item!r}")
 
         return normalized
 
@@ -3397,8 +3396,8 @@ def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
                 )
 
             else:
-                raise ValueError(f"Ungültige Kategorie '{name}': {value!r}")
+                raise ValueError(f"Invalid category '{name}': {value!r}")
 
         return normalized
 
-    raise ValueError(f"Ungültiges categories-Format: {type(raw_categories).__name__}")
+    raise ValueError(f"Invalid categories format: {type(raw_categories).__name__}")

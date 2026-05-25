@@ -37,7 +37,7 @@ class LLMPayloadService:
     def build_payload_batches(self, post_ids: Iterable[int]) -> list[dict[str, Any]]:
         ids = self._dedupe_post_ids(post_ids)
         if not ids:
-            raise ValueError("Keine Posts ausgewaehlt.")
+            raise ValueError("No posts selected.")
 
         llm_config = self.config.get("llm", {}) or {}
         max_posts = max(1, int(llm_config.get("max_posts_per_request", 20) or 20))
@@ -68,7 +68,7 @@ class LLMPayloadService:
         ids = self._dedupe_post_ids(post_ids)
 
         if not ids:
-            raise ValueError("Keine Posts ausgewaehlt.")
+            raise ValueError("No posts selected.")
 
         llm_config = self.config.get("llm", {}) or {}
         max_posts = max(1, int(llm_config.get("max_posts_per_request", 20) or 20))
@@ -125,13 +125,13 @@ class LLMPayloadService:
         if custom_prompt:
             return custom_prompt
         return (
-            "Bewerte Danbooru-Posts anhand der Tags, Metadaten und des preference_context. "
-            "Der preference_context enthaelt kompakte historische Praeferenzen mit confidence/conflict-Hinweisen, "
-            "Kategorieprofile und gekuerzte Beispiele. Kategorien koennen anonymisierte IDs sein; "
-            "verwende in der Antwort nur category-Werte aus config.available_categories oder null. "
-            "Nutze lokale Scores als Hinweis, aber nicht blind. Behandle mixed/conflict-Signale vorsichtig "
-            "und bevorzuge klare Keep/Reject-Entscheidungen; maybe nur bei echter Unsicherheit. "
-            "Gib pro Post eine kurze JSON-taugliche Entscheidung zurueck."
+            "Evaluate Danbooru posts based on tags, metadata, and preference_context. "
+            "The preference_context contains compact historical preferences with confidence/conflict hints, "
+            "category profiles, and shortened examples. Categories may be anonymized IDs; "
+            "use only category values from config.available_categories or null in the response. "
+            "Use local scores as a hint, but not blindly. Treat mixed/conflict signals carefully "
+            "and prefer clear keep/reject decisions; use maybe only for real uncertainty. "
+            "Return one short JSON-compatible decision per post."
         )
 
     def _load_post(self, post_id: int, max_tags: int) -> LLMPayloadPost:
@@ -157,7 +157,7 @@ class LLMPayloadService:
             (post_id,),
         ).fetchone()
         if post_row is None:
-            raise ValueError(f"Post {post_id} ist nicht in der lokalen Datenbank.")
+            raise ValueError(f"Post {post_id} is not in the local database.")
 
         tag_rows = self.db.execute(
             """

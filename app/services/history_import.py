@@ -10,7 +10,7 @@ LOGGER = logging.getLogger(__name__)
 
 def import_downloaded_ids_history(db: Database, history_file: Path) -> int:
     if not history_file.exists():
-        LOGGER.warning("History-Datei nicht gefunden: %s", history_file)
+        LOGGER.warning("History file not found: %s", history_file)
         return 0
 
     imported = 0
@@ -25,7 +25,7 @@ def import_downloaded_ids_history(db: Database, history_file: Path) -> int:
             try:
                 post_id = int(parts[0])
             except ValueError:
-                LOGGER.warning("Ungültige History-Zeile %s: %r", line_number, raw)
+                LOGGER.warning("Invalid history line %s: %r", line_number, raw)
                 continue
 
             filename = parts[1] if len(parts) > 1 else None
