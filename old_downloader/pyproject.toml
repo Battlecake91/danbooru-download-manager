@@ -1,5 +1,0 @@
-[build-system]
-
-[project]
-name = "danbooru-downloader"
-version = "0.2.0"
