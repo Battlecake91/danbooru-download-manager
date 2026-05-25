@@ -45,14 +45,23 @@ The project was created through **vibe-coding**, but not through button-mashing 
 
 ## 📸 Screenshots
 
-Screenshots are stored under `docs/screenshots/`. Replace the placeholders with real screenshots when preparing the public release page.
+The screenshots below are placeholders stored under `docs/screenshots/`. Replace the image files with real captures before preparing the public release page.
 
-| Area | Screenshot |
-|---|---|
-| First-time setup | `docs/screenshots/first-run-setup.png` |
-| Fetch tab | `docs/screenshots/fetch-tab.png` |
-| Previewer | `docs/screenshots/previewer.png` |
-| Viewer | `docs/screenshots/viewer.png` |
+### 🧭 First-time setup
+
+![First-time setup](docs/screenshots/first-run-setup.png)
+
+### 🔎 Fetch tab example
+
+![Fetch tab](docs/screenshots/fetch-tab.png)
+
+### 🖼️ Previewer
+
+![Previewer](docs/screenshots/previewer.png)
+
+### 👁️ Viewer
+
+![Viewer](docs/screenshots/viewer.png)
 
 ---
 
