@@ -10,6 +10,7 @@ It will:
 - ensure build artifacts are ignored
 - clean build folders
 - run PyInstaller
+- optionally build the portable updater
 - package the dist output into release/*.zip
 - optionally create/upload a GitHub release via gh CLI
 
@@ -22,7 +23,7 @@ Requirements:
 from __future__ import annotations
 
 import argparse
-import os
+import re
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,7 @@ from typing import Iterable
 
 APP_NAME = "DanbooruManager"
 UPDATER_NAME = "DanbooruManagerUpdater"
-DEFAULT_VERSION = "1.3.142"
+DEFAULT_VERSION = "1.3.143"
 DEFAULT_RELEASE_NAME = "Danbooru Download Manager"
 DEFAULT_ENTRYPOINT_CANDIDATES = [
     "main.py",
@@ -41,6 +42,10 @@ DEFAULT_ENTRYPOINT_CANDIDATES = [
     "danbooru_manager.py",
     "src/main.py",
     "src/danbooru_manager/main.py",
+]
+DEFAULT_UPDATER_ENTRYPOINT_CANDIDATES = [
+    "scripts/portable_updater.py",
+    "portable_updater.py",
 ]
 
 
@@ -87,6 +92,20 @@ def command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
+def pyinstaller_available() -> bool:
+    completed = subprocess.run(
+        [sys.executable, "-m", "PyInstaller", "--version"],
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return completed.returncode == 0
+
+
+def pyinstaller_command(*args: str) -> list[str]:
+    return [sys.executable, "-m", "PyInstaller", *args]
+
+
 def find_project_root() -> Path:
     current = Path(__file__).resolve()
 
@@ -97,12 +116,36 @@ def find_project_root() -> Path:
     return Path.cwd().resolve()
 
 
+def read_project_version(project_root: Path) -> str:
+    """Best-effort version detection used when --version is omitted."""
+    candidates = [
+        project_root / "app" / "version.py",
+        project_root / "version.py",
+    ]
+
+    patterns = [
+        re.compile(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']'),
+        re.compile(r'__version__\s*=\s*["\']([^"\']+)["\']'),
+        re.compile(r'VERSION\s*=\s*["\']([^"\']+)["\']'),
+    ]
+
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+
+        text = candidate.read_text(encoding="utf-8", errors="replace")
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                return match.group(1)
+
+    return DEFAULT_VERSION
+
+
 def ensure_gitignore(project_root: Path) -> None:
     gitignore_path = project_root / ".gitignore"
 
     required_entries = [
-        "",
-        "# Release/build artifacts",
         "release/",
         "dist/",
         "build/",
@@ -110,8 +153,6 @@ def ensure_gitignore(project_root: Path) -> None:
         "*.exe",
         "*.msi",
         "*.spec.build/",
-        "",
-        "# Local application data",
         "danbooru_manager_data/",
         "*.db",
         "*.db-wal",
@@ -121,24 +162,18 @@ def ensure_gitignore(project_root: Path) -> None:
 
     existing = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
 
-    changed = False
-    lines_to_append: list[str] = []
+    missing_entries: list[str] = []
 
     for entry in required_entries:
-        if entry == "":
-            continue
         if entry not in existing:
-            lines_to_append.append(entry)
-            changed = True
+            missing_entries.append(entry)
 
-    if changed:
+    if missing_entries:
         with gitignore_path.open("a", encoding="utf-8", newline="\n") as f:
             if existing and not existing.endswith("\n"):
                 f.write("\n")
             f.write("\n# Release/build artifacts\n")
-            for entry in lines_to_append:
-                if entry.startswith("#"):
-                    continue
+            for entry in missing_entries:
                 f.write(entry + "\n")
 
         print_info(".gitignore updated.")
@@ -208,65 +243,109 @@ def find_spec_file(project_root: Path, explicit_spec: str | None) -> Path | None
         if candidate.exists():
             return candidate
 
-    spec_files = sorted(project_root.glob("*.spec"))
+    spec_files = [
+        spec
+        for spec in sorted(project_root.glob("*.spec"))
+        if spec.name != f"{UPDATER_NAME}.spec"
+    ]
+
     if len(spec_files) == 1:
         return spec_files[0]
 
     return None
 
 
-def find_entrypoint(project_root: Path, explicit_entrypoint: str | None) -> Path:
+def find_updater_spec_file(project_root: Path, explicit_spec: str | None) -> Path | None:
+    if explicit_spec:
+        spec_path = project_root / explicit_spec
+        if not spec_path.exists():
+            raise FileNotFoundError(f"Updater spec file not found: {spec_path}")
+        return spec_path
+
+    candidate = project_root / f"{UPDATER_NAME}.spec"
+    if candidate.exists():
+        return candidate
+
+    return None
+
+
+def find_entrypoint(
+    project_root: Path,
+    explicit_entrypoint: str | None,
+    candidates: list[str],
+    label: str,
+) -> Path:
     if explicit_entrypoint:
         entrypoint = project_root / explicit_entrypoint
         if not entrypoint.exists():
-            raise FileNotFoundError(f"Entrypoint not found: {entrypoint}")
+            raise FileNotFoundError(f"{label} entrypoint not found: {entrypoint}")
         return entrypoint
 
-    for candidate in DEFAULT_ENTRYPOINT_CANDIDATES:
+    for candidate in candidates:
         path = project_root / candidate
         if path.exists():
             return path
 
     raise FileNotFoundError(
-        "Could not auto-detect entrypoint. "
-        "Use --entrypoint path/to/main.py or provide a .spec file."
+        f"Could not auto-detect {label} entrypoint. "
+        f"Use --entrypoint path/to/main.py or provide a .spec file."
+    )
+
+
+def find_pyinstaller_output(project_root: Path, expected_name: str) -> Path:
+    dist_dir = project_root / "dist"
+
+    onefile_exe = dist_dir / f"{expected_name}.exe"
+    onedir_dir = dist_dir / expected_name
+
+    if onefile_exe.exists():
+        return onefile_exe
+
+    if onedir_dir.exists():
+        return onedir_dir
+
+    possible_outputs = list(dist_dir.glob(f"{expected_name}*"))
+    if possible_outputs:
+        return possible_outputs[0]
+
+    raise FileNotFoundError(
+        f"PyInstaller finished, but no dist output was found for {expected_name}."
     )
 
 
 def build_with_pyinstaller(
     project_root: Path,
-    version: str,
+    expected_name: str,
     spec_file: Path | None,
     entrypoint: Path | None,
     onefile: bool,
     windowed: bool,
     icon: str | None,
 ) -> Path:
-    if not command_exists("pyinstaller"):
+    if not pyinstaller_available():
         raise RuntimeError(
-            "PyInstaller was not found in PATH. Install it with: pip install pyinstaller"
+            "PyInstaller was not found in the active Python environment. "
+            f"Install it with: {sys.executable} -m pip install pyinstaller"
         )
 
-    print_step("Building application with PyInstaller")
+    print_step(f"Building {expected_name} with PyInstaller")
 
     if spec_file:
-        command = [
-            "pyinstaller",
+        command = pyinstaller_command(
             "--noconfirm",
             "--clean",
             str(spec_file.relative_to(project_root)),
-        ]
+        )
     else:
         if entrypoint is None:
             raise RuntimeError("Internal error: entrypoint is missing.")
 
-        command = [
-            "pyinstaller",
+        command = pyinstaller_command(
             "--noconfirm",
             "--clean",
             "--name",
-            APP_NAME,
-        ]
+            expected_name,
+        )
 
         if onefile:
             command.append("--onefile")
@@ -287,83 +366,92 @@ def build_with_pyinstaller(
 
     run_command(command, cwd=project_root)
 
-    dist_dir = project_root / "dist"
-
-    onefile_exe = dist_dir / f"{APP_NAME}.exe"
-    onedir_dir = dist_dir / APP_NAME
-
-    if onefile_exe.exists():
-        return onefile_exe
-
-    if onedir_dir.exists():
-        return onedir_dir
-
-    # Fallback: find plausible output
-    possible_outputs = list(dist_dir.glob(f"{APP_NAME}*"))
-    if possible_outputs:
-        return possible_outputs[0]
-
-    raise FileNotFoundError("PyInstaller finished, but no dist output was found. Wunderbar nutzlos.")
+    return find_pyinstaller_output(project_root, expected_name)
 
 
-def build_updater_with_pyinstaller(project_root: Path) -> Path | None:
-    updater_spec = project_root / f"{UPDATER_NAME}.spec"
-    updater_script = project_root / "scripts" / "portable_updater.py"
+def build_main_application(
+    project_root: Path,
+    spec_file: Path | None,
+    entrypoint: Path | None,
+    onefile: bool,
+    windowed: bool,
+    icon: str | None,
+) -> Path:
+    return build_with_pyinstaller(
+        project_root=project_root,
+        expected_name=APP_NAME,
+        spec_file=spec_file,
+        entrypoint=entrypoint,
+        onefile=onefile,
+        windowed=windowed,
+        icon=icon,
+    )
 
-    if not updater_spec.exists() and not updater_script.exists():
-        print_warn("No updater spec/script found. Release will not include the portable updater.")
-        return None
 
-    print_step("Building portable updater")
+def build_updater(
+    project_root: Path,
+    updater_spec_file: Path | None,
+    updater_entrypoint: Path | None,
+    icon: str | None,
+) -> Path:
+    # The updater should be a small console tool. It is started after the GUI exits,
+    # so a short console window is acceptable and very useful when update replacement fails.
+    return build_with_pyinstaller(
+        project_root=project_root,
+        expected_name=UPDATER_NAME,
+        spec_file=updater_spec_file,
+        entrypoint=updater_entrypoint,
+        onefile=True,
+        windowed=False,
+        icon=icon,
+    )
 
-    if updater_spec.exists():
-        command = [
-            "pyinstaller",
-            "--noconfirm",
-            "--clean",
-            str(updater_spec.relative_to(project_root)),
-        ]
+
+def copy_path_into_directory(source: Path, target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / source.name
+
+    if target.exists():
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+
+    if source.is_dir():
+        shutil.copytree(source, target)
     else:
-        command = [
-            "pyinstaller",
-            "--noconfirm",
-            "--clean",
-            "--onefile",
-            "--windowed",
-            "--name",
-            UPDATER_NAME,
-            str(updater_script.relative_to(project_root)),
-        ]
+        shutil.copy2(source, target)
 
-    run_command(command, cwd=project_root)
-
-    updater_exe = project_root / "dist" / f"{UPDATER_NAME}.exe"
-    if updater_exe.exists():
-        print_info(f"Updater output: {updater_exe}")
-        return updater_exe
-
-    updater_dir_exe = project_root / "dist" / UPDATER_NAME / f"{UPDATER_NAME}.exe"
-    if updater_dir_exe.exists():
-        print_info(f"Updater output: {updater_dir_exe}")
-        return updater_dir_exe
-
-    raise FileNotFoundError("PyInstaller finished, but no updater executable was found.")
+    print_info(f"Added to release payload: {source.name}")
 
 
-def include_updater_in_build(build_output: Path, updater_exe: Path | None) -> None:
-    if updater_exe is None:
-        return
+def prepare_release_payload(
+    project_root: Path,
+    build_output: Path,
+    updater_output: Path | None,
+) -> Path:
+    print_step("Preparing release payload")
+
+    payload_root = project_root / "build" / "release_payload"
+    payload_app_dir = payload_root / APP_NAME
+
+    if payload_root.exists():
+        shutil.rmtree(payload_root)
+
+    payload_app_dir.mkdir(parents=True, exist_ok=True)
 
     if build_output.is_dir():
-        target = build_output / updater_exe.name
+        for item in build_output.iterdir():
+            copy_path_into_directory(item, payload_app_dir)
     else:
-        target = build_output.parent / updater_exe.name
+        copy_path_into_directory(build_output, payload_app_dir)
 
-    if updater_exe.resolve() == target.resolve():
-        return
+    if updater_output is not None:
+        copy_path_into_directory(updater_output, payload_app_dir)
+    else:
+        print_warn("Updater was not included in the release payload.")
 
-    shutil.copy2(updater_exe, target)
-    print_info(f"Included updater in release payload: {target}")
+    return payload_app_dir
 
 
 def zip_directory(source_dir: Path, zip_path: Path) -> None:
@@ -374,12 +462,7 @@ def zip_directory(source_dir: Path, zip_path: Path) -> None:
                 zipf.write(file_path, arcname)
 
 
-def zip_file(source_file: Path, zip_path: Path) -> None:
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
-        zipf.write(source_file, source_file.name)
-
-
-def create_release_zip(project_root: Path, build_output: Path, version: str) -> Path:
+def create_release_zip(project_root: Path, payload_dir: Path, version: str) -> Path:
     print_step("Creating release ZIP")
 
     release_dir = project_root / "release"
@@ -390,10 +473,7 @@ def create_release_zip(project_root: Path, build_output: Path, version: str) -> 
     if zip_path.exists():
         zip_path.unlink()
 
-    if build_output.is_dir():
-        zip_directory(build_output, zip_path)
-    else:
-        zip_file(build_output, zip_path)
+    zip_directory(payload_dir, zip_path)
 
     size_mb = zip_path.stat().st_size / (1024 * 1024)
     print_info(f"Created: {zip_path}")
@@ -534,8 +614,8 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--version",
-        default=DEFAULT_VERSION,
-        help=f"Release version. Default: {DEFAULT_VERSION}",
+        default=None,
+        help=f"Release version. Default: detected from app/version.py or {DEFAULT_VERSION}",
     )
 
     parser.add_argument(
@@ -551,6 +631,24 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--updater-entrypoint",
+        default=None,
+        help="Portable updater entrypoint if no updater .spec file is used, e.g. scripts/portable_updater.py",
+    )
+
+    parser.add_argument(
+        "--updater-spec",
+        default=None,
+        help="Portable updater PyInstaller spec file, e.g. DanbooruManagerUpdater.spec",
+    )
+
+    parser.add_argument(
+        "--no-updater",
+        action="store_true",
+        help="Do not build/include DanbooruManagerUpdater in the release ZIP.",
+    )
+
+    parser.add_argument(
         "--icon",
         default=None,
         help="Optional icon path for PyInstaller, e.g. assets/app.ico",
@@ -559,13 +657,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--onefile",
         action="store_true",
-        help="Build a single EXE instead of an application folder.",
+        help="Build the main application as a single EXE instead of an application folder.",
     )
 
     parser.add_argument(
         "--console",
         action="store_true",
-        help="Build with console window enabled.",
+        help="Build the main application with console window enabled.",
     )
 
     parser.add_argument(
@@ -634,10 +732,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     project_root = find_project_root()
+    version = args.version or read_project_version(project_root)
 
     print_step("Release build started")
     print_info(f"Project root: {project_root}")
-    print_info(f"Version: {args.version}")
+    print_info(f"Version: {version}")
 
     try:
         ensure_gitignore(project_root)
@@ -658,12 +757,16 @@ def main() -> int:
             print_info(f"Using PyInstaller spec file: {spec_file.relative_to(project_root)}")
             entrypoint = None
         else:
-            entrypoint = find_entrypoint(project_root, args.entrypoint)
+            entrypoint = find_entrypoint(
+                project_root=project_root,
+                explicit_entrypoint=args.entrypoint,
+                candidates=DEFAULT_ENTRYPOINT_CANDIDATES,
+                label="main application",
+            )
             print_info(f"Using entrypoint: {entrypoint.relative_to(project_root)}")
 
-        build_output = build_with_pyinstaller(
+        build_output = build_main_application(
             project_root=project_root,
-            version=args.version,
             spec_file=spec_file,
             entrypoint=entrypoint,
             onefile=args.onefile,
@@ -671,30 +774,64 @@ def main() -> int:
             icon=args.icon,
         )
 
-        print_info(f"Build output: {build_output}")
+        print_info(f"Main build output: {build_output}")
 
-        updater_output = build_updater_with_pyinstaller(project_root)
-        include_updater_in_build(build_output, updater_output)
+        updater_output: Path | None = None
 
-        zip_path = create_release_zip(project_root, build_output, args.version)
+        if args.no_updater:
+            print_warn("Updater build disabled by --no-updater.")
+        else:
+            updater_spec_file = find_updater_spec_file(project_root, args.updater_spec)
+
+            try:
+                if updater_spec_file:
+                    print_info(f"Using updater spec file: {updater_spec_file.relative_to(project_root)}")
+                    updater_entrypoint = None
+                else:
+                    updater_entrypoint = find_entrypoint(
+                        project_root=project_root,
+                        explicit_entrypoint=args.updater_entrypoint,
+                        candidates=DEFAULT_UPDATER_ENTRYPOINT_CANDIDATES,
+                        label="portable updater",
+                    )
+                    print_info(f"Using updater entrypoint: {updater_entrypoint.relative_to(project_root)}")
+
+                updater_output = build_updater(
+                    project_root=project_root,
+                    updater_spec_file=updater_spec_file,
+                    updater_entrypoint=updater_entrypoint,
+                    icon=args.icon,
+                )
+                print_info(f"Updater build output: {updater_output}")
+            except FileNotFoundError as exc:
+                print_warn(str(exc))
+                print_warn("Continuing without updater. Use --no-updater to silence this warning.")
+
+        payload_dir = prepare_release_payload(
+            project_root=project_root,
+            build_output=build_output,
+            updater_output=updater_output,
+        )
+
+        zip_path = create_release_zip(project_root, payload_dir, version)
 
         tag = None
         if args.tag or args.push or args.publish:
             tag = create_git_tag(
                 project_root,
-                args.version,
+                version,
                 allow_existing_tag=args.allow_existing_tag,
             )
 
         if args.push:
             if tag is None:
-                tag = f"v{args.version}"
+                tag = f"v{version}"
             push_git(project_root, tag=tag, push_branch=True)
 
         if args.publish:
             create_github_release(
                 project_root=project_root,
-                version=args.version,
+                version=version,
                 zip_path=zip_path,
                 release_title=args.release_title,
                 notes_file=args.notes_file,

@@ -38,16 +38,12 @@
       "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
       "args": [
         "${workspaceFolder}\\scripts\\make_release.py",
-        "--version",
-        "1.3.135",
         "--allow-dirty"
       ],
       "linux": {
         "command": "${workspaceFolder}/.venv/bin/python",
         "args": [
           "${workspaceFolder}/scripts/make_release.py",
-          "--version",
-          "1.3.135",
           "--allow-dirty"
         ]
       },
@@ -55,8 +51,6 @@
         "command": "${workspaceFolder}/.venv/bin/python",
         "args": [
           "${workspaceFolder}/scripts/make_release.py",
-          "--version",
-          "1.3.135",
           "--allow-dirty"
         ]
       },
@@ -82,8 +76,6 @@
       "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
       "args": [
         "${workspaceFolder}\\scripts\\make_release.py",
-        "--version",
-        "1.3.135",
         "--allow-dirty",
         "--tag",
         "--allow-existing-tag",
@@ -97,8 +89,6 @@
         "command": "${workspaceFolder}/.venv/bin/python",
         "args": [
           "${workspaceFolder}/scripts/make_release.py",
-          "--version",
-          "1.3.135",
           "--allow-dirty",
           "--tag",
           "--allow-existing-tag",
@@ -113,8 +103,6 @@
         "command": "${workspaceFolder}/.venv/bin/python",
         "args": [
           "${workspaceFolder}/scripts/make_release.py",
-          "--version",
-          "1.3.135",
           "--allow-dirty",
           "--tag",
           "--allow-existing-tag",
