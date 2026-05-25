@@ -1,6 +1,6 @@
 # Danbooru Download Manager
 
-**Version:** `1.3.135`  
+**Version:** `1.3.142`  
 **First public release:** `1.3.135`
 
 Danbooru Download Manager is a desktop application for managing local Danbooru downloads with a review-first workflow: fetch metadata and thumbnails, inspect posts in a fast preview grid, rate them, categorize them, and finally save originals into clean local folders.
@@ -38,6 +38,7 @@ The screenshots below are placeholders. Replace the image files in `docs/screens
 - 📝 **Configurable filename patterns** with typed tag placeholders and post IDs.
 - 📥 **Existing file importer** with Danbooru MD5 lookup where possible.
 - 📦 **PyInstaller-ready release workflow** for packaged Windows builds.
+- 🔄 **Portable GitHub Release updater** for packaged builds, using release ZIP assets while preserving local user data.
 
 ---
 
@@ -66,6 +67,8 @@ The README is intentionally kept as an overview. Detailed usage and configuratio
 | [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md) | How the Fetch tab works, including manual queries, presets, saved searches, limits, and results. |
 | [`docs/TESTING.md`](docs/TESTING.md) | How the first release was tested during patch-based development. |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Generated changelog based on the accumulated patch documentation. |
+| [`docs/README_PORTABLE_UPDATER_1_3_141.md`](docs/README_PORTABLE_UPDATER_1_3_141.md) | Portable update workflow through GitHub Release assets. |
+| [`docs/README_UPDATE_TAB_1_3_142.md`](docs/README_UPDATE_TAB_1_3_142.md) | Dedicated Updates / Help tab for release checks and future in-app help. |
 | [`docs/screenshots/README.md`](docs/screenshots/README.md) | Screenshot placeholder locations and replacement notes. |
 
 ---
@@ -138,6 +141,8 @@ The repository contains PyInstaller-oriented build support.
 ```
 
 Packaged builds should keep runtime data next to the executable, so a portable release can keep its database, thumbnails, settings, and logs together.
+
+Packaged builds also include `DanbooruManagerUpdater.exe`. The updater is launched from `Help -> Check for updates...`, downloads the newest Windows ZIP asset from GitHub Releases, replaces program files and preserves local data such as the database, thumbnails, logs and update cache.
 
 Release ZIP files should be uploaded as **GitHub Release assets**, not committed to the repository. GitHub has a 100 MB normal Git file limit, and your release ZIP will probably trample over it like a very confident elephant.
 

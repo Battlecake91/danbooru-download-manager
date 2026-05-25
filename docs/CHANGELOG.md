@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.142 - Update Tab
+
+- **Update workflow UI** - Moves the GitHub release update check out of the Help menu into a dedicated Updates / Help tab.
+- **Help placeholder** - Adds an in-app note that more integrated help will follow while keeping detailed guidance in README and /docs for now.
+
+## 1.3.141 - Portable GitHub Release Updater
+
+- **Portable Updater** - Adds a packaged-app update workflow that checks GitHub Releases, downloads the latest Windows ZIP asset, starts a separate updater, preserves local data, replaces program files and restarts the application. ([note](README_PORTABLE_UPDATER_1_3_141.md))
+
 ## 1.3.140 - Viewer Tag Context Menu English Cleanup
 
 - **Viewer Tag Context Menu** - Translates remaining German right-click tag menu entries and dialog titles in the viewer to English. ([note](README_VIEWER_TAG_CONTEXT_MENU_ENGLISH_1_3_140.md))

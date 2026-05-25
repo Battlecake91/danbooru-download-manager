@@ -33,3 +33,17 @@ ENV/
 .pyright/
 .ruff_cache/
 
+
+# Release/build artifacts
+*.zip
+*.exe
+*.msi
+*.spec.build/
+*.db
+*.db-wal
+*.db-shm
+
+# Release/build artifacts
+
+# Release/build artifacts
+*.pyc

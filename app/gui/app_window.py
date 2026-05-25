@@ -3,12 +3,13 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.database import Database
 from app.gui.fetch_tab import FetchTab
 from app.gui.icon_utils import ensure_app_icon
 from app.i18n.i18n import tr
+from app.version import __version__
 
 
 class AppWindow(QMainWindow):
@@ -34,6 +35,7 @@ class AppWindow(QMainWindow):
         self.category_tab: QWidget | None = None
         self.config_tab: QWidget | None = None
         self.maintenance_tab: QWidget | None = None
+        self.update_tab: QWidget | None = None
 
         self._tab_widgets: dict[str, QWidget] = {}
         self._tab_indices: dict[str, int] = {}
@@ -72,10 +74,25 @@ class AppWindow(QMainWindow):
         self._add_lazy_tab("categories", self._tab_title("categories"))
         self._add_lazy_tab("config", self._tab_title("config"))
         self._ensure_maintenance_tab_registered()
+        self._add_lazy_tab("updates", self._tab_title("updates"))
+
+        self._create_menu_bar()
 
         self.tabs.currentChanged.connect(self.on_tab_changed)
         self._startup_log("AppWindow: shown-ready")
 
+    def _create_menu_bar(self) -> None:
+        help_menu = self.menuBar().addMenu("Help")
+
+        about_action = help_menu.addAction("About")
+        about_action.triggered.connect(self.show_about_dialog)
+
+    def show_about_dialog(self) -> None:
+        QMessageBox.information(
+            self,
+            "About Danbooru Manager",
+            f"Danbooru Manager\nVersion {__version__}",
+        )
 
     def _tab_title(self, key: str) -> str:
         # Internal tab ids are not always identical to translation ids.
@@ -147,6 +164,7 @@ class AppWindow(QMainWindow):
             "categories": self._create_category_tab,
             "config": self._create_config_tab,
             "maintenance": self._create_maintenance_tab,
+            "updates": self._create_updates_tab,
         }
         factory = factories.get(key)
         if factory is None:
@@ -183,6 +201,7 @@ class AppWindow(QMainWindow):
             or (key == "categories" and self.category_tab is None)
             or (key == "config" and self.config_tab is None)
             or (key == "maintenance" and self.maintenance_tab is None)
+            or (key == "updates" and self.update_tab is None)
         )
 
     def _rebuild_tab_indices(self) -> None:
@@ -239,6 +258,13 @@ class AppWindow(QMainWindow):
 
         widget = MaintenanceTab(self.config, self.db)
         self.maintenance_tab = widget
+        return widget
+
+    def _create_updates_tab(self) -> QWidget:
+        from app.gui.update_tab import UpdateTab
+
+        widget = UpdateTab(self.config)
+        self.update_tab = widget
         return widget
 
     def on_tab_changed(self, index: int) -> None:

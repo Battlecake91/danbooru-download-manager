@@ -32,7 +32,8 @@ from typing import Iterable
 
 
 APP_NAME = "DanbooruManager"
-DEFAULT_VERSION = "1.3.140"
+UPDATER_NAME = "DanbooruManagerUpdater"
+DEFAULT_VERSION = "1.3.142"
 DEFAULT_RELEASE_NAME = "Danbooru Download Manager"
 DEFAULT_ENTRYPOINT_CANDIDATES = [
     "main.py",
@@ -303,6 +304,66 @@ def build_with_pyinstaller(
         return possible_outputs[0]
 
     raise FileNotFoundError("PyInstaller finished, but no dist output was found. Wunderbar nutzlos.")
+
+
+def build_updater_with_pyinstaller(project_root: Path) -> Path | None:
+    updater_spec = project_root / f"{UPDATER_NAME}.spec"
+    updater_script = project_root / "scripts" / "portable_updater.py"
+
+    if not updater_spec.exists() and not updater_script.exists():
+        print_warn("No updater spec/script found. Release will not include the portable updater.")
+        return None
+
+    print_step("Building portable updater")
+
+    if updater_spec.exists():
+        command = [
+            "pyinstaller",
+            "--noconfirm",
+            "--clean",
+            str(updater_spec.relative_to(project_root)),
+        ]
+    else:
+        command = [
+            "pyinstaller",
+            "--noconfirm",
+            "--clean",
+            "--onefile",
+            "--windowed",
+            "--name",
+            UPDATER_NAME,
+            str(updater_script.relative_to(project_root)),
+        ]
+
+    run_command(command, cwd=project_root)
+
+    updater_exe = project_root / "dist" / f"{UPDATER_NAME}.exe"
+    if updater_exe.exists():
+        print_info(f"Updater output: {updater_exe}")
+        return updater_exe
+
+    updater_dir_exe = project_root / "dist" / UPDATER_NAME / f"{UPDATER_NAME}.exe"
+    if updater_dir_exe.exists():
+        print_info(f"Updater output: {updater_dir_exe}")
+        return updater_dir_exe
+
+    raise FileNotFoundError("PyInstaller finished, but no updater executable was found.")
+
+
+def include_updater_in_build(build_output: Path, updater_exe: Path | None) -> None:
+    if updater_exe is None:
+        return
+
+    if build_output.is_dir():
+        target = build_output / updater_exe.name
+    else:
+        target = build_output.parent / updater_exe.name
+
+    if updater_exe.resolve() == target.resolve():
+        return
+
+    shutil.copy2(updater_exe, target)
+    print_info(f"Included updater in release payload: {target}")
 
 
 def zip_directory(source_dir: Path, zip_path: Path) -> None:
@@ -611,6 +672,9 @@ def main() -> int:
         )
 
         print_info(f"Build output: {build_output}")
+
+        updater_output = build_updater_with_pyinstaller(project_root)
+        include_updater_in_build(build_output, updater_output)
 
         zip_path = create_release_zip(project_root, build_output, args.version)
 
