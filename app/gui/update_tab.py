@@ -4,6 +4,7 @@ from typing import Any
 
 from PySide6.QtWidgets import (
     QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
 from app.services.update_service import (
     check_for_update,
     download_update_asset,
-    is_frozen_app,
+    portable_update_available,
     start_portable_update,
     updates_dir,
 )
@@ -24,7 +25,7 @@ from app.version import __version__
 
 
 class UpdateTab(QWidget):
-    """Portable update page used inside the Help tab."""
+    """Portable update and future help tab."""
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
@@ -34,7 +35,7 @@ class UpdateTab(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
 
-        title = QLabel("Update")
+        title = QLabel("Updates & Help")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(title)
 
@@ -46,6 +47,26 @@ class UpdateTab(QWidget):
         intro.setWordWrap(True)
         intro.setStyleSheet("font-size: 13px; color: #c7c7c7;")
         layout.addWidget(intro)
+
+        help_box = QFrame()
+        help_box.setFrameShape(QFrame.Shape.StyledPanel)
+        help_box.setStyleSheet(
+            "QFrame { border: 1px solid #555; border-radius: 8px; padding: 10px; }"
+        )
+        help_layout = QVBoxLayout(help_box)
+
+        help_title = QLabel("Help section")
+        help_title.setStyleSheet("font-weight: bold;")
+        help_layout.addWidget(help_title)
+
+        help_text = QLabel(
+            "More built-in help will follow in a future version. For now, use the README "
+            "and the documents in /docs for setup, configuration and workflow notes."
+        )
+        help_text.setWordWrap(True)
+        help_layout.addWidget(help_text)
+
+        layout.addWidget(help_box)
 
         info = QLabel(f"Installed version: {__version__}")
         info.setStyleSheet("font-weight: bold;")
@@ -70,12 +91,14 @@ class UpdateTab(QWidget):
         layout.addStretch(1)
 
     def check_for_updates(self) -> None:
-        if not is_frozen_app():
+        if not portable_update_available():
             QMessageBox.information(
                 self,
                 "Update check",
-                "Portable self-updates are only enabled in the packaged application. "
-                "Run the release build to test the updater against a real installation folder.",
+                "Portable self-updates require the packaged release folder with "
+                "DanbooruManager.exe and DanbooruManagerUpdater.exe next to each other.\n\n"
+                "Build the application with the Release task first and start the packaged EXE. "
+                "Running from source will not overwrite your checkout.",
             )
             return
 

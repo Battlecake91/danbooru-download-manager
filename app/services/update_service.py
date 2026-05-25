@@ -43,6 +43,52 @@ def is_frozen_app() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def executable_dir() -> Path:
+    return Path(sys.executable).resolve().parent
+
+
+def startup_dir() -> Path:
+    try:
+        return Path(sys.argv[0]).resolve().parent
+    except Exception:
+        return Path.cwd().resolve()
+
+
+def runtime_candidate_dirs() -> list[Path]:
+    candidates = [
+        executable_dir(),
+        startup_dir(),
+        Path.cwd().resolve(),
+    ]
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def packaged_runtime_dir() -> Path | None:
+    if is_frozen_app():
+        return executable_dir()
+
+    for directory in runtime_candidate_dirs():
+        app_exe = directory / "DanbooruManager.exe"
+        updater_exe = directory / "DanbooruManagerUpdater.exe"
+        if app_exe.exists() and updater_exe.exists():
+            return directory
+
+    return None
+
+
+def portable_update_available() -> bool:
+    return packaged_runtime_dir() is not None
+
+
 def normalize_version(value: str) -> str:
     value = str(value or "").strip()
     if value.lower().startswith("v"):
@@ -180,33 +226,44 @@ def download_update_asset(info: UpdateInfo, target_dir: Path, progress_callback:
 
 
 def app_target_dir() -> Path:
-    if is_frozen_app():
-        return Path(sys.executable).resolve().parent
+    runtime_dir = packaged_runtime_dir()
+    if runtime_dir is not None:
+        return runtime_dir
     return Path.cwd().resolve()
 
 
 def app_restart_executable() -> Path:
+    runtime_dir = packaged_runtime_dir()
+    if runtime_dir is not None:
+        app_exe = runtime_dir / "DanbooruManager.exe"
+        if app_exe.exists():
+            return app_exe
+
     if is_frozen_app():
         return Path(sys.executable).resolve()
+
     return Path(sys.argv[0]).resolve()
 
 
 def find_updater_executable(config: dict[str, Any]) -> Path:
-    target_dir = app_target_dir()
-    candidates = [
-        target_dir / "DanbooruManagerUpdater.exe",
-        target_dir / "updater.exe",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
+    runtime_dir = packaged_runtime_dir()
+    if runtime_dir is not None:
+        candidates = [
+            runtime_dir / "DanbooruManagerUpdater.exe",
+            runtime_dir / "updater.exe",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
 
-    if not is_frozen_app():
-        script = Path.cwd() / "scripts" / "portable_updater.py"
-        if script.exists():
-            return script
-
-    raise RuntimeError("Updater executable was not found next to the application.")
+    searched = ", ".join(str(path) for path in runtime_candidate_dirs())
+    raise RuntimeError(
+        "Portable updates require the packaged release folder with "
+        "DanbooruManager.exe and DanbooruManagerUpdater.exe next to each other.\n\n"
+        f"Searched in: {searched}\n\n"
+        "Build the application with the Release task first and start the packaged EXE. "
+        "Running from source will not overwrite your checkout."
+    )
 
 
 def make_updater_runner(updater_path: Path, config: dict[str, Any]) -> Path:
@@ -224,6 +281,9 @@ def make_updater_runner(updater_path: Path, config: dict[str, Any]) -> Path:
 
 
 def start_portable_update(zip_path: Path, config: dict[str, Any]) -> None:
+    if not portable_update_available():
+        find_updater_executable(config)
+
     updater_path = make_updater_runner(find_updater_executable(config), config)
     target_dir = app_target_dir()
     restart_executable = app_restart_executable()
