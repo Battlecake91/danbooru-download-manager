@@ -178,6 +178,7 @@ class DatabaseCategoryMixin:
         self.execute("DELETE FROM category_rules WHERE category_id = ?", (category_id,))
         self.commit()
 
+    @staticmethod
     def parse_category_group_expression(expression: str) -> tuple[list[str], list[str]]:
         import re
 

@@ -1,6 +1,17 @@
 # Changelog
 
+## 1.3.139 - Category Rule Save Fix
+
+- Fixed a regression introduced during the database module split where saving category rule groups failed with a `parse_category_group_expression()` argument error.
+- Restored the parser as a stateless helper on the category database mixin so existing calls through `self` work correctly.
+- Added a short maintenance note for the database split regression fix.
+
+
 This changelog is generated from the English development notes in `docs/`. It summarizes the patch history that led to the first public release.
+
+## 1.3.138
+
+- **Structured Tag Display Default** - Changes the preview tag display fallback from raw to structured while preserving explicit user choices. ([note](README_STRUCTURED_TAG_DISPLAY_DEFAULT_1_3_138.md))
 
 ## 1.3.137
 
