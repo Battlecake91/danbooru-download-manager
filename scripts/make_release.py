@@ -34,7 +34,7 @@ from typing import Iterable
 
 APP_NAME = "DanbooruManager"
 UPDATER_NAME = "DanbooruManagerUpdater"
-DEFAULT_VERSION = "1.3.143"
+DEFAULT_VERSION = "1.3.149"
 DEFAULT_RELEASE_NAME = "Danbooru Download Manager"
 DEFAULT_ENTRYPOINT_CANDIDATES = [
     "main.py",
@@ -293,25 +293,45 @@ def find_entrypoint(
 
 
 def find_pyinstaller_output(project_root: Path, expected_name: str) -> Path:
+    """Find the exact PyInstaller output for a build target.
+
+    Prefer exact EXE and exact onedir outputs. Avoid loose glob matches first,
+    because dist/DanbooruManager* could otherwise accidentally match the main
+    application when we are looking for DanbooruManagerUpdater. Git, PyInstaller
+    and Windows already have enough ways to waste a human afternoon.
+    """
     dist_dir = project_root / "dist"
 
-    onefile_exe = dist_dir / f"{expected_name}.exe"
-    onedir_dir = dist_dir / expected_name
+    if sys.platform.startswith("win"):
+        exact_exe = dist_dir / f"{expected_name}.exe"
+    else:
+        exact_exe = dist_dir / expected_name
 
-    if onefile_exe.exists():
-        return onefile_exe
+    exact_onedir = dist_dir / expected_name
 
-    if onedir_dir.exists():
-        return onedir_dir
+    if exact_exe.exists() and exact_exe.is_file():
+        return exact_exe
 
-    possible_outputs = list(dist_dir.glob(f"{expected_name}*"))
-    if possible_outputs:
-        return possible_outputs[0]
+    if exact_onedir.exists() and exact_onedir.is_dir():
+        return exact_onedir
+
+    possible_files = sorted(
+        item for item in dist_dir.glob(f"{expected_name}*")
+        if item.is_file()
+    )
+    if possible_files:
+        return possible_files[0]
+
+    possible_dirs = sorted(
+        item for item in dist_dir.glob(f"{expected_name}*")
+        if item.is_dir()
+    )
+    if possible_dirs:
+        return possible_dirs[0]
 
     raise FileNotFoundError(
         f"PyInstaller finished, but no dist output was found for {expected_name}."
     )
-
 
 def build_with_pyinstaller(
     project_root: Path,
@@ -429,6 +449,7 @@ def prepare_release_payload(
     project_root: Path,
     build_output: Path,
     updater_output: Path | None,
+    require_updater: bool = True,
 ) -> Path:
     print_step("Preparing release payload")
 
@@ -449,7 +470,21 @@ def prepare_release_payload(
     if updater_output is not None:
         copy_path_into_directory(updater_output, payload_app_dir)
     else:
-        print_warn("Updater was not included in the release payload.")
+        if require_updater:
+            raise RuntimeError(
+                "Updater was not included in the release payload. "
+                "Use --no-updater only if you intentionally want a release without updates."
+            )
+        print_warn("Updater was not included in the release payload because --no-updater was used.")
+
+    if require_updater:
+        expected_updater = payload_app_dir / (
+            f"{UPDATER_NAME}.exe" if sys.platform.startswith("win") else UPDATER_NAME
+        )
+        if not expected_updater.exists():
+            raise FileNotFoundError(
+                f"Updater executable is missing from release payload: {expected_updater}"
+            )
 
     return payload_app_dir
 
@@ -783,34 +818,33 @@ def main() -> int:
         else:
             updater_spec_file = find_updater_spec_file(project_root, args.updater_spec)
 
-            try:
-                if updater_spec_file:
-                    print_info(f"Using updater spec file: {updater_spec_file.relative_to(project_root)}")
-                    updater_entrypoint = None
-                else:
-                    updater_entrypoint = find_entrypoint(
-                        project_root=project_root,
-                        explicit_entrypoint=args.updater_entrypoint,
-                        candidates=DEFAULT_UPDATER_ENTRYPOINT_CANDIDATES,
-                        label="portable updater",
-                    )
-                    print_info(f"Using updater entrypoint: {updater_entrypoint.relative_to(project_root)}")
-
-                updater_output = build_updater(
+            if updater_spec_file:
+                print_info(f"Using updater spec file: {updater_spec_file.relative_to(project_root)}")
+                updater_entrypoint = None
+            else:
+                updater_entrypoint = find_entrypoint(
                     project_root=project_root,
-                    updater_spec_file=updater_spec_file,
-                    updater_entrypoint=updater_entrypoint,
-                    icon=args.icon,
+                    explicit_entrypoint=args.updater_entrypoint,
+                    candidates=DEFAULT_UPDATER_ENTRYPOINT_CANDIDATES,
+                    label="portable updater",
                 )
-                print_info(f"Updater build output: {updater_output}")
-            except FileNotFoundError as exc:
-                print_warn(str(exc))
-                print_warn("Continuing without updater. Use --no-updater to silence this warning.")
+                print_info(f"Using updater entrypoint: {updater_entrypoint.relative_to(project_root)}")
+
+            updater_output = build_updater(
+                project_root=project_root,
+                updater_spec_file=updater_spec_file,
+                updater_entrypoint=updater_entrypoint,
+                icon=args.icon,
+            )
+            if not updater_output.exists():
+                raise FileNotFoundError(f"Updater build output does not exist: {updater_output}")
+            print_info(f"Updater build output: {updater_output}")
 
         payload_dir = prepare_release_payload(
             project_root=project_root,
             build_output=build_output,
             updater_output=updater_output,
+            require_updater=not args.no_updater,
         )
 
         zip_path = create_release_zip(project_root, payload_dir, version)
