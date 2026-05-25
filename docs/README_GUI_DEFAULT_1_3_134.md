@@ -1,20 +1,21 @@
-# Patch 1.3.134 - GUI default for executable builds
+# 1.3.134 - Gui Default
 
-## Why
+## Summary
 
-A PyInstaller-built executable is usually launched by double-clicking it. In that case no command-line arguments are passed, so requiring `--gui` made the executable appear to do nothing.
+Improves GUI structure, colors, layout density, and user-facing polish.
 
-## Changed
+## Scope
 
-- `main.py` now starts the GUI by default when no CLI action is requested.
-- `--gui` remains available for explicit GUI startup and for compatibility.
-- CLI actions still work without starting Qt automatically:
-  - `--init-db`
-  - `--import-history`
-  - `--fetch`
-- Combining a CLI action with `--gui` still runs the action first and then opens the GUI.
-- argparse help texts were moved to English.
+**Area:** GUI polish
 
-## PyInstaller effect
+- The change focuses on usability rather than data model changes.
+- Layouts are adjusted to reduce visual noise.
+- The intent is to keep repeated review work fast.
 
-`DanbooruManager.exe` can now be launched without arguments and opens the GUI directly.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_GUI_DEFAULT_1_3_134.md`

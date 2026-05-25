@@ -1,22 +1,21 @@
-# 1.3.69 Viewer UI/Image Cache
+# 1.3.69 - Viewer Ui Image Cache
 
-Kleiner Performance-Feinschliff nach dem Viewer-Performance-Test.
+## Summary
 
-## Änderungen
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-- Der Viewer besitzt nun einen kleinen LRU-Pixmap-Cache.
-  - Standard: 12 Bilder.
-  - Konfigurierbar über `viewer.pixmap_cache_items`.
-  - Vor/zurück durch bereits gesehene Bilder dekodiert nicht erneut dieselbe Datei.
-- Der Tag-Widget-Aufbau friert Repaints während des Neubaus kurz ein.
-  - Das reduziert UI-Arbeit beim Wechseln zwischen Posts.
-  - Die Anzeige und Tag-Funktionen bleiben unverändert.
+## Scope
 
-## Erwartung
+**Area:** Viewer workflow
 
-Die großen Bremsen wurden bereits in 1.3.68 beseitigt. Dieser Patch optimiert nur die Restkosten:
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-- `tags_widget_ui` sollte etwas stabiler/niedriger werden.
-- `qpixmap_load` fällt vor allem beim Zurückspringen oder erneuten Anzeigen bereits gesehener Bilder.
+## Release context
 
-Der erste Decode eines großen Bildes kann weiterhin spürbar sein. Dafür bräuchte es später asynchrones Vorladen oder Thumbnail/Preview-Modus.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_UI_IMAGE_CACHE_1_3_69.md`

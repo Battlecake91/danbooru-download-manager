@@ -1,40 +1,21 @@
-# Danbooru Manager 1.1.2 - Globales GUI-Fehlerlog
+# 1.1.2 - Global Gui Error Log
 
-## Warum?
+## Summary
 
-Wenn `tag_tab_error.log` nicht existiert, passiert der Fehler wahrscheinlich außerhalb der lokalen `safe()`-Blöcke oder die App läuft aus einem anderen Arbeitsverzeichnis.
+Improves GUI structure, colors, layout density, and user-facing polish.
 
-## Neu
+## Scope
 
-Fehler werden jetzt fest unter dem konfigurierten `work_dir` geloggt:
+**Area:** GUI polish
 
-```text
-<work_dir>/logs/gui_error.log
-```
+- The change focuses on usability rather than data model changes.
+- Layouts are adjusted to reduce visual noise.
+- The intent is to keep repeated review work fast.
 
-Beispiel bei Standardkonfiguration:
+## Release context
 
-```text
-danbooru_manager_data/logs/gui_error.log
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Änderungen
+## Source note
 
-- globaler Python/Qt Exception-Hook
-- GUI-Startfehler werden geloggt
-- Tag-Tab schreibt ebenfalls in `work_dir/logs/gui_error.log`
-- Kontextmenü, Doppelklick, Reload und Filterwechsel im Tag-Tab sind abgesichert
-
-## Geänderte Dateien
-
-- `app/gui/main_window.py`
-- `app/gui/tag_tab.py`
-
-## Neue Datei
-
-- `app/gui/error_handler.py`
-
-## Wenn es weiter ohne Log abstürzt
-
-Dann ist es wahrscheinlich ein nativer Qt/PySide-Crash oder ein Prozessabbruch außerhalb von Python.
-Dann bitte die VSCode-Terminalausgabe direkt schicken.
+Original patch note file: `README_GLOBAL_GUI_ERROR_LOG_1_1_2.md`

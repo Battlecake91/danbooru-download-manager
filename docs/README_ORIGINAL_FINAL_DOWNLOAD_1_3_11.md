@@ -1,23 +1,21 @@
-# 1.3.11 - Finales Speichern lädt wieder die Originaldatei
+# 1.3.11 - Original Final Download
 
-## Problem
+## Summary
 
-Bei manchen Posts wurde final nicht die Originaldatei gespeichert, sondern nur die zuvor geladene Viewer-/Sample-/Large-Datei. Beispiel: Danbooru-Original `1774x1080`, lokal final gespeichert aber nur `850x468`.
+Documents one development patch from the path to the 1.3.135 public release.
 
-Ursache: `FinalSaveService` hat `original_cache_path` direkt als Quelle akzeptiert. Dieser Pfad konnte aber aus dem Viewer-Download stammen und je nach `viewer_download_source` nur Danbooru `large_file_url` enthalten.
+## Scope
 
-## Änderung
+**Area:** General development note
 
-- `DownloadService.ensure_original_cached()` bleibt für den Viewer zuständig und darf weiterhin eine kleinere Viewer-Datei laden.
-- Neu: `DownloadService.ensure_full_original_cached()` lädt für final gespeicherte Dateien strikt `file_url`.
-- `FinalSaveService.source_path_for_post(..., download_if_missing=True)` nutzt jetzt nur noch `ensure_full_original_cached()`.
-- Alte Cache-Dateien wie `123_large.jpg` oder `123_preview.jpg` werden beim finalen Speichern ignoriert.
-- Die echte Originaldatei wird als `123_file.<ext>` im Original-Cache gespeichert.
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-## Ergebnis
+## Release context
 
-Final gespeicherte Dateien kommen wieder aus Danboorus `file_url`, nicht aus Thumbnail, Preview, Large/Sample oder Viewer-Cache.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Hinweis
+## Source note
 
-Bereits falsch gespeicherte Dateien werden dadurch nicht automatisch ersetzt. Diese Posts müssen erneut gespeichert oder manuell korrigiert werden, weil die falsche Datei bereits als finaler Pfad in der Datenbank steht.
+Original patch note file: `README_ORIGINAL_FINAL_DOWNLOAD_1_3_11.md`

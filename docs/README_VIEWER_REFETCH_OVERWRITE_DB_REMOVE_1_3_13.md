@@ -1,40 +1,21 @@
-# 1.3.13 - Viewer-Reparaturknöpfe und Wartungsfix
+# 1.3.13 - Viewer Refetch Overwrite Db Remove
 
-## Viewer
+## Summary
 
-Neue Funktionen im Bildbetrachter:
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-- **Final überschreiben**
-  - lädt Danbooru `file_url` frisch neu
-  - überschreibt die bestehende finale Datei am vorhandenen `final_file_path`
-  - behält Dateiname und Zielordner bei
-  - funktioniert auch, wenn vorher versehentlich Sample/Large/Thumbnail final gespeichert wurde
+## Scope
 
-- **Post neu holen**
-  - lädt die Post-Metadaten neu von Danbooru
-  - aktualisiert Tags, URLs, Originalmaße und Dateigröße
-  - lädt die Viewer-Datei neu gemäß `viewer_download_source`
+**Area:** Fetch workflow
 
-- **Aus DB entfernen**
-  - löscht den Post aus der lokalen Datenbank inklusive Tags, Review und Kategoriezuordnung
-  - löscht keine Bilddateien auf der Platte
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-## Filename-Preview
+## Release context
 
-- `on_category_changed()` akzeptiert jetzt das Qt-Signalargument korrekt.
-- Die Dateiname-Vorschau wird bei Kategorieänderung aktualisiert.
-- Die Vorschau wird nach Filename-Exclude-Aktionen im Viewer aktualisiert.
-- Bei Fokuswechsel zurück in den Viewer wird die Vorschau erneut berechnet, damit Änderungen aus anderen Tabs nicht ewig wie abgestandener Kaffee angezeigt werden.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## DownloadService
+## Source note
 
-- `ensure_original_cached(..., force=True)` lädt Viewer-Dateien wirklich neu.
-- `ensure_full_original_cached(..., force=True)` lädt die echte Danbooru-Originaldatei erneut über `file_url`.
-
-## Wartung temporär
-
-- Fehlende finale Dateien mit vorhandenem `final_file_path` können jetzt repariert werden.
-- Die Reparatur bricht nicht mehr ab, nur weil die lokale finale Datei fehlt.
-- Zielordner werden bei Bedarf neu angelegt.
-- Der Button lädt jetzt alle **Verdächtigen/Fehlenden** neu, nicht nur verdächtige Auflösungen.
-
+Original patch note file: `README_VIEWER_REFETCH_OVERWRITE_DB_REMOVE_1_3_13.md`

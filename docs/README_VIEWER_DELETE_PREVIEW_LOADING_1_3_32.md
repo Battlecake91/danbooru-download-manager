@@ -1,18 +1,21 @@
-# 1.3.32 - Viewer Delete-Tagaktion und Preview-Ladeanzeige
+# 1.3.32 - Viewer Delete Preview Loading
 
-## Viewer
+## Summary
 
-- Wenn im Viewer Tags markiert sind und die Option `Nur nicht ausgeschlossene Filename-Tags anzeigen` aktiv ist, schließt `Entf` die markierten Tags vom Dateinamen aus.
-- Ohne markierte Tags oder ohne aktive Filteroption bleibt `Entf` wie bisher: aktuelles Bild ablehnen.
-- Die Tag-Aktion per `Entf` zeigt keinen Dialog mehr, sondern nur eine kurze Statusmeldung.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Preview
+## Scope
 
-- Beim Laden der Preview wird ein mittiger Hinweis `Lädt Preview…` mit endlosem Balken angezeigt.
-- Während die Thumbnail-Karten in Batches aufgebaut werden, bleibt die Statuszeile auf `Lädt Preview-Karten… X/Y`.
-- `Preview geladen` erscheint erst, wenn der Kartenaufbau abgeschlossen ist.
-- Der Grid-Aufbau deaktiviert Updates nicht mehr über mehrere QTimer-Batches hinweg. Dadurch sollte das schwarze Preview-Fenster verschwinden.
+**Area:** Preview and thumbnail workflow
 
-## ZIP-Hinweis
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Dieses Patch-ZIP enthält nur die geänderten Dateien.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_DELETE_PREVIEW_LOADING_1_3_32.md`

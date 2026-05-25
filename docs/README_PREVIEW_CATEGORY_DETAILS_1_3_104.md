@@ -1,29 +1,21 @@
-# Patch 1.3.104 - Kategorie-Details direkt im Previewer
+# 1.3.104 - Preview Category Details
 
-## Ziel
+## Summary
 
-Der Previewer kann jetzt die Kategorie-Entscheidung direkt anzeigen, ohne dass der Post zuerst im Bildbetrachter geöffnet werden muss.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Änderungen
+## Scope
 
-### `app/gui/preview_window.py`
+**Area:** Preview and thumbnail workflow
 
-- Neuer Button in der oberen Previewer-Aktionsleiste: `Kategorie-Details`.
-- Der Button öffnet den bestehenden Kategorie-Details-Dialog für den aktuell ausgewählten Post.
-- Bei Mehrfachauswahl wird der aktuelle Post verwendet und eine kurze Statusmeldung angezeigt.
-- Der sichtbare Kategorie-Vorschlag der Preview-Karte wird an den Diagnosebericht übergeben, damit auch abweichende manuelle/angezeigte Kategorien sauber berücksichtigt werden.
-- Falls SQLite gerade gesperrt ist, erscheint eine verständliche Meldung statt eines Tracebacks.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-### `app/gui/thumbnail_grid.py`
+## Release context
 
-- Neues Signal `category_details_requested`.
-- Kontextmenü der Preview-Karten hat jetzt `Kategorie-Details anzeigen`.
-- Der Rechtsklick-Kontext kann damit dieselbe Kategorie-Diagnose öffnen wie der Toolbar-Button.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Bedienung
+## Source note
 
-- Einen Post im Previewer markieren.
-- `Kategorie-Details` klicken.
-- Alternativ Rechtsklick auf eine Preview-Karte → `Kategorie-Details anzeigen`.
-
-Bei Mehrfachauswahl zeigt der Button die Details für den aktuellen fokussierten Post. Massen-Diagnose wäre möglich, aber als Popup-Friedhof eher eine Strafe als ein Feature.
+Original patch note file: `README_PREVIEW_CATEGORY_DETAILS_1_3_104.md`

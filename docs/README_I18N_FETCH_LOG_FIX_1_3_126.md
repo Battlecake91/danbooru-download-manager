@@ -1,16 +1,21 @@
-# Patch 1.3.126 - i18n Fetch log fix
+# 1.3.126 - I18N Fetch Log Fix
 
-This patch fixes remaining untranslated Fetch and LLM batch output.
+## Summary
 
-## Changes
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-- Adds missing Fetch translation keys that previously appeared as raw keys like `fetch.log.starting`.
-- Translates Fetch summary labels and LLM summary lines through i18n.
-- Translates LLM batch service log messages and skip reasons.
-- Fixes unsafe nested f-string quoting in `fetch_tab.py`.
+## Scope
 
-## Validation
+**Area:** Fetch workflow
 
-```bash
-python3 -m compileall -q main.py app
-```
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_FETCH_LOG_FIX_1_3_126.md`

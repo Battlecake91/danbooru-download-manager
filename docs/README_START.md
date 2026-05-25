@@ -1,81 +1,21 @@
-# Danbooru Manager Starter 0.1
+# Unversioned - Start
 
-Erste Basis für die neue GUI-Version des Danbooru-Downloaders.
+## Summary
 
-Diese Version kann noch keine GUI. Sie erstellt zuerst das Fundament:
+Introduces startup or first-run behavior needed to make the application usable without manual file editing.
 
-- YAML-Config laden
-- SQLite-Datenbank erstellen
-- Kategorien aus Config übernehmen
-- Filename-Exclude-Tags übernehmen
-- LLM-Tag-Aliase übernehmen
-- alte `downloaded_ids.txt` übernehmen
-- Danbooru-Posts per API laden
-- Post-Metadaten und Tags speichern
-- Thumbnails lokal cachen
+## Scope
 
-## Installation
+**Area:** General development note
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-Unter Windows PowerShell:
+## Release context
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Config anlegen
+## Source note
 
-```bash
-cp config.example.yaml config.yaml
-```
-
-Optional `.env`:
-
-```env
-DANBOORU_USERNAME=dein_username
-DANBOORU_API_KEY=dein_api_key
-```
-
-## Datenbank initialisieren
-
-```bash
-python main.py --config config.yaml --init-db
-```
-
-## Alte History übernehmen
-
-```bash
-python main.py --config config.yaml --import-history
-```
-
-## Posts und Thumbnails laden
-
-```bash
-python main.py --config config.yaml --fetch
-```
-
-Mit Debug:
-
-```bash
-python main.py --config config.yaml --fetch --debug
-```
-
-## Nächster Schritt
-
-Als nächstes kommt die erste PySide6-GUI:
-
-- Preview-Fenster
-- Thumbnail-Grid
-- Status setzen:
-  - hohes Potential
-  - prüfen
-  - automatisch aussortiert
-  - abgelehnt
-- Daten aus SQLite anzeigen
+Original patch note file: `README_START.md`

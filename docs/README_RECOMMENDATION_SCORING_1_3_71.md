@@ -1,32 +1,21 @@
-# 1.3.71 - Vorauswahl-Scoring ohne LLM
+# 1.3.71 - Recommendation Scoring
 
-Dieser Patch ergänzt eine lokale, deterministische Vorauswahlwertung für Preview-Karten.
+## Summary
 
-## Neu
+Documents one development patch from the path to the 1.3.135 public release.
 
-- Neues Modul `app/core/recommendation_engine.py`.
-- Preview-Karten zeigen `Vorauswahl: +x` bzw. negative Werte an.
-- Tooltip der Vorauswahl zeigt die stärksten positiven und negativen Tag-Beiträge.
-- Die Preview-Sortierung enthält:
-  - `Vorauswahl: hoch → niedrig`
-  - `Vorauswahl: niedrig → hoch`
+## Scope
 
-## Bewertungslogik
+**Area:** General development note
 
-Die lokale Vorauswahl nutzt vorhandene Tag-Scores:
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-- manueller Score, falls vorhanden
-- sonst gespeicherter berechneter Score
-- `scoring_excluded` wird ignoriert
-- `ignore_recommendation_score` wird ignoriert
-- Aliase/Canonical-Tags werden berücksichtigt, damit Varianten nicht mehrfach zählen
+## Release context
 
-## Wichtig
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Das ist noch keine LLM-Bewertung. Es ist nur der lokale Basisscore, auf dem spätere LLM-/Vorauswahlfunktionen aufbauen können.
+## Source note
 
-## Geänderte Dateien
-
-- `app/core/recommendation_engine.py`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
+Original patch note file: `README_RECOMMENDATION_SCORING_1_3_71.md`

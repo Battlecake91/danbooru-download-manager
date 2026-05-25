@@ -1,35 +1,21 @@
-# Patch 1.3.113 - Parent/Child Workflow und Finaldateien löschen
+# 1.3.113 - Parent Child Delete Saved File
 
-## Previewer
+## Summary
 
-- Parent/Child-Posts werden nach dem normalen Sortieren gruppiert, soweit sie im geladenen Ergebnis enthalten sind.
-- Dadurch stehen Parent und Childs im Previewer nebeneinander, statt später erneut wie ein Déjà-vu mit Thumbnail aufzutauchen.
-- Preview-Karten zeigen Parent/Child-Bezug deutlicher an:
-  - Teil einer Parent/Child-Gruppe
-  - Parent lokal/DB bekannt
-  - bekannte Child-Posts
-  - Child-Hinweis von Danbooru
+Documents one development patch from the path to the 1.3.135 public release.
 
-## Viewer
+## Scope
 
-- Die Parent/Child-Liste im Viewer öffnet lokal vorhandene verwandte Posts jetzt per Doppelklick in einem separaten Viewer-Fenster.
-- Im Kontextmenü der Parent/Child-Liste gibt es zusätzlich:
-  - In separatem Viewer öffnen
-  - Lokale Datei im System öffnen
-  - Lokalen Ordner öffnen
-  - Remote Originalpost öffnen
-  - Links/Pfade kopieren
+**Area:** General development note
 
-## Finaldateien löschen
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-- Im Viewer gibt es einen neuen Button: `Finaldatei löschen`.
-- Im Previewer-Kontextmenü gibt es: `Finaldatei aus gespeichertem Pfad löschen`.
-- Bei Mehrfachauswahl im Previewer wirkt die Löschaktion auf alle markierten Posts.
-- Gelöscht wird nur die lokal gespeicherte Finaldatei aus `final_file_path`.
-- Der DB-Post bleibt erhalten.
-- `final_file_path`, `final_directory` und `saved_at` werden geleert.
-- Wenn der Status vorher `saved` war, wird er auf `new` gesetzt.
+## Release context
 
-## Nebenbei
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- `count_preview_posts()` hatte eine doppelte `SELECT COUNT(*) AS count`-Zeile aus einem früheren Patchstand. Das wurde bereinigt.
+## Source note
+
+Original patch note file: `README_PARENT_CHILD_DELETE_SAVED_FILE_1_3_113.md`

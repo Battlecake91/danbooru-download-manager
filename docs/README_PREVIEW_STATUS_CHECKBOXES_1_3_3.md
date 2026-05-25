@@ -1,115 +1,21 @@
-# Danbooru Manager 1.3.3 - Preview-Statusfilter als Checkboxen
+# 1.3.3 - Preview Status Checkboxes
 
-## Problem
+## Summary
 
-Der Preview-Statusfilter war ein Dropdown. Damit konnte immer nur ein Status gleichzeitig angezeigt werden.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Das war unpraktisch für echte Review-Workflows, z. B.:
+## Scope
 
-```text
-Ungeprüft + Prüfen + Zum Speichern anzeigen
-Abgelehnte ausblenden
-```
+**Area:** Preview and thumbnail workflow
 
-## Neu
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Der Preview-Filter nutzt jetzt Checkboxen:
+## Release context
 
-```text
-[Alle]
-[Ungeprüft]
-[Hohes Potential]
-[Prüfen]
-[Zum Speichern]
-[Automatisch aussortiert]
-[Abgelehnt]
-[Akzeptiert]
-[Bereits bekannt]
-[Heruntergeladen/alt]
-[Gespeichert]
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Standardauswahl
+## Source note
 
-Beim Start sind aktiv:
-
-```text
-Ungeprüft
-Hohes Potential
-Prüfen
-Zum Speichern
-```
-
-Also genau die normale Arbeitsliste, ohne abgelehnte oder gespeicherte Posts.
-
-## Beispiele
-
-### Normale Review-Liste
-
-```text
-Ungeprüft
-Hohes Potential
-Prüfen
-Zum Speichern
-```
-
-### Nur finale Kandidaten
-
-```text
-Zum Speichern
-Hohes Potential
-```
-
-### Fehlerkontrolle
-
-```text
-Abgelehnt
-Automatisch aussortiert
-```
-
-### Alles durchsuchen
-
-```text
-Alle
-```
-
-## Ansicht-Dropdown
-
-Das Ansicht-Dropdown bleibt als Schnellpreset erhalten:
-
-```text
-Status-Filter
-Arbeitsliste
-Gespeichert
-Aussortiert
-Bekannte/importierte
-Alle bekannten Posts
-```
-
-Wenn du manuell eine Checkbox änderst, springt die Ansicht automatisch auf:
-
-```text
-Status-Filter
-```
-
-## Geänderte Datei
-
-```text
-app/gui/preview_window.py
-```
-
-## Technisch
-
-Die Preview-Abfrage wird jetzt direkt anhand der ausgewählten Statusliste gebaut:
-
-```sql
-p.status IN (...)
-```
-
-Wenn keine Checkbox aktiv ist:
-
-```sql
-1 = 0
-```
-
-Also keine Treffer, statt heimlich alles anzuzeigen. Heimliche Magie hatten wir genug, danke.
+Original patch note file: `README_PREVIEW_STATUS_CHECKBOXES_1_3_3.md`

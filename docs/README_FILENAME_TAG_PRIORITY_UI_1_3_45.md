@@ -1,17 +1,21 @@
-# 1_3_45 - Dateinamen-Tag-Priorisierung sichtbar in der Konfiguration
+# 1.3.45 - Filename Tag Priority Ui
 
-## Änderung
+## Summary
 
-Die Dateinamen-Priorisierung ist jetzt im Config-Tab explizit als Dropdown sichtbar:
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-- `Konfiguration -> Dateiname -> Tag-Reihenfolge`
-- `Original / bisherige Reihenfolge`
-- `Nach Tag-Scoring priorisieren`
+## Scope
 
-Intern wird weiterhin die vorhandene Einstellung verwendet:
+**Area:** Tag management
 
-- `filename.sort_tags_by_average_rating`
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-## Zweck
+## Release context
 
-Die vorherige Checkbox war je nach Stand/Scrollbereich zu leicht zu übersehen bzw. nicht eindeutig genug. Das Dropdown macht die Funktion direkt im Dateiname-Block sichtbar.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_FILENAME_TAG_PRIORITY_UI_1_3_45.md`

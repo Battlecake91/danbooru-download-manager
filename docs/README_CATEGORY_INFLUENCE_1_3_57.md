@@ -1,23 +1,21 @@
-# 1.3.57 - Interne Kategoriebeeinflussung
+# 1.3.57 - Category Influence
 
-Diese Version ergänzt eine weiche Kategoriebeeinflussung neben den harten Kategorie-Regeln.
+## Summary
 
-## Verhalten
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-- Harte Kategorie-Regeln bleiben führend.
-- Die neue Einflusswertung ersetzt noch keine Kategorie-Regel.
-- Der Viewer zeigt beim Kategorie-Label und in der Kategorie-Combo den stärksten Einfluss an.
-- Der Details-Dialog zeigt die Top-Einflüsse mit Score, Anzahl passender Tags und Beispieltreffern.
+## Scope
 
-## Datenbasis
+**Area:** Category and rule system
 
-Die Bewertung nutzt:
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-- gespeicherte bzw. zugewiesene Kategoriebeispiele aus `post_categories`
-- Tags dieser Beispielposts
-- Alias-/Canonical-Tags, damit z. B. `red_hairband`, `blue_hairband` und `green_hairband` gemeinsam als `hairband` wirken können
-- bestehende Tag-Scores und persönliche Ratings als leichte Verstärkung oder Dämpfung
+## Release context
 
-## Absicht
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Das ist die Grundlage für spätere LLM- oder interne Tag-Konstellationslogik. Erst sichtbar und erklärbar, danach kann entschieden werden, ob und wann der Einfluss wirklich automatisch Kategorien setzen darf.
+## Source note
+
+Original patch note file: `README_CATEGORY_INFLUENCE_1_3_57.md`

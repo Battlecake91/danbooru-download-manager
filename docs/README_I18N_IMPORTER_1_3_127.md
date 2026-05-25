@@ -1,27 +1,21 @@
-# Patch 1.3.127 - Importer i18n
+# 1.3.127 - I18N Importer
 
-This patch migrates the Importer tab and the existing-file import service messages to the i18n system.
+## Summary
 
-## Changed
+Improves importing existing local Danbooru files into the SQLite database using metadata lookup and safer file handling.
 
-- `app/gui/import_tab.py`
-  - Visible Importer labels, buttons, warnings, dialogs, progress text and summary text now use `tr(...)`.
-  - Worker log/error messages now use translation keys.
+## Scope
 
-- `app/services/existing_file_import_service.py`
-  - Progress messages and user-visible runtime errors are now translated.
-  - Import, repair and rename status lines are now emitted in English by default.
+**Area:** Import workflow
 
-- `app/i18n/locales/en.json`
-  - Added Importer keys.
+- Existing files can be connected to database records.
+- The importer avoids blind overwrites and reports skipped files.
+- Imported posts can participate in scoring and category workflows.
 
-- `app/i18n/locales/de.json`
-  - Added matching fallback keys, currently English to keep the application English-first.
+## Release context
 
-## Verification
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```bash
-python3 -m compileall -q main.py app
-```
+## Source note
 
-Both locale JSON files were parsed successfully.
+Original patch note file: `README_I18N_IMPORTER_1_3_127.md`

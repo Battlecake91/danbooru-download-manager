@@ -1,40 +1,21 @@
-# Danbooru Manager 0.9 - Manuelle Kategorieauswahl im Viewer
+# 0.9 - Manual Category
 
-## Neu
+## Summary
 
-- Kategorie-Dropdown im Viewer
-- vorgeschlagene Kategorie wird vorausgewählt
-- manuelle Kategorieauswahl möglich
-- Zielpfad-Vorschau aktualisiert sich beim Wechsel
-- final speichern nutzt die gewählte Kategorie
-- `post_categories.source` wird gesetzt:
-  - `auto`, wenn Vorschlag genutzt wurde
-  - `manual`, wenn manuell abweichend gewählt wurde
-- Button `Zielordner öffnen`
-- optionales automatisches Weiterspringen nach Speichern/Ablehnen
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-## Geänderte Dateien
+## Scope
 
-- `config.example.yaml`
-- `app/core/config.py`
-- `app/core/category_engine.py`
-- `app/services/final_save_service.py`
-- `app/gui/image_viewer.py`
+**Area:** Category and rule system
 
-## Config-Ergänzung
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-```yaml
-viewer:
-  auto_advance_after_save: true
-  auto_advance_after_reject: true
-```
+## Release context
 
-## Nutzung
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Im Viewer:
+## Source note
 
-1. Kategorie im Dropdown prüfen oder ändern
-2. Zielpfad-Vorschau ansehen
-3. `F` drücken oder `Final speichern (F)` klicken
-
-Wenn `auto_advance_after_save: true`, springt der Viewer danach direkt zum nächsten Bild.
+Original patch note file: `README_MANUAL_CATEGORY_0_9.md`

@@ -1,27 +1,21 @@
-# Danbooru Manager 0.7.1 - Viewer-Hotkey-Fix
+# 0.7.1 - Viewer Shortcut Fix
 
-## Problem
+## Summary
 
-Im Bildbetrachter wurden Pfeiltasten teilweise von `QTextEdit`, Buttons oder ScrollArea abgefangen.
-Dadurch kam `ImageViewerWindow.keyPressEvent()` nicht zuverlässig an.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-## Lösung
+## Scope
 
-Der Viewer nutzt jetzt `QShortcut` mit `Qt.WindowShortcut`.
+**Area:** Viewer workflow
 
-Dadurch funktionieren diese Hotkeys unabhängig vom aktuell fokussierten Widget:
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-- `←` vorheriges Bild
-- `→` nächstes Bild
-- `1` bis `5` Sterne
-- `H` hohes Potential
-- `P` prüfen
-- `S` zum Speichern vormerken
-- `A` automatisch aussortieren
-- `Entf` ablehnen
-- `N` neu zurücksetzen
-- `O` Originalpost öffnen
+## Release context
 
-## Geänderte Datei
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- `app/gui/image_viewer.py`
+## Source note
+
+Original patch note file: `README_VIEWER_SHORTCUT_FIX_0_7_1.md`

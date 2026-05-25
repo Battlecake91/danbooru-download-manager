@@ -1,104 +1,21 @@
-# Danbooru Manager 1.3 - Fetch / Suche Tab
+# 1.3 - Fetch Tab
 
-## Neu
+## Summary
 
-Die GUI hat jetzt als ersten Tab:
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-```text
-Fetch / Suche
-```
+## Scope
 
-Dort können neue Posts direkt aus der GUI geladen werden.
+**Area:** Fetch workflow
 
-## Funktionen
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-- vordefinierte Fetch-Presets
-- manuelle Tag-Query
-- optionale Zusatz-Tags
-- Saved-Search-Modus
-- API-Limit
-- Max Posts pro Query
-- Max Posts gesamt
-- Fetch läuft in einem QThread
-- nach Fetch wird Preview aktualisiert und geöffnet
+## Release context
 
-## Geänderte Dateien
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-app/gui/app_window.py
-config.example.yaml
-```
+## Source note
 
-## Neue Datei
-
-```text
-app/gui/fetch_tab.py
-```
-
-## Config-Ergänzung
-
-```yaml
-fetch_presets:
-  - name: "Standard: Config Query"
-    mode: "tags"
-    query: "order:id_desc"
-    extra_tags: "( rating:q or rating:e )"
-    limit: 100
-    max_posts_per_query: 500
-    max_total_posts: 1000
-
-  - name: "Saved Searches: explicit/questionable"
-    mode: "saved_searches"
-    saved_search_labels: []
-    saved_search_queries: []
-    extra_tags: "( rating:q or rating:e )"
-    limit: 100
-    max_posts_per_query: 500
-    max_total_posts: 1000
-```
-
-## Modi
-
-### `tags`
-
-Nutzt direkte Danbooru-Tag-Suche:
-
-```yaml
-mode: "tags"
-query: "blonde_hair order:id_desc"
-extra_tags: "( rating:q or rating:e )"
-```
-
-Daraus wird:
-
-```text
-blonde_hair order:id_desc ( rating:q or rating:e )
-```
-
-### `saved_searches`
-
-Nutzt gespeicherte Danbooru-Suchen:
-
-```yaml
-mode: "saved_searches"
-saved_search_labels: []
-saved_search_queries: []
-extra_tags: "( rating:q or rating:e )"
-```
-
-## Manuelle Suche
-
-Im Tab kann "Manuelle Query verwenden statt Preset" aktiviert werden.
-
-Dann gelten:
-
-- Tags / Query
-- Zusatz-Tags
-
-und Preset/Saved-Search-Auswahl wird ignoriert.
-
-## Hinweis
-
-Der Fetch läuft in einem Worker-Thread, damit die GUI nicht blockiert.
-SQLite wird dabei mit derselben DB-Instanz benutzt. Das funktioniert meistens, solange der bestehende Code nicht bewusst Thread-Sperren nutzt.
-Falls SQLite meckert, muss der Worker eine eigene DB-Verbindung öffnen.
+Original patch note file: `README_FETCH_TAB_1_3.md`

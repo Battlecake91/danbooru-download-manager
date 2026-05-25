@@ -1,41 +1,21 @@
-# 1.3.42 - Tag-Scoring mit gespeichert/abgelehnt-Statistik
+# 1.3.42 - Tag Saved Rejected Scoring
 
-Dieser Patch erweitert das automatische Tag-Scoring um die vorhandene Statistik aus gespeicherten und abgelehnten Posts.
+## Summary
 
-## Verhalten
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-Für jeden Tag wird nun zusätzlich ausgewertet:
+## Scope
 
-- wie oft der Tag in gespeicherten Posts vorkommt
-- wie oft der Tag in abgelehnten Posts vorkommt
-- welche durchschnittliche persönliche Bewertung Posts mit diesem Tag haben
-- ob der Tag vom Scoring ausgeschlossen wurde
+**Area:** Tag management
 
-Der effektive Score folgt der Priorität:
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-1. Scoring-Exclude aktiv -> Score 0 / ignoriert
-2. manueller Score vorhanden -> manueller Score gewinnt
-3. sonst automatisch berechneter Score aus Stern-Durchschnitt + gespeichert/abgelehnt-Verhältnis
+## Release context
 
-## Dämpfung für allgemeine Tags
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Sehr häufige Tags mit vielen gespeicherten und vielen abgelehnten Beispielen werden gedämpft. Dadurch wird ein generischer Tag wie `1girl` nicht plötzlich hart negativ bewertet, nur weil er in sehr vielen abgelehnten Posts vorkommt.
+## Source note
 
-## Viewer
-
-Die Tag-Tooltips bei General/Meta zeigen jetzt zusätzlich:
-
-- Gespeichert/Abgelehnt
-- Anzahl bekannter Posts mit diesem Tag
-
-Die sichtbare Tag-Zeile bleibt kompakt.
-
-## Datenbank
-
-Beim ersten Start nach diesem Patch werden die vorhandenen Tag-Statistiken einmalig neu berechnet und in `tag_scores` aktualisiert.
-
-Danach werden betroffene Tags automatisch aktualisiert, wenn:
-
-- ein Post-Status geändert wird
-- eine persönliche Bewertung gesetzt wird
-- ein Scoring-Ausschluss gesetzt oder entfernt wird
+Original patch note file: `README_TAG_SAVED_REJECTED_SCORING_1_3_42.md`

@@ -1,13 +1,21 @@
-# 1.3.34 - Preview-Tab Ladeanzeige/Repaint robuster
+# 1.3.34 - Preview Tab Repaint Stack
 
-## Problem
-Beim Wechsel vom Fetch-Tab auf den Preview-Tab konnte weiterhin der alte Fetch-Inhalt sichtbar bleiben. Gleichzeitig meldete die Statuszeile bereits geladene Thumbnails, obwohl die Preview-Fläche noch nicht korrekt neu gezeichnet war.
+## Summary
 
-## Änderung
-- Preview verwendet jetzt einen `QStackedWidget` zwischen Ladefläche und Thumbnail-Grid.
-- Beim Aktivieren des Preview-Tabs wird immer sofort die zentrale Ladefläche angezeigt.
-- Der eigentliche Reload wird danach per `QTimer.singleShot(0, ...)` gestartet, damit Qt zuerst die Ladefläche zeichnen kann.
-- Nach Abschluss des Thumbnail-Aufbaus wird explizit auf das Grid zurückgeschaltet und ein Repaint erzwungen.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Enthaltene Dateien
-- `app/gui/preview_window.py`
+## Scope
+
+**Area:** Preview and thumbnail workflow
+
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_PREVIEW_TAB_REPAINT_STACK_1_3_34.md`

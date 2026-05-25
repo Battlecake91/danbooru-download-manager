@@ -1,51 +1,21 @@
-# 1.3.43 - Tag-Tab: Sortierung und Ø-Sterne-Format
+# 1.3.43 - Tag Tab Sorting Average Format
 
-## Geändert
+## Summary
 
-### Ø Sterne
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-Im Tag-Tab werden die durchschnittlichen Sterne jetzt auf eine Nachkommastelle gerundet.
+## Scope
 
-Beispiel:
+**Area:** Tag management
 
-```text
-7.333333333333 -> 7.3
-8.0             -> 8
-```
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-Damit bleibt die Übersicht lesbar. Die interne Datenbankgenauigkeit bleibt unverändert.
+## Release context
 
-### Sortierung per Spaltenkopf
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Im Tag-Tab kann jetzt per Klick auf die Tabellenüberschrift sortiert werden, zum Beispiel:
+## Source note
 
-- Tag
-- Typ
-- Posts
-- Offen
-- Gespeichert
-- Abgelehnt
-- Alias
-- Filename-Exclude
-- Manueller Score
-- Berechneter Score
-- Ø Sterne
-
-Ein zweiter Klick auf dieselbe Spalte dreht die Sortierrichtung um.
-
-### Numerische Sortierung
-
-Zahlen werden jetzt als Zahlen sortiert und nicht als Text.
-
-Also:
-
-```text
-9 < 100
-```
-
-und nicht dieser übliche GUI-Unfug:
-
-```text
-100 < 9
-```
-
+Original patch note file: `README_TAG_TAB_SORTING_AVERAGE_FORMAT_1_3_43.md`

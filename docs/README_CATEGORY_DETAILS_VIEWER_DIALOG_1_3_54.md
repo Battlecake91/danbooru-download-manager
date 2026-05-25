@@ -1,37 +1,21 @@
-# 1_3_54 Kategorie-Details im Viewer
+# 1.3.54 - Category Details Viewer Dialog
 
-Dieses Patch räumt den bisherigen Kategorie-Dialog im Viewer auf.
+## Summary
 
-## Viewer
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Der Button neben der Kategorieauswahl heißt jetzt:
+## Scope
 
-```text
-Details
-```
+**Area:** Viewer workflow
 
-Der alte Text `Warum?` war funktional, aber klang wie ein trotziges Kleinkind neben einer ComboBox. Der neue Name beschreibt nüchtern, was der Button macht.
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-## Dialog
+## Release context
 
-Der Dialog heißt jetzt `Kategorie-Details` und zeigt eine kompaktere Diagnose:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- automatische Gewinner-Kategorie
-- aktuell gewählte Kategorie
-- Hinweis bei manueller Abweichung
-- Kurzübersicht der passenden Kategorien
-- relevante Details für Gewinner, manuelle Auswahl und weitere passende Kategorien
-- nicht passende Kategorien nur noch als Kurzfassung
+## Source note
 
-Die Textanzeige nutzt jetzt Zeilenumbruch statt horizontaler Scroll-Orgie.
-
-## Technik
-
-Geändert wurden:
-
-```text
-app/gui/image_viewer.py
-app/core/category_engine.py
-```
-
-Die Kategorie-Diagnose liefert intern jetzt pro Kategorie neben dem Detailblock auch eine Kurzfassung. Dadurch kann der Viewer den Dialog deutlich lesbarer aufbauen, ohne die Regelprüfung doppelt zu implementieren.
+Original patch note file: `README_CATEGORY_DETAILS_VIEWER_DIALOG_1_3_54.md`

@@ -1,59 +1,21 @@
-# 1.3.106 - LLM Preference Context
+# 1.3.106 - Llm Preference Context
 
-Dieser Patch erweitert die LLM-Payload um lokale Bewertungs- und Geschmackshistorie.
+## Summary
 
-## Warum
+Adds or stabilizes experimental LLM payload handling, preselection support, privacy handling, and debug visibility.
 
-Die bisherige Payload enthielt pro Post Tags und Metadaten. Damit konnte die LLM nur anhand des aktuellen Posts raten. Jetzt bekommt sie zusätzlich einen kompakten Kontext aus bisherigen Entscheidungen.
+## Scope
 
-## Neu in der Payload
+**Area:** LLM and recommendation support
 
-Die Payload nutzt jetzt `schema_version: 2` und enthält optional:
+- The feature is experimental and should be treated as decision support.
+- Payloads are compacted so only relevant post metadata is sent.
+- Debug tools make it easier to inspect what the model receives.
 
-```json
-"preference_context": {
-  "summary": { ... },
-  "known_tag_preferences": [ ... ],
-  "category_profiles": [ ... ],
-  "examples": {
-    "liked": [ ... ],
-    "rejected": [ ... ],
-    "by_category": [ ... ]
-  }
-}
-```
+## Release context
 
-### Enthaltene Informationen
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Gesamtzahl lokaler Posts
-- Anzahl gespeicherter und abgelehnter Posts
-- Anzahl bewerteter Posts
-- Durchschnittliche persönliche Bewertung
-- Stärkste positive und negative Tag-Signale
-- Aktuelle Batch-Tags mit bereits bekannter Historie
-- Kategorieprofile mit häufigen positiven Tags
-- Kleine Beispielmengen aus gespeicherten und abgelehnten Posts
+## Source note
 
-Die Tags werden weiterhin über den eingestellten LLM-Exportmodus ausgegeben:
-
-- Original-Tags
-- Alias/Canonical-Tags
-- gehashte Alias-Tags
-
-Wenn `Tag-Legende an LLM mitsenden` aktiv ist, werden zusätzliche Klartext-/Canonical-Hinweise ergänzt. Sonst bleibt der Privacy-Modus erhalten.
-
-## Neue Konfigurationswerte
-
-```text
-llm.include_preference_context
-llm.max_preference_tags
-llm.max_positive_examples
-llm.max_negative_examples
-llm.max_category_examples
-```
-
-Diese Werte sind im Konfigurations-Tab unter `Scoring / LLM-Tag-Privacy` bearbeitbar.
-
-## Nebenfix
-
-Die lokalen Empfehlungssignale pro Post werden jetzt aus den echten lokalen Tags berechnet, nicht aus bereits exportierten/gehashten LLM-Tokens. Sonst findet der lokale Scorer bei `tag_abcdef...` exakt gar nichts. Sehr überraschend, außer für jeden, der schon einmal eine Hashfunktion gesehen hat.
+Original patch note file: `README_LLM_PREFERENCE_CONTEXT_1_3_106.md`

@@ -1,33 +1,21 @@
-# 1.3.21 - Viewer: gemeinsames Identity-Tagfeld
+# 1.3.21 - Viewer Identity Tag Grid
 
-## Änderung
+## Summary
 
-Artist, Serie / Copyright und Character hängen jetzt in einem gemeinsamen Grid statt in drei unabhängigen Widgets.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Aufbau:
+## Scope
 
-- Zeile 1: Überschriften Artist / Serie-Copyright / Character
-- Zeile 2: drei Tagkästchen mit identischer Höhe
+**Area:** Viewer workflow
 
-Wenn eine der drei Gruppen zwei sichtbare Tags enthält, werden alle drei Kästchen gemeinsam auf zwei Zeilenhöhe gesetzt. Dadurch wirkt das Layout nicht mehr schief, wenn z. B. nur Character zwei Einträge hat.
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-## Technisch
+## Release context
 
-Geändert:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- `app/gui/tag_display.py`
+## Source note
 
-Details:
-
-- neues gemeinsames `identity_group` mit `QGridLayout`
-- Labels und Listen sitzen im gleichen Grid
-- gemeinsame Höhenberechnung für `artist`, `copyright`, `character`
-- General und Meta bleiben darunter als eigene größere Listen
-
-## Test
-
-```bash
-python -m compileall -f app
-```
-
-lief ohne Syntaxfehler.
+Original patch note file: `README_VIEWER_IDENTITY_TAG_GRID_1_3_21.md`

@@ -1,49 +1,21 @@
-# 1.3.16 - Viewer-Layout, Rating-Sterne, Dateiname ohne unknown
+# 1.3.16 - Viewer Layout Rating Filename
 
-## Dateiname
+## Summary
 
-- Leere Platzhalter werden nicht mehr mit `unknown` gefüllt.
-- Wenn `%artist%` / `%artists%` leer ist und der Copyright-Tag `original` vorhanden ist, wird `original` als Artist-Platzhalter verwendet.
-- Wenn durch leere Platzhalter kein sinnvoller Name entsteht, fällt der Builder auf `<post_id><ext>` zurück.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-## Tags in der Datenbank
+## Scope
 
-Beim Fetch werden alle von Danbooru gelieferten Tag-Gruppen gespeichert:
+**Area:** Viewer workflow
 
-- `tag_string_artist` -> `post_tags.tag_type = artist`
-- `tag_string_character` -> `post_tags.tag_type = character`
-- `tag_string_copyright` -> `post_tags.tag_type = copyright`
-- `tag_string_general` -> `post_tags.tag_type = general`
-- `tag_string_meta` -> `post_tags.tag_type = meta`
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-## Viewer
+## Release context
 
-- Dateiname-Vorschau ist nicht mehr dauerhaft sichtbar.
-- Neuer Button `Dateiname-Vorschau anzeigen` klappt die Vorschau bei Bedarf aus.
-- Neue Kopfzeile: `ID - Rating`.
-- Neue Fußzeile: `Rating - Position`.
-- Danbooru-Rating wird farbig dargestellt:
-  - safe: grün
-  - questionable: gelb
-  - explizit: rot
-- Score wird als 5-Sterne-Skala relativ zum höchsten Score in der aktuellen Viewer-Liste dargestellt.
-- Persönliches Rating ist ein eigenes Sternfeld mit halben Sternschritten.
-- Klick links/rechts in einen Stern setzt halbe bzw. volle Werte.
-- Die persönlichen Sterne werden in `post_reviews.stars` gespeichert.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Aufgeräumte Statusaktionen
+## Source note
 
-Entfernt aus Viewer-Buttons und Hotkeys:
-
-- Auto raus
-- Prüfen
-- Speichern vormerken
-
-Im Viewer bleiben:
-
-- `High Potential [H]`
-- `Ablehnen [Entf]`
-- `Neu [N]`
-- `Final speichern (F)`
-
-Im Preview-Kontextmenü wurden die unnötigen Statusaktionen ebenfalls entfernt.
+Original patch note file: `README_VIEWER_LAYOUT_RATING_FILENAME_1_3_16.md`

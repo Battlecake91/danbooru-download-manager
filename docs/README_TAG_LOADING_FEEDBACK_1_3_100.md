@@ -1,14 +1,21 @@
-# Patch 1.3.100 - sichtbare Ladeanzeige beim Laden von Tags
+# 1.3.100 - Tag Loading Feedback
 
-Dieser Patch ergänzt sichtbare Rückmeldung, wenn Tag-Daten geladen werden.
+## Summary
 
-## Änderungen
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-- Lazy-Tabs zeigen beim ersten Öffnen jetzt eine aktive Meldung wie `Lade Tags…`, bevor der schwere Tab konstruiert wird.
-- Die Statusleiste zeigt ebenfalls `Lade <Tab>…` und danach `<Tab> geladen.`.
-- Im Viewer wird der Tagbereich beim Neuaufbau sichtbar auf `Lade Tags…` gesetzt.
-- Nach erfolgreichem Laden zeigt die Statusleiste kurz `Tags geladen.`.
+## Scope
 
-## Zweck
+**Area:** Tag management
 
-Beim Öffnen des Tags-Tabs oder beim Wechsel auf Posts mit vielen Tags wirkt die Oberfläche nicht mehr eingefroren. Die Arbeit selbst kann je nach Datenbankgröße weiterhin dauern, aber der Nutzer sieht wenigstens, dass die Anwendung lädt und nicht nur beleidigt schweigt.
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_TAG_LOADING_FEEDBACK_1_3_100.md`

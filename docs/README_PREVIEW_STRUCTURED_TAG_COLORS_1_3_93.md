@@ -1,37 +1,21 @@
-# 1.3.93 - Preview: aufgeschlüsselte Taggruppen farbig
+# 1.3.93 - Preview Structured Tag Colors
 
-Dieser Patch verbessert die aufgeschlüsselte Tag-Darstellung in den Preview-Karten.
+## Summary
 
-## Änderung
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Im Modus `Aufgeschlüsselt` werden die Taggruppen jetzt farblich wie im Viewer hervorgehoben:
+## Scope
 
-- Artist: Orange
-- Character: Türkis
-- Copyright / Serie: Rot
-- General: hellgrau
-- Meta: Violett
+**Area:** Preview and thumbnail workflow
 
-Beispiel:
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-```text
-Artist: Magg (User Mtca8588)
-Character: Senko (Sewayaki Kitsune No Senko-San)
-Copyright: Sewayaki Kitsune No Senko-San
-General: 1Girl, Fox Ears, Fox Tail
-Meta: Commentary, Highres
-```
+## Release context
 
-Die Raw-Darstellung bleibt unverändert.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Technisch
+## Source note
 
-- `ThumbnailCard.update_tags_label()` erzeugt im strukturierten Modus jetzt HTML-Zeilen mit farbigen Gruppen.
-- `tags_label` nutzt explizit `Qt.RichText`.
-- Die Farben entsprechen den Viewer-Tagfarben.
-
-## Prüfung
-
-```bash
-python3 -m compileall app/gui/thumbnail_grid.py
-```
+Original patch note file: `README_PREVIEW_STRUCTURED_TAG_COLORS_1_3_93.md`

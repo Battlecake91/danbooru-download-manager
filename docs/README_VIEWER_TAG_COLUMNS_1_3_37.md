@@ -1,22 +1,21 @@
-# 1.3.37 - Viewer Tagspalten kompakter
+# 1.3.37 - Viewer Tag Columns
 
-Dieses Patch-ZIP enthält nur geänderte Dateien.
+## Summary
 
-## Viewer / Tags
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-- General- und Meta-Tags zeigen Zusatzwerte jetzt als kompakte rechte Spalten.
-- Der Tagname bleibt linksbündig.
-- Rechts stehen drei kurze Spalten:
-  - `S:` Score
-  - `✖:` Filename-Exclude (`ja` / `nein`)
-  - `⌀☆:` durchschnittliches persönliches Rating
-- Artist, Serie/Copyright und Character bleiben weiterhin ohne Zusatzspalten, damit die obere Tagaufteilung nicht wieder kaputtgeht.
-- Durchschnittliche Sterne werden kompakter ohne `/10` angezeigt.
+## Scope
 
-Beispiel:
+**Area:** Viewer workflow
 
-```text
-brown_eyes                         S: -5 | ✖: nein | ⌀☆: 7.5
-```
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-Technisch wird für General/Meta pro Zeile ein kleines Widget verwendet, damit die rechten Werte sauber ausgerichtet sind und nicht per Leerzeichen-Magie herumrutschen.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_TAG_COLUMNS_1_3_37.md`

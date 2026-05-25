@@ -1,58 +1,21 @@
-# 1.3.92 - Preview-Karten: Raw- oder aufgeschlüsselte Tag-Darstellung
+# 1.3.92 - Preview Tag Display Mode
 
-## Ziel
+## Summary
 
-Die Preview-Karten können die Tags jetzt wahlweise weiterhin roh als technische Danbooru-Tagliste anzeigen oder typisiert/lesbarer aufschlüsseln.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Neue Konfigurationsoption
+## Scope
 
-In `Konfig -> GUI -> Preview-Karten-Inhalte` gibt es eine neue Auswahl:
+**Area:** Preview and thumbnail workflow
 
-- `Raw: einfache Tag-Zeile`
-- `Aufgeschlüsselt: Artist / Character / Copyright / …`
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Gespeichert wird die Einstellung unter:
+## Release context
 
-```text
-gui.preview_card.tag_display_mode
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Werte:
+## Source note
 
-```text
-raw
-structured
-```
-
-## Raw-Modus
-
-Der Raw-Modus entspricht dem bisherigen Verhalten. Tags werden platzsparend als technische Tag-Zeile angezeigt, z. B.:
-
-```text
-1girl animal_ears fox_tail senko_(sewayaki_kitsune_no_senko-san)
-```
-
-Die bestehenden Tagtyp-Checkboxen wirken weiterhin als Filter.
-
-## Aufgeschlüsselter Modus
-
-Im strukturierten Modus werden Tags nach Typ gruppiert:
-
-```text
-Artist: Magg (User Mtca8588)
-Character: Senko (Sewayaki Kitsune No Senko-San)
-Copyright: Sewayaki Kitsune No Senko-San
-General: 1Girl, Fox Ears, Fox Tail
-Meta: Commentary, Highres
-```
-
-Dabei werden:
-
-- Unterstriche durch Leerzeichen ersetzt
-- Anfangsbuchstaben über einfache Titel-Schreibweise groß geschrieben
-- deaktivierte Tagtypen nicht angezeigt
-
-## Hinweise
-
-Die Darstellung nutzt die bereits in der DB gespeicherten typisierten Felder `tags_artist`, `tags_character`, `tags_copyright`, `tags_general` und `tags_meta`. Falls bei alten Einträgen keine typisierten Tags vorhanden sind, fällt die Karte im Zweifel auf die bisherige Raw-Anzeige zurück, sofern alle Tagtypen aktiv sind.
-
+Original patch note file: `README_PREVIEW_TAG_DISPLAY_MODE_1_3_92.md`

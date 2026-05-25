@@ -1,39 +1,21 @@
-# 1.3.95 - Start beschleunigt: Lazy Tabs
+# 1.3.95 - Startup Lazy Tabs
 
-Dieser Patch reduziert die Startzeit der GUI, indem beim Programmstart nur noch der Fetch-Tab sofort erzeugt wird.
+## Summary
 
-## Problem
+Introduces startup or first-run behavior needed to make the application usable without manual file editing.
 
-`AppWindow` hat bisher beim Start alle Tabs direkt konstruiert:
+## Scope
 
-- Preview / Review
-- Importer
-- Tags
-- Kategorien
-- Konfiguration
+**Area:** General development note
 
-Mehrere dieser Tabs führen bereits im Konstruktor Datenbankabfragen oder Reloads aus. Besonders teuer ist der Tag-Tab, weil er initial `fetch_tag_overview(..., limit=5000)` lädt. Dadurch musste der Nutzer beim Start warten, obwohl diese Tabs oft gar nicht sofort geöffnet werden.
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-## Änderung
+## Release context
 
-- `AppWindow` erzeugt beim Start nur noch `FetchTab`.
-- Alle anderen Tabs bekommen zuerst einen leichten Platzhalter.
-- Beim ersten Öffnen eines Tabs wird der echte Tab erzeugt und ersetzt den Platzhalter.
-- Fetch-Signale bleiben erhalten:
-  - Fetch gestartet / beendet aktualisiert den Preview-Status, wenn der Preview-Tab schon existiert.
-  - Wenn Preview noch nicht geladen wurde, wird ein ausstehender Reload gemerkt und beim ersten Öffnen nachgeholt.
-- Import- und Config-Signale werden erst verbunden, wenn die jeweiligen Tabs erzeugt werden.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Debug
+## Source note
 
-Neue CLI-Option:
-
-```bash
-python main.py --gui --debug-startup
-```
-
-Damit werden einfache Startzeit-Markierungen für `AppWindow` und Lazy-Tab-Erzeugung ausgegeben.
-
-## Erwarteter Effekt
-
-Das Fenster sollte schneller erscheinen, weil teure Tab-Initialisierung und große DB-Abfragen erst dann passieren, wenn der jeweilige Tab wirklich geöffnet wird.
+Original patch note file: `README_STARTUP_LAZY_TABS_1_3_95.md`

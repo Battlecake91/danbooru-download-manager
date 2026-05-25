@@ -1,45 +1,21 @@
-# Danbooru Manager 1.2.1 - Viewer-Query-Fix
+# 1.2.1 - Viewer Query Fix
 
-## Problem
+## Summary
 
-`Als Query in Preview suchen` aus dem Viewer-Tag-Kontextmenü konnte eine Fenster-/Signal-Lawine auslösen.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Wahrscheinliche Ursache:
+## Scope
 
-- Aktion wurde direkt aus dem `QMenu`/`QAction`-Kontext heraus ausgeführt
-- Preview wurde sofort manipuliert
-- ComboBox-Signale feuerten mehrere Reloads
-- Qt bekam Eventloop-Schluckauf und öffnete massenhaft Fenster
+**Area:** Viewer workflow
 
-Qt kann aus einem einfachen Rechtsklick halt auch eine Oper machen. Niemand hat darum gebeten.
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-## Fix
+## Release context
 
-### Viewer
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Tag-Kontextmenü nutzt jetzt `popup()` statt blockierendem `exec()`
-- Menü wird als `self._tag_context_menu` gehalten
-- alle Aktionen laufen per `QTimer.singleShot(0, ...)`
-- Query-Request wird verzögert emittiert
+## Source note
 
-### PreviewWindow
-
-- `query_requested` wird nicht mehr direkt angewendet
-- Query wird als Pending Query gespeichert
-- Anwendung per `QTimer.singleShot(0, ...)`
-- ComboBox-Signale werden beim Setzen blockiert
-- danach genau ein `reload_posts()`
-
-## Geänderte Dateien
-
-- `app/gui/image_viewer.py`
-- `app/gui/preview_window.py`
-
-## Test
-
-Im Viewer:
-
-1. Tag rechts anklicken
-2. `Als Query in Preview suchen`
-3. Es sollte genau die Preview aktualisiert werden
-4. Es dürfen keine neuen Viewer-Fenster massenhaft entstehen
+Original patch note file: `README_VIEWER_QUERY_FIX_1_2_1.md`

@@ -1,70 +1,21 @@
-# Danbooru Manager 1.3.4 - Parent/Child lokal hervorheben und öffnen
+# 1.3.4 - Related Local Open
 
-## Problem
+## Summary
 
-Wenn zu einem Post bereits ein lokaler Parent oder Child existierte, wurde das zwar angezeigt, aber zu unauffällig.
+Documents one development patch from the path to the 1.3.135 public release.
 
-Außerdem öffnete Doppelklick auf Parent/Child bisher den Remote-Danbooru-Link.
-Gewünscht ist:
+## Scope
 
-- klar farblich hervorheben
-- Doppelklick bevorzugt lokale Datei öffnen
-- Rechtsklick mit Lokal/Remote-Auswahl
+**Area:** General development note
 
-## Neu im Viewer
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-### Warnbox
+## Release context
 
-Wenn Parent/Child-Posts lokal bekannt sind, erscheint rechts eine auffällige Warnbox:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-⚠ Es existiert bereits mindestens eine lokale Parent/Child-Version
-```
+## Source note
 
-### Related-Liste farbig
-
-Einträge in der Parent/Child-Liste sind jetzt farblich hervorgehoben:
-
-- lokale Datei vorhanden: gelb/orange hervorgehoben
-- nur DB/Remote bekannt: ebenfalls markiert, aber anders
-
-### Doppelklick
-
-Doppelklick auf einen Parent/Child-Eintrag:
-
-```text
-lokale Datei vorhanden → lokale Datei öffnen
-sonst → Remote Originalpost öffnen
-```
-
-### Rechtsklick
-
-Rechtsklick auf einen Parent/Child-Eintrag:
-
-```text
-Lokal öffnen
-Lokalen Ordner öffnen
-Remote Originalpost öffnen
-Remote-Link kopieren
-Lokalen Pfad kopieren
-```
-
-Lokale Aktionen sind deaktiviert, wenn keine lokale Datei gefunden wurde.
-
-## Lokale Pfadprüfung
-
-Gesucht wird in dieser Reihenfolge:
-
-```text
-final_file_path
-original_cache_path
-original_path
-thumbnail_path
-rejected_thumbnail_path
-```
-
-## Geänderte Datei
-
-```text
-app/gui/image_viewer.py
-```
+Original patch note file: `README_RELATED_LOCAL_OPEN_1_3_4.md`

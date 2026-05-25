@@ -1,71 +1,21 @@
-# Danbooru Manager 1.2.2 - Preview Reload Debounce + Viewer-Deduplizierung
+# 1.2.2 - Preview Reload Debounce
 
-## Problem
+## Summary
 
-Beim Ändern des Preview-Limits, z. B. von 100 auf 500, konnten massenhaft Viewer-Fenster entstehen.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Das ist derselbe Grundfehler wie beim Viewer-Query:
+## Scope
 
-- UI-Elemente feuern mehrere Signale
-- Preview baut das Grid sofort neu
-- Qt verarbeitet währenddessen noch alte Events
-- irgendwo wird `open_viewer_requested` mehrfach ausgelöst
-- Ergebnis: Fensterzoo bis zum Absturz
+**Area:** Preview and thumbnail workflow
 
-## Fix 1: Reloads werden entprellt
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-`valueChanged` von Ansicht, Status und Limit ruft nicht mehr direkt `reload_posts()` auf.
+## Release context
 
-Stattdessen:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-schedule_reload()
-→ QTimer singleShot 250 ms
-→ reload_posts()
-```
+## Source note
 
-Zusätzlich:
-
-```python
-self.limit_spin.setKeyboardTracking(False)
-```
-
-Beim Tippen von `500` reloadet er also nicht bei jedem Zwischenzustand.
-
-## Fix 2: Reentrancy Guard
-
-Während `reload_posts()` läuft:
-
-- kein zweiter Reload parallel
-- weitere Reload-Anfrage wird gemerkt
-- danach wird maximal ein Reload nachgezogen
-
-## Fix 3: Viewer nur einmal pro Post-ID
-
-`PreviewWindow` hält jetzt:
-
-```python
-self.viewer_windows_by_post_id: dict[int, ImageViewerWindow]
-```
-
-Wenn ein Viewer für diese Post-ID schon offen ist:
-
-```text
-raise_()
-activateWindow()
-kein neues Fenster
-```
-
-Selbst wenn Qt wieder Signale hustet wie ein alter Drucker, entstehen keine hunderte Viewer-Fenster mehr.
-
-## Geänderte Datei
-
-- `app/gui/preview_window.py`
-
-## Test
-
-1. Preview öffnen
-2. Limit von 100 auf 500 ändern
-3. Es sollte genau ein verzögerter Reload passieren
-4. Es dürfen keine neuen Viewer-Fenster entstehen
-5. Mehrfach Doppelklick auf denselben Post öffnet keinen zweiten Viewer, sondern fokussiert den bestehenden
+Original patch note file: `README_PREVIEW_RELOAD_DEBOUNCE_1_2_2.md`

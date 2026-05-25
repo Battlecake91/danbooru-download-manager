@@ -1,31 +1,21 @@
-# 1.3.116 - Datenbank-Wartung und Größenanalyse
+# 1.3.116 - Database Maintenance
 
-Dieser Patch ergänzt einen lazy geladenen Tab **Wartung** mit Werkzeugen zur Analyse und Bereinigung der lokalen SQLite-Datenbank.
+## Summary
 
-## Neu
+Improves SQLite-backed storage, database maintenance, locking behavior, and migration away from external config files.
 
-- Neuer Tab **Wartung** im Hauptfenster.
-- Datenbankgrößenanalyse mit:
-  - DB-Dateigröße
-  - WAL-/SHM-Größe
-  - SQLite-Page- und Freelist-Informationen
-  - Zeilenzahlen wichtiger Tabellen
-  - größte Tabellen/Indizes via `dbstat`, falls verfügbar
-  - größte Einträge in `app_settings`
-- Button **LLM-Debug-Payloads löschen**:
-  - löscht `llm.last_fetch_payloads`
-  - löscht `llm.last_fetch_payload_summary`
-  - verändert keine gespeicherten LLM-Ergebnisse an Posts
-- Button **WAL komprimieren**:
-  - führt `PRAGMA wal_checkpoint(TRUNCATE)` aus
-- Button **VACUUM ausführen**:
-  - kompaktiert die eigentliche SQLite-Datei
-  - sinnvoll, wenn `freelist_count` bzw. geschätzter freier Platz groß ist
+## Scope
 
-## Warum
+**Area:** Configuration and database
 
-Die DB kann durch viele Posts, Tags, Indizes und Debug-Payloads schnell wachsen. Besonders `llm.last_fetch_payloads` kann große JSON-Blöcke enthalten und soll deshalb gezielt löschbar sein.
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
 
-## Hinweis
+## Release context
 
-`VACUUM` sollte nicht während Fetch/Import laufen. Es kann bei größeren Datenbanken eine Weile dauern.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_DATABASE_MAINTENANCE_1_3_116.md`

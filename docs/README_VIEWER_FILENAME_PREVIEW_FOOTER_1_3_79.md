@@ -1,23 +1,21 @@
-# 1.3.79 Viewer: Dateiname-/Zielpfad-Preview in Fußzeile
+# 1.3.79 - Viewer Filename Preview Footer
 
-## Problem
+## Summary
 
-Der Viewer konnte durch lange Zielpfad- oder Dateiname-Vorschauen eine sehr große minimale Breite bekommen. Auf breiten Monitoren führte das dazu, dass das Fenster unnötig über große Teile der Bildschirmbreite gezogen wurde.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Änderung
+## Scope
 
-Die Zielpfad- und Dateiname-Vorschau wurde aus der rechten Seitenleiste entfernt und in eine Fußzeile unter den gesamten Viewer verschoben.
+**Area:** Preview and thumbnail workflow
 
-Dadurch beeinflussen lange Dateinamen nicht mehr die Mindestbreite der rechten Seitenleiste.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-## Details
+## Release context
 
-- `Zielpfad` steht nun unten unter Bildbereich und Seitenleiste.
-- Die Dateiname-Vorschau bleibt über den bestehenden Button ein-/ausklappbar.
-- Zielpfad und Dateiname-Vorschau bleiben markierbar/kopierbar.
-- Beide Labels sind umbrechbar und erzwingen keine große minimale Fensterbreite mehr.
-- Keine Änderung an Dateiname-Logik oder finalem Speichern.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Geänderte Dateien
+## Source note
 
-- `app/gui/image_viewer.py`
+Original patch note file: `README_VIEWER_FILENAME_PREVIEW_FOOTER_1_3_79.md`

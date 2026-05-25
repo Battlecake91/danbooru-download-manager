@@ -1,57 +1,21 @@
-# Danbooru Manager 0.7 - Bildbetrachter und Viewer-Download
+# 0.7 - Image Viewer
 
-## Neu
+## Summary
 
-- Doppelklick auf Thumbnail öffnet den Bildbetrachter
-- `Enter` im Grid öffnet ebenfalls den Bildbetrachter
-- `O` im Grid öffnet den Danbooru-Originalpost
-- Bildbetrachter lädt bei Bedarf die große Datei in den lokalen Cache
-- Tags werden im Viewer angezeigt
-- Status kann im Viewer gesetzt werden
-- Sternebewertung 1-5 wird gespeichert
-- Pfeiltasten blättern durch die aktuell sichtbare Grid-Liste
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-## Neue Datei
+## Scope
 
-- `app/services/download_service.py`
-- `app/gui/image_viewer.py`
+**Area:** Viewer workflow
 
-## Geänderte Dateien
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-- `config.example.yaml`
-- `app/core/config.py`
-- `app/core/database.py`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
+## Release context
 
-## Config-Ergänzung
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```yaml
-viewer_download_source: "file"
+## Source note
 
-viewer:
-  fit_to_window: true
-```
-
-Mögliche Werte für `viewer_download_source`:
-
-- `file`: Originaldatei bevorzugen
-- `large`: `large_file_url` bevorzugen
-- `best`: `file -> large`
-
-## Hotkeys im Viewer
-
-- `←` / `→`: vorheriges/nächstes Bild
-- `1` bis `5`: Sternebewertung
-- `H`: hohes Potential
-- `P`: prüfen
-- `S`: zum Speichern vormerken
-- `Entf`: ablehnen
-- `A`: automatisch aussortieren
-- `N`: neu zurücksetzen
-- `O`: Originalpost öffnen
-
-## Hinweise
-
-Der Viewer ist noch kein finaler Speicherworkflow. Er lädt nur die große Datei in den lokalen Cache und ermöglicht Review/Bewertung.
-Finales Speichern in Kategorieordner kommt im nächsten Schritt.
+Original patch note file: `README_IMAGE_VIEWER_0_7.md`

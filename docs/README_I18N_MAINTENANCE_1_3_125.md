@@ -1,22 +1,21 @@
-# Patch 1.3.125 - Maintenance / DB i18n
+# 1.3.125 - I18N Maintenance
 
-This patch migrates the Maintenance / DB tab to the i18n system.
+## Summary
 
-## Changed
+Moves visible UI text toward the shared internationalization layer and prepares the application for English-first operation.
 
-- `app/gui/maintenance_tab.py`
-  - translated database maintenance labels, buttons and dialogs
-  - translated quality audit controls, result labels and table headers
-  - translated audit notes and repair messages
-  - translated the database size report
-  - switched internal audit status labels from German to English
-- `app/i18n/locales/en.json`
-  - added Maintenance / DB keys
-- `app/i18n/locales/de.json`
-  - added the same keys as English fallbacks to keep the UI English-first during migration
+## Scope
 
-## Validation
+**Area:** Internationalization
 
-- `python3 -m compileall -q main.py app`
-- JSON locale files load successfully
-- Patch applies cleanly on top of 1.3.124
+- Visible strings move into language resources.
+- English is treated as the main release language.
+- German remains useful during the migration where supported by the application.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_MAINTENANCE_1_3_125.md`

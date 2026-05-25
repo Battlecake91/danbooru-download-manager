@@ -1,24 +1,21 @@
-# 1.3.76 Viewer: markierte General-/Meta-Tags besser lesbar
+# 1.3.76 - Viewer Tag Selection Readability
 
-## Problem
+## Summary
 
-Im Viewer wurden markierte General- und Meta-Tags mit einem farbigen Auswahlhintergrund angezeigt, aber die eingebetteten Label-Zeilen behielten ihre normale Schriftfarbe.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Dadurch konnte bei markierten General-/Meta-Tags die Schrift nahezu dieselbe Farbe wie der Auswahlhintergrund haben.
-Artist, Serie/Copyright und Character waren nicht betroffen, weil diese Gruppen normale `QListWidgetItem`-Texte verwenden und die Stylesheet-Regel für `QListWidget::item:selected` dort sauber greift.
+## Scope
 
-## Änderung
+**Area:** Viewer workflow
 
-- Für General- und Meta-Zeilen wird bei Auswahl die Schriftfarbe der eingebetteten Labels auf Schwarz gesetzt.
-- Beim Abwählen wird die normale Farbe wiederhergestellt:
-  - Tag-Name: jeweilige Typfarbe
-  - Detailspalten: hellgrau
-- Artist, Serie/Copyright und Character bleiben unverändert.
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-## Technische Notiz
+## Release context
 
-General und Meta nutzen `setItemWidget()` mit eigenen `QLabel`-Widgets. Qt übernimmt die `QListWidget::item:selected`-Textfarbe nicht automatisch auf eingebettete Widgets. Deshalb synchronisiert `TypedTagListWidget` die Label-Farben jetzt über `itemSelectionChanged`.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Geänderte Dateien
+## Source note
 
-- `app/gui/tag_display.py`
+Original patch note file: `README_VIEWER_TAG_SELECTION_READABILITY_1_3_76.md`

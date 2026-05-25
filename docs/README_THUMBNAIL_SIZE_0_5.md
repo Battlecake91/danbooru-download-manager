@@ -1,31 +1,21 @@
-# Danbooru Manager 0.5 - Thumbnail-Größe in der GUI
+# 0.5 - Thumbnail Size
 
-Dieser Patch ergänzt einen Thumbnail-Größenregler in der Toolbar.
+## Summary
 
-## Neu
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-- Toolbar-Feld `Thumbnail: ... px`
-- Größe live änderbar
-- Startwert aus `config.yaml`
-- Min/Max/Schrittweite aus `config.yaml`
-- Kartenlayout passt sich automatisch an die Fensterbreite an
+## Scope
 
-## Geänderte Dateien
+**Area:** Preview and thumbnail workflow
 
-- `config.example.yaml`
-- `app/core/config.py`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-## Config-Ergänzung
+## Release context
 
-```yaml
-gui:
-  thumbnail_size: 280
-  thumbnail_size_min: 120
-  thumbnail_size_max: 600
-  thumbnail_size_step: 20
-  card_width_extra: 80
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Für 4K sind meistens Werte zwischen 280 und 420 angenehm.
+## Source note
+
+Original patch note file: `README_THUMBNAIL_SIZE_0_5.md`

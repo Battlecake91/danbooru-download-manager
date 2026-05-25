@@ -1,46 +1,21 @@
-# 1.3.12 - Dateiname-Vorschau und temporäre Qualitätsprüfung
+# 1.3.12 - Filename Preview Quality Audit
 
-## Dateiname-Vorschau im Viewer
+## Summary
 
-Der Viewer zeigt unter dem Zielpfad jetzt eine Dateiname-Vorschau an:
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-- finaler Dateiname laut aktuellem `filename.pattern`
-- verwendetes Pattern
-- Anzahl der verwendeten Artist-, Character-, Copyright-, General- und Meta-Tags
-- die aktuell im Dateinamen enthaltenen General-Tags
-- Anzahl der durch Filename-Exclude entfernten Tags
+## Scope
 
-Damit kann man direkt sehen, ob noch unnötige Tags im Dateinamen landen und sie über den Tag-Rechtsklick in den Filename-Exclude schieben.
+**Area:** Preview and thumbnail workflow
 
-## Neue Metadaten in der Datenbank
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Die Tabelle `posts` bekommt per Migration diese Spalten:
+## Release context
 
-- `image_width`
-- `image_height`
-- `file_size`
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Neue Fetch-Läufe speichern diese Werte direkt aus der Danbooru-API. Für alte Einträge kann die temporäre Wartungsseite fehlende Werte nachladen.
+## Source note
 
-## Temporärer Tab: Wartung temporär
-
-Es gibt einen neuen Tab `Wartung temporär`.
-
-Funktion:
-
-1. `Gespeicherte Dateien prüfen` scannt alle Posts mit `final_file_path`.
-2. Lokale Bildmaße werden mit `QImageReader` gelesen.
-3. Danbooru-Originalmaße werden aus der DB genommen oder optional live von Danbooru nachgeladen.
-4. Wenn lokale Breite oder Höhe kleiner als das Danbooru-Original ist, wird der Post als `Verdächtig` markiert.
-5. Zusätzlich wird die lokale Dateigröße gegen `file_size` geprüft, falls vorhanden.
-
-## Reparatur
-
-- `Ausgewählte Verdächtige neu laden/ersetzen`
-- `Alle Verdächtigen neu laden/ersetzen`
-
-Die Reparatur lädt strikt `file_url` über `DownloadService.ensure_full_original_cached()` und ersetzt die Datei am bestehenden `final_file_path`. Der Dateiname und der Zielordner bleiben also erhalten.
-
-## Hinweis
-
-Der Wartungs-Tab ist als temporäre Reparaturfunktion gedacht und kann später wieder entfernt werden, sobald die alten falsch gespeicherten Sample-/Thumbnail-Dateien bereinigt sind.
+Original patch note file: `README_FILENAME_PREVIEW_QUALITY_AUDIT_1_3_12.md`

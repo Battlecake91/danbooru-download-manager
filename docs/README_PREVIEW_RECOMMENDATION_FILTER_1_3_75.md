@@ -1,25 +1,21 @@
-# 1.3.75 Preview: Vorauswahl-Filter und Score-Zusammenfassung
+# 1.3.75 - Preview Recommendation Filter
 
-Dieser Patch ergänzt den Previewer um einen direkten Filter für den lokalen Vorauswahl-Score.
+## Summary
 
-## Neu
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-- Toolbar-Option `Vorauswahl ≥`
-- Mindestwert per Spinbox einstellbar
-- Filter ist nur aktiv, wenn die Checkbox aktiviert ist
-- Trefferliste wird nach Kategorie- und Vorauswahlfilter gemeinsam gefiltert
-- Infozeile zeigt jetzt zusätzlich:
-  - aktiven Vorauswahlfilter
-  - Anzahl positiver, neutraler und negativer Scores
-  - Durchschnitt
-  - besten und schlechtesten Score im geladenen Trefferbereich
+## Scope
 
-## Verhalten
+**Area:** Preview and thumbnail workflow
 
-Der Score-Filter arbeitet auf dem bereits berechneten lokalen Vorauswahl-Score aus `RecommendationEngine`.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Tags mit `ignore_recommendation_score` bleiben weiterhin aus dem Score herausgerechnet.
+## Release context
 
-## Ziel
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Bei vielen Thumbnails kann schneller nur auf gute Kandidaten eingeschränkt werden, ohne direkt LLM-Scoring zu benötigen.
+## Source note
+
+Original patch note file: `README_PREVIEW_RECOMMENDATION_FILTER_1_3_75.md`

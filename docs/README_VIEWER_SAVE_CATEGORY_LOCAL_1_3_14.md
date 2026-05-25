@@ -1,39 +1,21 @@
-# 1.3.14 - Viewer Save/Overwrite, Kategorie-Persistenz, lokale Parent/Child-Anzeige
+# 1.3.14 - Viewer Save Category Local
 
-## Fixes
+## Summary
 
-### Parent/Child-Hinweis im Viewer
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Der Viewer zählt jetzt getrennt:
+## Scope
 
-- bekannte Parent/Child-Posts in der lokalen DB
-- davon wirklich lokal final gespeicherte Dateien
+**Area:** Viewer workflow
 
-Eine Warnung vor lokalen Varianten-Duplikaten erscheint nur noch, wenn eine finale Datei tatsächlich existiert. Reine DB-/Remote-/Thumbnail-Einträge werden als bekannte Parent/Child-Einträge angezeigt, aber nicht mehr als lokale Version verkauft.
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-### Final speichern überschreibt jetzt nach Rückfrage
+## Release context
 
-Der separate Button `Final überschreiben` wurde entfernt.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Wenn ein Post bereits einen `final_file_path` besitzt, fragt `Final speichern (F)` jetzt nach:
+## Source note
 
-- existiert die Datei lokal: Original erneut laden und final ersetzen/neu speichern
-- fehlt die Datei lokal: Original erneut laden und den Zielpfad reparieren
-
-Dabei wird für final gespeicherte Dateien weiterhin Danbooru `file_url` verwendet, nicht Thumbnail, Preview oder Sample.
-
-### Kategorieauswahl im Viewer bleibt erhalten
-
-Eine im Viewer ausgewählte Kategorie wird sofort als manuelle Kategorie in `post_categories` gespeichert. Beim Wechsel zum nächsten Bild und zurück wird diese Kategorie wieder geladen, statt erneut stumpf der automatische Vorschlag zu werden. Bahnbrechend: Auswahl bleibt Auswahl.
-
-### Lokales Bild öffnen
-
-Neben `Zielordner öffnen` gibt es jetzt `Lokales Bild öffnen`. Der Button ist nur aktiv, wenn die finale lokale Datei wirklich existiert.
-
-### Suche findet auch gespeicherte/lokale Bilder
-
-Bei aktiver Text-/Tag-Suche sucht die Preview jetzt über alle Status. Damit tauchen auch bereits gespeicherte lokale Bilder auf, wenn nach Tags gesucht wird. Ohne Suchtext bleiben die Statusfilter unverändert wirksam.
-
-### Preview-Badges
-
-Die Thumbnail-Karten zeigen bei Parent/Child-Beziehungen nicht mehr `lokal`, sondern `bekannt`, weil die Preview ohne Dateisystemprüfung sonst wieder schummelt.
+Original patch note file: `README_VIEWER_SAVE_CATEGORY_LOCAL_1_3_14.md`

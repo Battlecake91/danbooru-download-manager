@@ -1,32 +1,21 @@
-# 1.3.61 – Tag-Tabelle: Alias und manueller Score direkt editieren
+# 1.3.61 - Tag Inline Alias Score
 
-Diese Änderung macht die Tag-Pflege im Tag-Tab direkter und räumt das Kontextmenü weiter auf.
+## Summary
 
-## Neu
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-- Die Spalte `Alias` ist direkt in der Tabelle editierbar.
-- Die Spalte `Manueller Score` ist direkt in der Tabelle editierbar.
-- Leerer manueller Score entfernt den manuellen Override und schreibt `NULL` in die Datenbank.
-- Komma und Punkt werden bei manuellen Scores akzeptiert.
-- Gültiger Score-Bereich bleibt `-10` bis `+10`.
-- Nach dem Editieren wird lokal aktualisiert, ohne vollständiges `reload_tags()`.
+## Scope
 
-## Weiterhin direkt klickbar
+**Area:** Tag management
 
-- `Filename-Exclude`
-- `Kat.-Scoring ignoriert`
-- `Vorauswahl ignoriert`
-- `LLM ignoriert`
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-## Kontextmenü im Tag-Tab
+## Release context
 
-Das Tag-Tab-Kontextmenü wurde weiter entschlackt:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Einzelnes `Alias bearbeiten` wurde entfernt, weil die Alias-Spalte direkt editierbar ist.
-- `Manuellen Score bearbeiten` wurde entfernt, weil die Score-Spalte direkt editierbar ist.
-- Bulk-Alias-Aktionen für mehrere markierte Tags bleiben erhalten.
-- `Ähnliche Tags suchen/bearbeiten…` bleibt erhalten.
+## Source note
 
-## Hinweis
-
-Die Viewer-Kontextmenüs bleiben für schnelle Tag-Aktionen erhalten. Die direkte Tabellenbearbeitung betrifft nur den Tag-Tab.
+Original patch note file: `README_TAG_INLINE_ALIAS_SCORE_1_3_61.md`

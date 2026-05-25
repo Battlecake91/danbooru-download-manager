@@ -1,10 +1,21 @@
-# 1.3.88 Config-Vorschau: Preview-Kartenlayout angeglichen
+# 1.3.88 - Config Preview Card Layout
 
-Die Konfigurationsvorschau nutzt weiterhin die echte `ThumbnailCard`, aber das Kartenlayout wurde an die Darstellung im Previewer angepasst:
+## Summary
 
-- Thumbnail links.
-- ID, Rating, Score, Parent, Status, Vorauswahl, Kategorie, Verwandtschaft und Pfad rechts neben dem Thumbnail.
-- Tags bleiben unterhalb des oberen Kartenbereichs.
-- Die Konfigurationsvorschau zeigt dadurch nicht mehr eine andere vertikale Anordnung als der Previewer.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Geändert wurde nur die Kartenstruktur in `app/gui/thumbnail_grid.py`. Die Konfig-Seite nutzt diese Karte unverändert weiter.
+## Scope
+
+**Area:** Preview and thumbnail workflow
+
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CONFIG_PREVIEW_CARD_LAYOUT_1_3_88.md`

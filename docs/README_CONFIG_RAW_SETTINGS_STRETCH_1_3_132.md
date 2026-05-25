@@ -1,14 +1,21 @@
-# Patch 1.3.132 - Raw app_settings stretches to the bottom
+# 1.3.132 - Config Raw Settings Stretch
 
-This patch adjusts the Config tab layout so the `Raw app_settings` diagnostic area grows with the available vertical space instead of keeping a mostly fixed height.
+## Summary
 
-Changes:
+Improves the application configuration UI, database-backed settings, preview configuration, and runtime defaults.
 
-- The Config tab widget now uses an expanding size policy.
-- The Config tab widget is added to its parent layout with stretch.
-- Individual tab pages use an expanding size policy.
-- The `Raw app_settings` group is added to the Custom tab with stretch.
-- The unused bottom stretch in the Custom tab was removed so the raw settings editor consumes the remaining space.
-- The raw settings editor keeps a smaller minimum height but expands down to the bottom of the visible area.
+## Scope
 
-The value collapsing/masking behavior from 1.3.131 remains unchanged.
+**Area:** Configuration and database
+
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CONFIG_RAW_SETTINGS_STRETCH_1_3_132.md`

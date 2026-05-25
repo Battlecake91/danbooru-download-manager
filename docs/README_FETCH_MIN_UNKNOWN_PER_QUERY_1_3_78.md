@@ -1,41 +1,21 @@
-# 1.3.78 Fetch: minimale unbekannte Posts pro Query
+# 1.3.78 - Fetch Min Unknown Per Query
 
-## Ziel
+## Summary
 
-Der Fetcher kann nun nicht nur eine maximale Anzahl geprüfter Posts pro Query verwenden, sondern optional auch ein Ziel für neue/unbekannte Posts pro Query.
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-## Neue Option
+## Scope
 
-Im Fetch-Tab:
+**Area:** Fetch workflow
 
-- `Min unbekannte pro Query`
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-Verhalten:
+## Release context
 
-- `0` deaktiviert den neuen Modus.
-- Bei einem Wert größer `0` blättert jede Query weiter, bis so viele neue/unbekannte Posts gefunden wurden.
-- Bereits bekannte Posts zählen dann nicht gegen dieses Ziel.
-- Der Fetch stoppt trotzdem bei `Max Posts gesamt` oder wenn Danbooru keine weiteren Seiten für die Query liefert.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Beispiel:
+## Source note
 
-- `Min unbekannte pro Query = 50`
-
-Dann wird jede Query weiter durchsucht, bis 50 neue Posts gefunden wurden oder ein Stop-Kriterium erreicht ist.
-
-## Fortschritt
-
-Im Fortschritt wird im neuen Modus angezeigt:
-
-- Query X / X
-- Unbekannt Query: X / Ziel
-- geprüft gesamt
-- bekannt
-- neu
-- Thumbnails
-
-Der Fortschrittsbalken orientiert sich im neuen Modus am Ziel für neue/unbekannte Posts statt an der Zahl der nur geprüften Posts.
-
-## Presets
-
-Die neue Option wird in Fetch-Presets und in der letzten Fetch-Konfiguration gespeichert.
+Original patch note file: `README_FETCH_MIN_UNKNOWN_PER_QUERY_1_3_78.md`

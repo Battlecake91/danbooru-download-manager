@@ -1,25 +1,21 @@
-# Patch 1.3.103 - Preview-Sortierung merken und Labels zurückholen
+# 1.3.103 - Preview Sort Persist Labels
 
-## Ziel
+## Summary
 
-Der Previewer soll die zuletzt verwendete Sortierung behalten. Außerdem waren nach dem letzten Aufräumen zwei sichtbare Beschriftungen zu stark entfernt worden.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Änderungen
+## Scope
 
-### Previewer
+**Area:** Preview and thumbnail workflow
 
-Datei:
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-- `app/gui/preview_window.py`
+## Release context
 
-Änderungen:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Die Sortierung wird beim Ändern unter `gui.preview_sort_order` in `app_settings` gespeichert.
-- Beim Start des Previewers wird `gui.preview_sort_order` wieder gelesen und als aktive Sortierung gesetzt.
-- Falls der gespeicherte Wert unbekannt ist, fällt der Previewer auf `id_desc` zurück.
-- Das Feld für die Thumbnailgröße hat wieder eine sichtbare Beschriftung `Thumbnail:`.
-- Die Vorauswahl-Checkbox hat wieder eine sichtbare Beschriftung `Vorauswahl:`.
+## Source note
 
-## Hinweise
-
-Die Sortierung wird zusätzlich in der laufenden Runtime-Config aktualisiert, damit der aktuelle Prozess denselben Wert weiterverwendet. Ein Fehler beim Speichern blockiert den Previewer nicht, sondern wird nur in der Statusleiste angezeigt.
+Original patch note file: `README_PREVIEW_SORT_PERSIST_LABELS_1_3_103.md`

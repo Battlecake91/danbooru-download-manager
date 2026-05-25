@@ -1,22 +1,21 @@
-# Patch 1.3.99 - SQLite-Lock-Wartezeit und Mehrfachauswahl im Preview-Kontextmenü
+# 1.3.99 - Db Lock And Multi Context
 
-## Problem
+## Summary
 
-Nach einem Fetch konnte ein direkt gestarteter weiterer Fetch mit `sqlite3.OperationalError: database is locked` abbrechen, besonders wenn der Previewer bereits offen war und parallel Daten las oder Karten aktualisierte.
+Improves SQLite-backed storage, database maintenance, locking behavior, and migration away from external config files.
 
-Außerdem wirkte das Kontextmenü im Preview bei Mehrfachauswahl nicht konsistent: einige Aktionen liefen nur auf dem per Rechtsklick angeklickten Post statt auf der gesamten markierten Auswahl.
+## Scope
 
-## Änderung
+**Area:** Configuration and database
 
-- SQLite-Verbindungen verwenden jetzt `timeout=30.0` und `PRAGMA busy_timeout = 30000`.
-- `Database.execute()`, `executemany()` und `commit()` wiederholen kurze Lock-Situationen mit gestaffelten Wartezeiten.
-- Der Previewer zeigt bei einem verbleibenden SQLite-Lock eine verständliche Meldung statt nur hart zu scheitern.
-- Rechtsklick auf einen bereits ausgewählten Preview-Post erhält die Mehrfachauswahl.
-- Rechtsklick auf einen nicht ausgewählten Preview-Post wählt diesen Post einzeln aus.
-- Kontextmenü-Aktionen für Status, Kategorie, Thumbnail neu laden und Final speichern verwenden jetzt die gesamte Auswahl, wenn der angeklickte Post Teil der Mehrfachauswahl ist.
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
 
-## Erwartetes Verhalten
+## Release context
 
-Ein direkt aufeinanderfolgender Fetch sollte nicht mehr wegen kurzer Preview-/Worker-DB-Zugriffe abbrechen. Falls die DB wirklich länger blockiert ist, zeigt der Previewer eine Busy-Meldung und plant einen Reload nach.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Im Preview-Kontextmenü gelten Aktionen jetzt wie erwartet für alle markierten Posts, solange der Rechtsklick auf einen der markierten Posts erfolgt.
+## Source note
+
+Original patch note file: `README_DB_LOCK_AND_MULTI_CONTEXT_1_3_99.md`

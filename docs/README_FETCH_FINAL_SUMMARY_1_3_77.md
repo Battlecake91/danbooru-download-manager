@@ -1,15 +1,21 @@
-# 1.3.77 Fetch-Abschlusszusammenfassung
+# 1.3.77 - Fetch Final Summary
 
-Nach einem erfolgreichen Fetch schreibt der Fetch-Tab jetzt eine kompakte Zusammenfassung ins Log-/Textfeld.
+## Summary
 
-Angezeigt werden:
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-- Queries verarbeitet / Queries gesamt
-- geprüfte Posts
-- neue Posts
-- bekannte bzw. aktualisierte Posts
-- geladene/aktualisierte Thumbnails
+## Scope
 
-Zusätzlich bleibt unter dem Fortschrittsbalken nach dem Fetch eine einzeilige Kurzfassung sichtbar, bis der nächste Fetch gestartet wird.
+**Area:** Fetch workflow
 
-Intern wurde `FetchResult` um `processed_queries` ergänzt, damit bei Limits wie `max_total_posts` sauber erkennbar bleibt, wie viele Queries tatsächlich bearbeitet wurden.
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_FETCH_FINAL_SUMMARY_1_3_77.md`

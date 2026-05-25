@@ -1,18 +1,21 @@
-# 1.3.119 - SQLite-only configuration
+# 1.3.119 - Config Db Only
 
-The application no longer reads `config.yaml`, `config.example.yaml`, `.env`, or environment variables during normal startup.
+## Summary
 
-## Changed
+Improves the application configuration UI, database-backed settings, preview configuration, and runtime defaults.
 
-- `main.py` no longer exposes `--config` or `--env-file`.
-- `app/core/config.py` now returns internal defaults only; SQLite `app_settings` remains the leading runtime configuration.
-- Danbooru credentials and LLM API keys must be stored through the GUI configuration, which writes to SQLite.
-- LLM OpenAI-compatible requests no longer read `LLM_API_KEY`, `OPENAI_API_KEY`, or any other environment fallback.
-- Fetch no longer performs the old non-destructive YAML static config import.
-- `python-dotenv` was removed from `requirements.txt`.
+## Scope
 
-## Repo cleanup
+**Area:** Configuration and database
 
-`config.example.yaml` is obsolete for the GUI/EXE target and should be removed from the repository root. If an old YAML reference is still useful, keep it only as historical documentation under `docs/legacy/`.
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
 
-`.env` and `.env.example` are no longer part of the application workflow. The database configuration is enough. Humanity may recover from this simplification eventually.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CONFIG_DB_ONLY_1_3_119.md`

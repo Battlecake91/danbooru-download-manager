@@ -1,22 +1,21 @@
-# 1.3.19 - Viewer-Seitenpanel kompakter
+# 1.3.19 - Viewer Panel Polish
 
-Änderungen:
+## Summary
 
-- Status-Chips im Viewer sind jetzt fest und flach skaliert.
-- Reihenfolge im rechten Panel angepasst:
-  1. Status
-  2. Parent/Child-Hinweis
-  3. aufklappbare Parent/Child-Liste
-  4. Zielpfad
-  5. Tags
-- Parent/Child-Liste öffnet sich jetzt direkt unter dem Hinweis, nicht mehr oberhalb des Status.
-- Zielpfad wird in einem hellen, eingerahmten Kasten angezeigt und in der Höhe begrenzt.
-- Überschrift `Tags nach Danbooru-Typ` entfernt.
-- General-Tagliste bekommt deutlich mehr Platz.
-- Artist / Serie-Copyright / Character bleiben kompakt nebeneinander.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Syntaxcheck:
+## Scope
 
-```bash
-python -m compileall -f app
-```
+**Area:** Viewer workflow
+
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_PANEL_POLISH_1_3_19.md`

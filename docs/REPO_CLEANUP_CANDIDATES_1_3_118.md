@@ -1,39 +1,21 @@
-# Repo-Cleanup-Kandidaten nach Patch 1.3.118
+# 1.3.118 - Repo Cleanup Candidates
 
-## Sicher entfernbar
+## Summary
 
-Diese Dateien/Ordner werden für Laufzeit, Build und Entwicklung nicht benötigt:
+Adds maintenance and cleanup support for the local database and repository structure.
 
-- `app/__pycache__/`
-- `app/core/__pycache__/`
-- `app/danbooru/__pycache__/`
-- `app/gui/__pycache__/`
-- `app/services/__pycache__/`
+## Scope
 
-Begründung: Das sind generierte Python-Bytecode-Caches. Python erzeugt sie bei Bedarf neu. In einem Repo und besonders in Patch-ZIPs haben sie nichts verloren. Natürlich legt Python sie wieder an, weil offenbar auch Maschinen gern Müll produzieren.
+**Area:** Maintenance
 
-## Sehr wahrscheinlich entfernbar
+- Maintenance tools help inspect database size and state.
+- Cleanup notes separate safe removals from risky changes.
+- The goal is to keep the project publishable and portable.
 
-Diese Dateien sind leer und werden nirgends importiert:
+## Release context
 
-- `app/core/models.py`
-- `app/gui/preview_grid.py`
-- `app/gui/preview_model.py`
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Begründung: Alle drei Dateien haben aktuell 0 Byte Inhalt bzw. keinen Code. Eine statische Importprüfung über `app/**/*.py` und `main.py` findet keine Nutzung. Falls sie nur als Platzhalter für spätere Architektur gedacht waren, können sie bleiben. Technisch gebraucht werden sie aktuell nicht.
+## Source note
 
-## Nicht löschen, aber aus Release-Paketen ausschließen
-
-- `.vscode/settings.json`
-- `.vscode/tasks.json`
-
-Begründung: Entwicklerkomfort, aber nicht relevant für die fertige Windows-Exe.
-
-## Dokumentations-Altlasten
-
-Der Ordner `docs/` enthält viele historische Patch-README-Dateien. Die sind nicht für die Laufzeit nötig, aber als Änderungsverlauf nützlich. Für ein Release-Paket kann man sie weglassen oder in eine separate Entwickler-Dokumentation verschieben.
-
-Empfehlung:
-
-- Im Git-Repo behalten, bis eine saubere `CHANGELOG.md` existiert.
-- In der späteren PyInstaller-/Release-Ausgabe nicht mit ausliefern.
+Original patch note file: `REPO_CLEANUP_CANDIDATES_1_3_118.md`

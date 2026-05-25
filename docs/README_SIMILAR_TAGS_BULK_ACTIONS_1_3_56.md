@@ -1,27 +1,21 @@
-# 1.3.56 - Ähnliche Tags: Massenaktionen statt nur Alias
+# 1.3.56 - Similar Tags Bulk Actions
 
-Der Dialog **Ähnliche Tags suchen/bearbeiten…** im Tag-Tab ist nicht mehr auf Alias-Pflege beschränkt.
+## Summary
 
-## Neu
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-Nach der Suche per Wildcard-Muster, z. B. `*_hairband`, öffnet sich ein Sammeldialog mit checkbarer Trefferliste. Für alle ausgewählten Tags können mehrere Aktionen gleichzeitig gesetzt werden:
+## Scope
 
-- Alias setzen
-- Filename-Ausschluss setzen
-- Filename-Ausschluss entfernen
-- manuellen Score setzen
-- Tags zu einer Kategorie-Regel hinzufügen (`include` oder `exclude`)
+**Area:** Tag management
 
-Leere oder unveränderte Felder bleiben unberührt. Vor dem Speichern erscheint eine Bestätigung mit den konkreten Aktionen und den betroffenen Tags.
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-## Verhalten
+## Release context
 
-- Die Trefferliste zeigt vorhandene Aliase und bestehenden Filename-Ausschluss direkt an.
-- Sichtbare Tabellenzellen werden lokal aktualisiert.
-- Es wird nach den Massenaktionen kein vollständiges `reload_tags()` ausgeführt, damit der Tag-Tab bei großen Datenbanken nicht wieder blockiert.
-- Das Suchmuster nutzt weiterhin `*` und `?`.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Geänderte Dateien
+## Source note
 
-- `app/gui/tag_tab.py`
-- `app/core/database.py`
+Original patch note file: `README_SIMILAR_TAGS_BULK_ACTIONS_1_3_56.md`

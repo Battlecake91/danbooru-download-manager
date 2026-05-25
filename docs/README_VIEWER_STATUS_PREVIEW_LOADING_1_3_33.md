@@ -1,23 +1,21 @@
-# 1_3_33 - Viewer-Statuschips und Preview-Ladeanzeige
+# 1.3.33 - Viewer Status Preview Loading
 
-Dieses Patch-ZIP enthält nur die geänderten Dateien.
+## Summary
 
-## Viewer
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-- Status-Chips sind jetzt anklickbar.
-- Es ist weiterhin immer nur ein Status aktiv.
-- Klick auf einen anderen Chip setzt diesen Status.
-- Klick auf den aktiven Chip setzt den Post auf `new` zurück.
+## Scope
 
-## Preview-Suche
+**Area:** Preview and thumbnail workflow
 
-- Das Autocomplete-Dropdown ist breiter und orientiert sich mindestens an der Suchfeldbreite.
-- Include- und Exclude-Tags mit führendem `-` bleiben weiterhin unterstützt.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-## Preview-Laden
+## Release context
 
-- Beim Wechsel in den Preview-Tab erscheint eine zentrale Ladefläche mit `Lädt Preview…`.
-- Während Karten aufgebaut werden, steht dort `Lädt Thumbnails… X/Y`.
-- Die Preview wird erst wieder eingeblendet, wenn der Kartenaufbau fertig ist.
-- Der alte Fetch-Tab sollte dadurch nicht mehr als Geisterbild im Preview-Bereich stehen bleiben.
-- Zusätzlich wurde ein doppeltes `ORDER BY` in der Preview-SQL-Abfrage entfernt.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_STATUS_PREVIEW_LOADING_1_3_33.md`

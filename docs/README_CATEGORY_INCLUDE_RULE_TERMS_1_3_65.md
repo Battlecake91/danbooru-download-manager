@@ -1,33 +1,21 @@
-# 1.3.65 – Kategorie-Tab: ODER-Gruppe zu Include-Regel umbenannt
+# 1.3.65 - Category Include Rule Terms
 
-## Änderung
+## Summary
 
-Im Kategorie-Tab wurde der Begriff **ODER-Gruppe** in **Include-Regel** umbenannt.
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-**Globale Bedingung** bleibt unverändert.
+## Scope
 
-## Hintergrund
+**Area:** Category and rule system
 
-Die frühere Bezeichnung war grundsätzlich verständlich, aber **Include-Regel** beschreibt besser, dass diese Zeile eine positive Regel mit optionalen Ausschlüssen enthält.
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-Mehrere Include-Regeln bleiben weiterhin Alternativen zueinander:
+## Release context
 
-```text
-Include-Regel 1: maid apron -comic
-Include-Regel 2: school_uniform necktie
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-entspricht weiterhin:
+## Source note
 
-```text
-(maid AND apron AND NOT comic) OR (school_uniform AND necktie)
-```
-
-Globale Bedingungen werden weiterhin zusätzlich auf jede Include-Regel angewendet.
-
-## Technisch
-
-- Keine Änderung am Datenbankschema.
-- Keine Änderung an der Kategorieentscheidung.
-- Nur UI-Texte, Tooltips und Platzhalter angepasst.
-- Hoch/Runter-Schieben aus 1.3.64 bleibt erhalten.
+Original patch note file: `README_CATEGORY_INCLUDE_RULE_TERMS_1_3_65.md`

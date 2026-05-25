@@ -1,19 +1,21 @@
-# 1.3.121 - i18n: Preview / Reviewer
+# 1.3.121 - I18N Preview
 
-This patch continues the English UI migration for the Preview / Reviewer area.
+## Summary
 
-## Changed
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-- Migrated `app/gui/preview_window.py` visible UI strings to i18n keys.
-- Migrated `app/gui/thumbnail_grid.py` visible card and context-menu strings to i18n keys.
-- Added Preview / Reviewer translation keys to:
-  - `app/i18n/locales/en.json`
-  - `app/i18n/locales/de.json`
-- Updated the configuration info text to the current SQLite-only setup.
+## Scope
 
-## Notes
+**Area:** Preview and thumbnail workflow
 
-The Preview / Reviewer tab should now be mostly English when `ui.language` is set to `en`.
-German fallback strings remain available in `de.json` for later language switching.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Remaining larger UI areas still needing migration include Viewer, Importer, Maintenance, Category and Tag tabs.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_PREVIEW_1_3_121.md`

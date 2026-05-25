@@ -1,41 +1,21 @@
-# 1.3.28 - Fetch-Presets, Rating-Filter und General-Rating
+# 1.3.28 - Fetch Presets Rating General
 
-## Viewer / Preview
+## Summary
 
-- Danbooru-Rating `g` / `general` wird jetzt als `general` angezeigt.
-- Sortierung nach Danbooru-Rating berücksichtigt jetzt `general -> safe -> questionable -> explicit`.
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-## Fetch-Tab
+## Scope
 
-- Die letzten Fetch-Eingaben bleiben erhalten.
-- Manuelle Tag-Eingabe bekommt Autovervollständigung aus lokal bekannten Tags.
-- Rating-Filter sind dreistufig:
-  - leer = ignorieren
-  - Haken = einschließen
-  - Minus = ausschließen
-- Unterstützte Ratings: General, Safe, Questionable, Explicit.
-- Die Rating-Filter werden bei manueller Suche direkt an die Query angehängt.
-- Bei Saved Searches werden die Rating-Filter als `saved_search_extra_tags` angehängt.
-- Fetch-Presets können im Fetch-Tab geladen, bearbeitet, gespeichert und gelöscht werden.
-- Presets speichern Quelle, Eingaben, Rating-Filter und Limits.
-- Während Fetch läuft, erscheint ein endloser Fortschrittsbalken.
-- Der Wechsel zur Preview passiert automatisch erst nach erfolgreichem Fetch.
+**Area:** Fetch workflow
 
-## Datenbank
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-Neue Tabelle:
+## Release context
 
-```sql
-fetch_presets(name TEXT PRIMARY KEY, payload TEXT, updated_at TEXT)
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Neue Hilfsfunktionen:
+## Source note
 
-- `get_app_setting()` / `set_app_setting()`
-- `save_fetch_preset()` / `list_fetch_presets()` / `get_fetch_preset()` / `delete_fetch_preset()`
-- `suggest_tags()`
-
-## Export/Import
-
-- Fetch-Presets werden jetzt in den Konfigurations-Export aufgenommen.
-- Fetch-Presets werden beim Import wiederhergestellt.
+Original patch note file: `README_FETCH_PRESETS_RATING_GENERAL_1_3_28.md`

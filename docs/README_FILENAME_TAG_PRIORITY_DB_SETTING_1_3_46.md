@@ -1,35 +1,21 @@
-# 1.3.46 - Dateinamen-Tag-Priorisierung liest DB-Option
+# 1.3.46 - Filename Tag Priority Db Setting
 
-## Problem
+## Summary
 
-Die Option `filename.sort_tags_by_average_rating` war im Config-Tab sichtbar,
-wurde aber beim Dateinamenbau nicht zuverlässig berücksichtigt. Ursache: Der
-`FilenameBuilder` bekam beim Start eine verschachtelte Runtime-Konfiguration und
-las daraus weiter, auch wenn die Option später in SQLite `app_settings` geändert
-wurde.
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-Dadurch sah die UI korrekt aus, aber `%general%` blieb in der Praxis oft bei der
-alten alphabetischen Reihenfolge.
+## Scope
 
-## Änderung
+**Area:** Tag management
 
-`FilenameBuilder.prioritize_filename_tags()` liest jetzt zuerst direkt aus
-SQLite:
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-```text
-filename.sort_tags_by_average_rating
-```
+## Release context
 
-Nur wenn kein DB-Wert vorhanden ist, wird auf die alte verschachtelte Config
-zurückgefallen.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Ergebnis
+## Source note
 
-Nach Aktivierung unter:
-
-```text
-Konfiguration -> Dateiname -> Tag-Reihenfolge -> Nach Tag-Scoring priorisieren
-```
-
-werden Dateinamen-Tags nach Score/Durchschnitt priorisiert, ohne App-Neustart
-und ohne einen neu erzeugten Service zu brauchen.
+Original patch note file: `README_FILENAME_TAG_PRIORITY_DB_SETTING_1_3_46.md`

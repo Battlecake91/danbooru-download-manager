@@ -1,23 +1,21 @@
-# 1.3.72 Recommendation-Import-Hotfix
+# 1.3.72 - Recommendation Import Hotfix
 
-Fix für den GUI-Start nach 1.3.71.
+## Summary
 
-## Problem
+Improves importing existing local Danbooru files into the SQLite database using metadata lookup and safer file handling.
 
-`PreviewWindow` erzeugte eine Instanz von `RecommendationEngine`, importierte die Klasse aber nicht.
-Dadurch konnte die GUI beim Start mit folgendem Fehler abbrechen:
+## Scope
 
-```text
-name 'RecommendationEngine' is not defined
-```
+**Area:** Import workflow
 
-## Änderung
+- Existing files can be connected to database records.
+- The importer avoids blind overwrites and reports skipped files.
+- Imported posts can participate in scoring and category workflows.
 
-- `app/gui/preview_window.py` importiert jetzt `RecommendationEngine` aus `app.core.recommendation_engine`.
-- Keine Änderung an Datenbank, Scoring-Logik oder UI-Verhalten.
+## Release context
 
-## Prüfung
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```bash
-python3 -m compileall app/gui/preview_window.py app/core/recommendation_engine.py
-```
+## Source note
+
+Original patch note file: `README_RECOMMENDATION_IMPORT_HOTFIX_1_3_72.md`

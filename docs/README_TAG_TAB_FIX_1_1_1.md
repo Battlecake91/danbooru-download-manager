@@ -1,40 +1,21 @@
-# Danbooru Manager 1.1.1 - Tag-Tab-Fix
+# 1.1.1 - Tag Tab Fix
 
-## Problem
+## Summary
 
-Der Tag-Tab konnte weiterhin abstürzen oder falsch arbeiten, besonders bei:
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-- Alias bearbeiten
-- Tag zu Kategorie hinzufügen
-- Filename-Exclude setzen
+## Scope
 
-Hauptursache:
+**Area:** Tag management
 
-Die Rechtsklick-Aktion hat den angeklickten Tag erkannt, aber spätere Aktionen haben wieder `selected_tags()` gelesen.
-Wenn die Zeile nicht vorher sauber selektiert war, war die Auswahl leer oder falsch.
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-Ja, GUI-Zustand als Wahrheit zu benutzen war natürlich wieder eine kleine Falle aus der Hölle.
+## Release context
 
-## Fix
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Kontextmenü friert die Tag-Liste beim Öffnen ein
-- Aktionen benutzen diese eingefrorene Liste
-- Rechtsklick auf eine nicht selektierte Zeile selektiert diese Zeile
-- `QInputDialog.getText()` nutzt jetzt die robuste Positionssignatur
-- Fehler werden nach `tag_tab_error.log` geschrieben
-- vorhandene doppelte Kategorie-Regeln werden vor dem Unique-Index bereinigt
+## Source note
 
-## Geänderte Dateien
-
-- `app/core/database.py`
-- `app/gui/tag_tab.py`
-
-## Wenn es trotzdem kracht
-
-Bitte die Datei senden:
-
-```text
-tag_tab_error.log
-```
-
-Die liegt im Arbeitsverzeichnis, aus dem du die App startest.
+Original patch note file: `README_TAG_TAB_FIX_1_1_1.md`

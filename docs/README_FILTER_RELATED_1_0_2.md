@@ -1,43 +1,21 @@
-# Danbooru Manager 1.0.2 - Statusfilter fix und Parent/Child-Anzeige
+# 1.0.2 - Filter Related
 
-## Fix: Statusfilter
+## Summary
 
-Problem:
+Documents one development patch from the path to the 1.3.135 public release.
 
-In der Ansicht `Arbeitsliste` war `Status: Abgelehnt` leer, weil intern beides kombiniert wurde:
+## Scope
 
-```sql
-status IN ('new', 'potential', 'review', 'selected_save')
-AND status = 'rejected'
-```
+**Area:** General development note
 
-Das ist logisch korrekt, aber für die GUI dumm.
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-Neue Logik:
+## Release context
 
-Wenn ein konkreter Statusfilter gesetzt ist, gilt dieser global.
-Also:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- `Status: Abgelehnt` zeigt abgelehnte Posts
-- `Status: Gespeichert` zeigt gespeicherte Posts
-- unabhängig davon, ob vorher `Arbeitsliste` aktiv war
+## Source note
 
-## Parent/Child-Anzeige
-
-Neu:
-
-- Preview-Karte zeigt:
-  - `Parent lokal`
-  - `N Child(s) lokal`
-- Viewer zeigt eine Parent/Child-Liste
-- Doppelklick auf einen Parent/Child-Eintrag öffnet den Danbooru-Originalpost
-
-## Einschränkung
-
-Danbooru liefert in den normalen Postdaten meist nur:
-
-- `parent_id`
-- `has_children`
-
-Die konkreten Child-IDs kennen wir nur, wenn diese Child-Posts bereits in der lokalen DB gelandet sind.
-Unbekannte Childs können erst angezeigt werden, wenn sie über Fetch/Suche in die DB kamen.
+Original patch note file: `README_FILTER_RELATED_1_0_2.md`

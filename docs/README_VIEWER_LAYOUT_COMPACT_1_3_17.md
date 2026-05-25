@@ -1,34 +1,21 @@
-# 1.3.17 - Viewer kompakter, Status-Chips und Filename-General-Filter
+# 1.3.17 - Viewer Layout Compact
 
-## Viewer-Layout
+## Summary
 
-- Das persönliche Rating liegt jetzt direkt unter dem Bild.
-- Die Kategorieauswahl liegt ebenfalls unter dem Bild neben dem persönlichen Rating.
-- Die Navigation wurde nach unten verlegt:
-  - `< Vorheriges`
-  - große Positionsanzeige
-  - `Nächstes >`
-- Der offizielle Danbooru-Score wird nur noch als Zahl in den allgemeinen Informationen angezeigt.
-- Die Sterne bleiben ausschließlich für das persönliche Rating.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-## Statusanzeige
+## Scope
 
-- Status wird jetzt als farbige Chip-Leiste dargestellt.
-- Jeder Status-Chip hat eine farbige Umrandung.
-- Der aktive Status ist gefüllt und hebt sich deutlich ab.
+**Area:** Viewer workflow
 
-## Tags
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-- Artist, Serie/Copyright und Character werden nebeneinander angezeigt.
-- Tag-Listen skalieren ihre Höhe anhand der enthaltenen Zeilen bis zu einer sinnvollen Obergrenze.
-- General und Meta stehen darunter.
-- Für General-Tags gibt es eine neue Ansicht:
-  - `General: nur nicht ausgeschlossene Filename-Tags anzeigen`
-  - Damit bleiben nur Tags sichtbar, die aktuell nicht im Filename-Exclude stehen.
-  - Das hilft beim weiteren Aussortieren unnötiger Filename-Tags.
+## Release context
 
-## Hinweise
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Rechtsklick-Aktionen auf Tags bleiben erhalten.
-- Auswahl-Toggle per erneutem Linksklick bleibt erhalten.
-- Filename-Exclude-Änderungen aktualisieren den General-Filter sofort.
+## Source note
+
+Original patch note file: `README_VIEWER_LAYOUT_COMPACT_1_3_17.md`

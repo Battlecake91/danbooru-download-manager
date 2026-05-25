@@ -1,27 +1,21 @@
-# Patch 1.3.120 - Fetch tab i18n continuation
+# 1.3.120 - I18N Fetch
 
-This patch continues the English UI migration after the SQLite-only configuration cleanup.
+## Summary
 
-## Changed
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-- Migrated the visible Fetch tab UI strings to the i18n catalog.
-- Added English and German translation keys for:
-  - Fetch tab description
-  - preset controls
-  - source selection
-  - manual query controls
-  - saved-search controls
-  - rating filter hint
-  - fetch limits and tooltips
-  - progress labels
-  - preset dialogs
-  - fetch validation and error dialogs
-  - fetch summary labels
-  - worker log messages
-- Kept the translated German fallback in `de.json` so switching the UI language back to German still works.
+## Scope
 
-## Notes
+**Area:** Fetch workflow
 
-The Fetch tab is now mostly detached from hard-coded German UI text. Some internal comments remain German and do not affect the user interface.
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-The next useful targets are the Preview/Reviewer and thumbnail card UI, because they still contain the largest amount of visible German text.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_FETCH_1_3_120.md`

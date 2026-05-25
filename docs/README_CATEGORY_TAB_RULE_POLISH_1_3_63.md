@@ -1,45 +1,21 @@
-# 1.3.63 - Kategorie-Tab: Regelbedienung geglättet
+# 1.3.63 - Category Tab Rule Polish
 
-Dieser Patch macht den Kategorie-Tab verständlicher, ohne das Datenmodell oder die vorhandene Regellogik zu ändern.
+## Summary
 
-## Änderungen
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-- Aus `ODER-Gruppe` wird in der Oberfläche `Regel-Zeile` bzw. `Regel`.
-- Aus `Globale Bedingung` wird `Immer-Bedingung`.
-- Hilfetexte und Platzhalter wurden auf die tatsächliche Bedienung ausgerichtet:
-  - Tags ohne `-` müssen vorhanden sein.
-  - Tags mit `-` schließen aus.
-  - Mehrere Regel-Zeilen sind Alternativen.
-  - Immer-Bedingungen gelten zusätzlich für jede Regel-Zeile.
-- Regel-Zeilen können jetzt innerhalb der Kategorie hoch/runter geschoben werden.
-- Immer-Bedingungen können ebenfalls hoch/runter geschoben werden.
-- Speichern erfolgt weiterhin automatisch nach Änderungen an Regel-/Bedingungszeilen.
+## Scope
 
-## Nicht geändert
+**Area:** Category and rule system
 
-- Keine Änderung am Datenbankschema.
-- Keine Änderung an der eigentlichen Kategorieentscheidung.
-- Keine Änderung an der Bedeutung bestehender Regeln.
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-## Beispiel
+## Release context
 
-Regel-Zeilen:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-maid apron -comic
-school_uniform ribbon
-```
+## Source note
 
-bedeutet:
-
-```text
-(maid UND apron UND NICHT comic) ODER (school_uniform UND ribbon)
-```
-
-Immer-Bedingung:
-
-```text
-solo -multiple_girls
-```
-
-wird zusätzlich auf jede Regel-Zeile angewendet.
+Original patch note file: `README_CATEGORY_TAB_RULE_POLISH_1_3_63.md`

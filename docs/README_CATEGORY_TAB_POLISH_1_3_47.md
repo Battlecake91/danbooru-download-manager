@@ -1,33 +1,21 @@
-# 1_3_47 Kategorie-Tab poliert
+# 1.3.47 - Category Tab Polish
 
-Dieses Patch-ZIP enthält nur die geänderten Dateien.
+## Summary
 
-## geändert
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-- `app/gui/category_tab.py`
+## Scope
 
-## neu im Kategorie-Tab
+**Area:** Category and rule system
 
-- linke Seite zeigt eine kompaktere Kategorie-Liste
-- rechte Seite ist in Bereiche aufgeteilt:
-  - Kategorie
-  - Regeln schnell bearbeiten
-  - Regeln dieser Kategorie
-- ID- und technische Spalten sind ausgeblendet
-- Zielpfad und Sortierung sind als erweiterte Felder ein-/ausblendbar
-- Regeln können schneller gesetzt werden:
-  - Tag(s) eingeben
-  - `+ Muss enthalten`
-  - `+ Ausschließen`
-- mehrere Tags können gleichzeitig eingefügt werden, getrennt durch Leerzeichen, Komma oder Semikolon
-- Tag-Eingabefeld hat Autovervollständigung aus lokal bekannten Tags
-- Regeln werden verständlicher angezeigt:
-  - `include` -> `Muss enthalten`
-  - `exclude` -> `Darf nicht enthalten`
-- mehrere Regeln können markiert und zusammen gelöscht werden
-- alle Regeln einer Kategorie können per Button gelöscht werden
-- Tabellenköpfe sind sortierbar
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-## unverändert
+## Release context
 
-Die Datenbankstruktur bleibt gleich. Bestehende Kategorien und Regeln werden nicht migriert oder verändert.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CATEGORY_TAB_POLISH_1_3_47.md`

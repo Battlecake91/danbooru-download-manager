@@ -1,27 +1,21 @@
-# 1_3_49 - Kategorie-Priorität statt Gruppen-Priorität
+# 1.3.49 - Category Priority Fix
 
-Dieses Patch korrigiert die Bedienlogik im Kategorie-Tab.
+## Summary
 
-## Änderungen
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-- Die Kategorie-Reihenfolge links ist jetzt eindeutig die Priorität.
-- Buttons heißen jetzt:
-  - `↑ Priorität erhöhen`
-  - `↓ Priorität senken`
-- Kategorie-Sortierung wird beim Verschieben robust als dichte Reihenfolge `1..N` gespeichert.
-- Das Feld `Priorität` in den Kategorie-Details ist nur noch Anzeige und wird über die Liste links gesteuert.
-- Die Gruppen-Hoch/Runter-Buttons wurden entfernt, weil Gruppen innerhalb einer Kategorie OR-Zweige sind und ihre Reihenfolge für die Entscheidung nicht relevant ist.
-- Hinweise im Tab wurden angepasst:
-  - Kategorien: oben gewinnt.
-  - Gruppen: OR-Zweige, Reihenfolge egal.
+## Scope
 
-## Logik
+**Area:** Category and rule system
 
-Eine Kategorie passt, wenn mindestens eine Regelgruppe passt.
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-Eine Regelgruppe passt, wenn:
+## Release context
 
-- alle positiven Tags vorhanden sind
-- keine negativen Tags vorhanden sind
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Mehrere Kategorien können passen. Dann entscheidet die Reihenfolge der Kategorienliste links.
+## Source note
+
+Original patch note file: `README_CATEGORY_PRIORITY_FIX_1_3_49.md`

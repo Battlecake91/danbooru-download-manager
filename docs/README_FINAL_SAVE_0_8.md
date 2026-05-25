@@ -1,75 +1,21 @@
-# Danbooru Manager 0.8 - Finaler Speicherworkflow
+# 0.8 - Final Save
 
-## Neu
+## Summary
 
-- Kategorie-Vorschlag anhand der Config-Regeln
-- Dateiname wird aus Post-ID, Tags, Hash und Extension gebaut
-- finaler Zielpfad wird im Viewer angezeigt
-- `F` im Viewer speichert final
-- Button `Final speichern (F)` im Viewer
-- Datei wird nach Kategorie-Zielpfad kopiert
-- DB-Felder werden gesetzt:
-  - `final_file_path`
-  - `final_directory`
-  - `saved_at`
-  - `status = saved`
-- `post_categories` wird gepflegt
+Documents one development patch from the path to the 1.3.135 public release.
 
-## Neue Dateien
+## Scope
 
-- `app/core/category_engine.py`
-- `app/core/filename_builder.py`
-- `app/services/final_save_service.py`
+**Area:** General development note
 
-## Geänderte Dateien
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-- `config.example.yaml`
-- `app/core/config.py`
-- `app/gui/image_viewer.py`
+## Release context
 
-## Config-Ergänzung
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```yaml
-default_output_dir: "./danbooru_saved"
+## Source note
 
-filename:
-  pattern: "{id}_{tags}_{hash}{ext}"
-  max_length: 180
-  tags_count: 8
-  hash_length: 8
-  excluded_tags:
-    - highres
-    - absurdres
-    - commentary_request
-```
-
-Kategorien können eigene Zielpfade haben:
-
-```yaml
-categories:
-  - name: "example"
-    folder_name: "example"
-    output_path: "D:/Bilder/Danbooru/example"
-    hotkey: "E"
-    include:
-      - some_tag
-    exclude:
-      - unwanted_tag
-```
-
-Wenn `output_path` leer ist, wird gespeichert nach:
-
-```text
-default_output_dir / folder_name
-```
-
-## Viewer-Hotkey
-
-```text
-F = final speichern
-```
-
-## Hinweis
-
-Dieser Patch nutzt automatisch die erste passende Kategorie.
-Manuelle Kategorieauswahl im Viewer kommt im nächsten Schritt.
+Original patch note file: `README_FINAL_SAVE_0_8.md`

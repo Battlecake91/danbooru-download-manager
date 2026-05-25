@@ -1,23 +1,21 @@
-# 1.3.90 - Konfig-Vorschau im echten PreviewGrid-Kontext
+# 1.3.90 - Config Preview Grid Context
 
-Die GUI-Konfigurationsvorschau rendert den Beispielpost jetzt nicht mehr als einzeln eingebettete `ThumbnailCard`, sondern in einem echten `ThumbnailGrid`-Container mit einer einzelnen Karte.
+## Summary
 
-Warum:
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-- Der echte Previewer zeigt `ThumbnailCard` immer innerhalb von `ThumbnailGrid` / `QScrollArea`.
-- Direkt in der Konfigseite eingebettet sah die Karte ähnlich aus, aber Layout, Hintergrund und Größenverhalten wichen sichtbar ab.
-- Die globale `ThumbnailCard` bleibt unverändert, damit der echte Previewer nicht erneut versehentlich umgebaut wird.
+## Scope
 
-Geändert:
+**Area:** Preview and thumbnail workflow
 
-- `app/gui/config_tab.py`
-  - Import von `ThumbnailGrid` statt `ThumbnailCard`.
-  - GUI-Vorschau nutzt ein `ThumbnailGrid` mit genau einem Beispielpost.
-  - Thumbnailgröße und `card_width_extra` werden weiterhin aus den aktuellen GUI-Einstellungen übernommen.
-  - Kein automatischer API-Zugriff beim Öffnen der Konfig.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-Nicht geändert:
+## Release context
 
-- Kein Datenbankschema.
-- Keine Previewer-Logik.
-- Keine `ThumbnailCard`-Layoutänderung.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CONFIG_PREVIEW_GRID_CONTEXT_1_3_90.md`

@@ -1,16 +1,21 @@
-# 1.3.22 - Viewer: General-Tagfeld nutzt freie Fläche
+# 1.3.22 - Viewer General Expand
 
-## Änderung
+## Summary
 
-- Das General-Tagfeld ist jetzt vertikal expandierend.
-- Es nutzt freie Höhe im rechten Viewer-Panel, statt früh zu scrollen.
-- Meta bleibt kompakt mit maximal vier Zeilen.
-- Artist / Serie-Copyright / Character bleiben als gemeinsames 3-Spalten-Feld unverändert kompakt.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-## Geänderte Dateien
+## Scope
 
-- `app/gui/tag_display.py`
+**Area:** Viewer workflow
 
-## Hinweis
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-Die General-Liste behält weiterhin eine Scrollbar, falls mehr Tags vorhanden sind als sichtbar in die verfügbare Panelhöhe passen.
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_GENERAL_EXPAND_1_3_22.md`

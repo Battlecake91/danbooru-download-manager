@@ -1,14 +1,21 @@
-# Patch 1.3.133 - Config tab no outer scroll
+# 1.3.133 - Config No Outer Scroll
 
-The Config tab no longer wraps the complete tab widget in an outer `QScrollArea`.
+## Summary
 
-## Why
+Improves the application configuration UI, database-backed settings, preview configuration, and runtime defaults.
 
-Patch 1.3.132 made the Raw app_settings box expand, but because the entire config content was inside a scroll area, the main config view could start scrolling instead of adapting to the current window height.
+## Scope
 
-## Changed
+**Area:** Configuration and database
 
-- Removed the outer `QScrollArea` around the Config tab content.
-- The `QTabWidget` is now added directly to the main layout with stretch.
-- Raw app_settings still expands inside its tab and uses the remaining vertical space.
-- Reduced the Raw app_settings minimum height so it can shrink on smaller windows.
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CONFIG_NO_OUTER_SCROLL_1_3_133.md`

@@ -1,58 +1,21 @@
-# Danbooru Manager 0.2 - Preview-GUI
+# 0.2 - Gui
 
-Diese Version ergänzt die erste PySide6-GUI.
+## Summary
 
-## Neue Funktionen
+Improves GUI structure, colors, layout density, and user-facing polish.
 
-- `--gui` startet die Preview-Oberfläche
-- Thumbnail-Grid aus SQLite
-- Statusfilter
-- Suche nach ID oder Tag
-- einstellbares Limit
-- Rechtsklick auf Thumbnail:
-  - Hohes Potential
-  - Prüfen
-  - Automatisch aussortiert
-  - Ablehnen
-  - Akzeptieren
-  - Neu zurücksetzen
+## Scope
 
-## Installation
+**Area:** GUI polish
 
-```powershell
-& ".\.venv\Scripts\python.exe" -m pip install -r requirements.txt
-```
+- The change focuses on usability rather than data model changes.
+- Layouts are adjusted to reduce visual noise.
+- The intent is to keep repeated review work fast.
 
-## Start
+## Release context
 
-```powershell
-& ".\.venv\Scripts\python.exe" main.py --config config.yaml --gui
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Oder über VSCode Task:
+## Source note
 
-```text
-GUI
-```
-
-## Geänderte Dateien
-
-- `requirements.txt`
-- `main.py`
-- `app/core/database.py`
-- `app/gui/__init__.py`
-- `app/gui/main_window.py`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
-- `.vscode/tasks.json`
-- `.vscode/settings.json`
-
-## Nächster Schritt
-
-Als nächstes sinnvoll:
-
-- Doppelklick öffnet Bildbetrachter
-- Download vollständiger Datei aus GUI
-- Hotkeys für Statusmarkierung
-- zweite Liste für automatisch aussortierte Posts
-- Tag-Tab
+Original patch note file: `README_GUI_0_2.md`

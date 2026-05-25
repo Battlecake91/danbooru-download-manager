@@ -1,12 +1,21 @@
-# 1.3.117 - Wartungs-Tab sichtbar registrieren
+# 1.3.117 - Maintenance Tab Visible
 
-Dieser Mini-Patch stellt sicher, dass der Wartungs-/DB-Tab wirklich in der Hauptnavigation erscheint.
+## Summary
 
-Änderungen:
+Adds maintenance and cleanup support for the local database and repository structure.
 
-- `AppWindow` registriert den Wartungs-Tab jetzt über eine eigene Sicherungsfunktion.
-- `_add_lazy_tab()` ist idempotent und legt denselben Lazy-Tab nicht doppelt an.
-- `_rebuild_tab_indices()` prüft ebenfalls, ob der Wartungs-Tab vorhanden ist.
-- Der Tab heißt sichtbar `Wartung / DB`.
+## Scope
 
-Damit soll auch ein Stand repariert werden, bei dem `maintenance_tab.py` vorhanden war, aber der Tab nicht angezeigt wurde.
+**Area:** Maintenance
+
+- Maintenance tools help inspect database size and state.
+- Cleanup notes separate safe removals from risky changes.
+- The goal is to keep the project publishable and portable.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_MAINTENANCE_TAB_VISIBLE_1_3_117.md`

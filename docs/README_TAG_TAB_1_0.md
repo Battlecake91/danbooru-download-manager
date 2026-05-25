@@ -1,53 +1,21 @@
-# Danbooru Manager 1.0 - Tag-Tab
+# 1.0 - Tag Tab
 
-## Neu
+## Summary
 
-Die GUI hat jetzt zwei Tabs:
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-- Preview / Review
-- Tags
+## Scope
 
-## Tag-Tab Funktionen
+**Area:** Tag management
 
-- alle bekannten Tags anzeigen
-- nach Tag suchen
-- nach Tag-Typ filtern
-- Statistiken:
-  - Anzahl Posts
-  - offene Posts
-  - gespeicherte Posts
-  - abgelehnte Posts
-  - Alias
-  - Filename-Exclude
-  - manueller Score
-  - berechneter Score
-  - Durchschnittsbewertung
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-## Rechtsklick auf Tags
+## Release context
 
-- zu Kategorie hinzufügen:
-  - include
-  - exclude
-- vom Dateinamen ausschließen
-- Filename-Ausschluss entfernen
-- Alias bearbeiten
-- manuellen Score bearbeiten
-- Tag kopieren
-- als Suchtext übernehmen
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Geänderte Dateien
+## Source note
 
-- `app/core/database.py`
-- `app/gui/main_window.py`
-
-## Neue Dateien
-
-- `app/gui/app_window.py`
-- `app/gui/tag_tab.py`
-
-## Hinweis
-
-Der Tag-Tab schreibt Änderungen direkt in die SQLite-Datenbank.
-
-Achtung: Kategorie-Regeln werden aktuell in der DB geändert. Wenn du später die YAML-Config als führend behalten willst,
-brauchen wir noch einen Export oder einen Config-Editor. Ja, natürlich gibt es jetzt zwei Wahrheiten, weil Software gerne Drama erzeugt.
+Original patch note file: `README_TAG_TAB_1_0.md`

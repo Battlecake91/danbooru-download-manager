@@ -1,45 +1,21 @@
-# 1.3.114 - Importer Post-ID-Erkennung und lokale Datei-Begriffe
+# 1.3.114 - Import Post Id Local File Labels
 
-## Ziel
+## Summary
 
-Dieser Patch räumt die Bezeichnungen im Previewer/Viewer auf und erweitert den Importer.
+Improves importing existing local Danbooru files into the SQLite database using metadata lookup and safer file handling.
 
-## UI-Begriffe
+## Scope
 
-- `Final speichern` wurde in der sichtbaren UI zu `Speichern` geändert.
-- `Finaldatei` wurde in der sichtbaren UI zu `Lokale Datei` geändert.
-- Löschdialoge und Hinweise sprechen jetzt von lokaler Datei bzw. lokalem Pfad.
+**Area:** Import workflow
 
-Intern bleiben bestehende DB-Felder wie `final_file_path` unverändert. Das ist Absicht, damit keine Migration nur wegen schönerer Wörter nötig wird. Menschen lieben Umbenennungen, Datenbanken eher nicht.
+- Existing files can be connected to database records.
+- The importer avoids blind overwrites and reports skipped files.
+- Imported posts can participate in scoring and category workflows.
 
-## Importer
+## Release context
 
-Der Importer kann bestehende Dateien jetzt nicht nur über einen MD5-Hash im Dateinamen zuordnen, sondern auch über eine Danbooru-Post-ID im Dateinamen.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Priorität:
+## Source note
 
-1. MD5-Hash, falls ein 32-stelliger Hash gefunden wird.
-2. Post-ID, falls kein MD5 vorhanden ist.
-
-Erkannte Post-ID-Muster:
-
-- explizite Muster wie `post_123456`, `postid-123456`, `id_123456`, `danbooru_123456`
-- als Fallback eine alleinstehende 5- bis 12-stellige Zahl
-
-## Hinweis im Importer
-
-Der Importer zeigt jetzt einen gelben Warnhinweis:
-
-> Achtung: Der Import kann nur funktionieren, wenn die Danbooru-Post-ID oder der MD5-Hash im Dateinamen steht.
-
-## Verhalten bei nicht erkannten Dateien
-
-Wenn weder MD5 noch Post-ID gefunden wird, wird die Datei übersprungen und als `Ohne ID/MD5` gezählt.
-
-## Geänderte Dateien
-
-- `app/gui/image_viewer.py`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
-- `app/gui/import_tab.py`
-- `app/services/existing_file_import_service.py`
+Original patch note file: `README_IMPORT_POST_ID_LOCAL_FILE_LABELS_1_3_114.md`

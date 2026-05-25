@@ -1,32 +1,21 @@
-# 1_3_53 Kategorie-Entscheidung im Viewer
+# 1.3.53 - Category Reason Viewer Dialog
 
-Dieses Patch verschiebt die Kategorie-Diagnose aus dem Kategorie-Tab in den Viewer.
+## Summary
 
-## Viewer
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Neben der Kategorieauswahl gibt es jetzt den Button:
+## Scope
 
-```text
-Warum?
-```
+**Area:** Viewer workflow
 
-Der Button öffnet ein separates Fenster mit der Begründung der automatischen Kategorie-Entscheidung für den aktuell geladenen Post.
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-Angezeigt wird:
+## Release context
 
-- aktuell im Viewer gewählte Kategorie
-- automatische Gewinner-Kategorie
-- weitere passende Kategorien weiter unten
-- pro Kategorie:
-  - globale Bedingungen
-  - passende und nicht passende ODER-Gruppen
-  - fehlende Tags
-  - blockierende Ausschlüsse
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Kategorie-Tab
+## Source note
 
-Der Kategorie-Test wurde aus dem Kategorie-Tab entfernt. Der Tab bleibt für Regelpflege und Kategorie-Reihenfolge zuständig.
-
-## Technik
-
-Die Diagnose-Logik liegt jetzt zentral in `app/core/category_engine.py`, damit Viewer und spätere Funktionen dieselbe Auswertung verwenden können.
+Original patch note file: `README_CATEGORY_REASON_VIEWER_DIALOG_1_3_53.md`

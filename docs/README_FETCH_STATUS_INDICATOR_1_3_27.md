@@ -1,29 +1,21 @@
-# 1.3.27 - Fetch-Statusanzeige
+# 1.3.27 - Fetch Status Indicator
 
-## Geändert
+## Summary
 
-- `app/gui/fetch_tab.py`
-- `app/gui/app_window.py`
-- `app/gui/preview_window.py`
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-## Inhalt
+## Scope
 
-### Fetch-Status im Previewer
+**Area:** Fetch workflow
 
-Während ein Fetch läuft, wird im Preview-Tab sichtbar angezeigt:
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-- Toolbar-Chip `Fetch läuft…`
-- Statusbar-Hinweis
-- Leerer Preview zeigt `Fetch läuft… Noch keine Posts in dieser Ansicht.`
-- Der Tab-Titel wird temporär zu `Preview / Review · Fetch läuft`
+## Release context
 
-Nach Abschluss oder Fehler wird der Status wieder zurückgesetzt.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-### Technische Änderung
+## Source note
 
-`FetchTab` sendet jetzt zusätzliche Signale:
-
-- `fetch_started`
-- `fetch_failed_signal`
-
-`AppWindow` reicht diesen Zustand an `PreviewWindow.set_fetch_running()` weiter.
+Original patch note file: `README_FETCH_STATUS_INDICATOR_1_3_27.md`

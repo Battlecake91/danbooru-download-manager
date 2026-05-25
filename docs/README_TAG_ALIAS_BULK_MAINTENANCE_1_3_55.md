@@ -1,36 +1,21 @@
-# 1.3.55 - Alias-Massenpflege im Tag-Tab
+# 1.3.55 - Tag Alias Bulk Maintenance
 
-Dieser Patch erweitert den Tag-Tab um einfache Massenpflege für Tag-Aliase.
+## Summary
 
-## Neue Aktionen im Kontextmenü
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-Bei Rechtsklick auf einen oder mehrere Tags gibt es jetzt zusätzlich:
+## Scope
 
-- **Alias bearbeiten** bei einem einzelnen Tag
-- **Alias für Auswahl setzen…** bei mehreren markierten Tags
-- **Alias entfernen** / **Alias für Auswahl entfernen…**
-- **Ähnliche Tags suchen…**
+**Area:** Tag management
 
-## Alias für Auswahl setzen
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-Mehrere Tags markieren, Rechtsklick, **Alias für Auswahl setzen…** wählen und den gemeinsamen Alias eingeben.
+## Release context
 
-Vor dem Speichern zeigt die GUI eine Bestätigung mit den betroffenen Tags. Ein leerer Alias entfernt den vorhandenen Alias.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Ähnliche Tags suchen
+## Source note
 
-Die Aktion schlägt aus dem angeklickten Tag ein Suchmuster vor, z. B.:
-
-- `red_hairband` → `*_hairband`
-- `blue_eyes` → `*_eyes`
-
-Unterstützt werden:
-
-- `*` für beliebig viele Zeichen
-- `?` für ein Zeichen
-
-Die Treffer werden in einem Dialog mit Checkboxen angezeigt. Nicht passende Treffer können abgewählt werden. Danach wird ein gemeinsamer Alias gesetzt oder bei leerem Alias entfernt.
-
-## Performance-Hinweis
-
-Alias-Änderungen aktualisieren nur die sichtbaren Tabellenzellen lokal. Es wird bewusst kein vollständiges `reload_tags()` ausgelöst, damit der Tag-Tab bei großen Datenbanken nicht wieder blockiert.
+Original patch note file: `README_TAG_ALIAS_BULK_MAINTENANCE_1_3_55.md`

@@ -1,44 +1,21 @@
-# 1.3.73 - Preview-Status-Bulk und Fetch-Fortschritt
+# 1.3.73 - Preview Fetch Progress Performance
 
-## Ziel
+## Summary
 
-Diese Version reduziert Wartezeiten im Previewer bei Statusänderungen vieler markierter Thumbnails und macht den Fetch-Fortschritt sichtbar.
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-## Previewer
+## Scope
 
-Statusänderungen über Mehrfachauswahl werden jetzt gebündelt verarbeitet:
+**Area:** Fetch workflow
 
-- eine DB-Bulk-Operation für alle ausgewählten Posts
-- ein Commit statt ein Commit pro Karte
-- UI-Aktualisierung der betroffenen Karten in einem eingefrorenen Update-Block
-- nur noch eine Sammelmeldung in der Statusleiste bei mehreren Posts
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-Das betrifft besonders Aktionen wie:
+## Release context
 
-- High Potential
-- Ablehnen
-- Als gespeichert markieren
-- Bereits bekannt
-- Neu zurücksetzen
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Einzelne Karten funktionieren weiterhin wie vorher.
+## Source note
 
-## Fetcher
-
-Der Fetcher zeigt jetzt während des Laufs konkrete Fortschrittsdaten:
-
-- Query X / X
-- Post X / X
-- Bekannt: X
-- Neu: X
-- Thumbnails: X
-- aktuelle Query im Tooltip
-
-Der Ladebalken ist nach der Query-Vorbereitung determiniert und läuft anhand der geplanten maximalen Post-Anzahl.
-
-## Technische Änderung
-
-`PostImportService` kann jetzt einen Progress-Callback bekommen und sendet `FetchProgress`-Objekte an die GUI.
-
-`Database.set_post_statuses(...)` erlaubt gebündelte Statusänderungen mit einem gemeinsamen Commit.
-
+Original patch note file: `README_PREVIEW_FETCH_PROGRESS_PERFORMANCE_1_3_73.md`

@@ -1,46 +1,21 @@
-# 1.3.25 - Previewer: Sortierung und Performance
+# 1.3.25 - Preview Sort Performance
 
-## Sortierung
+## Summary
 
-Der Previewer hat jetzt eine eigene Sortierauswahl in der Toolbar.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Verfügbare Sortierungen:
+## Scope
 
-- Post-ID: neueste zuerst
-- Post-ID: älteste zuerst
-- Danbooru-Score: hoch → niedrig
-- Danbooru-Score: niedrig → hoch
-- Persönliches Rating: hoch → niedrig
-- Persönliches Rating: niedrig → hoch
-- Danbooru-Rating: safe → explicit
-- Status
-- Kategorie
-- Zuletzt gespeichert
-- Zuletzt gesehen
-- Auflösung: groß → klein
-- Dateigröße: groß → klein
+**Area:** Preview and thumbnail workflow
 
-Die meisten Sortierungen laufen direkt in SQLite. Kategorie-Sortierung läuft nach der Kategorie-Vorschlagslogik in Python, weil automatische Kategorie-Vorschläge nicht direkt als Datenbankfeld existieren.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-## Previewer-Performance
+## Release context
 
-Der Thumbnail-Grid rendert nicht mehr alle Karten in einem einzigen UI-Block.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Neu:
+## Source note
 
-- Karten werden in Batches aufgebaut.
-- Default: 40 Karten pro Batch.
-- Einstellbar über `gui.preview_render_batch_size`.
-- Thumbnail-Pixmaps werden gecacht.
-- Der Cache berücksichtigt Pfad, Thumbnail-Größe und Änderungszeit der Datei.
-- Beim Relayout werden Repaints reduziert.
-- Datenbank-Indizes für häufige Sortierfelder wurden ergänzt.
-
-Das löst keine perfekte Virtualisierung wie ein echtes Model/View-Grid, reduziert aber die schlimmsten Hänger bei >100 Einträgen deutlich. Ein kompletter Umbau auf echtes `QAbstractItemModel` / `QListView` wäre später möglich, aber das hier ist der pragmatische Schritt, bevor Qt wieder mit dem Gesicht zuerst in den Teppich fällt.
-
-## Geänderte Dateien
-
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
-- `app/core/config.py`
-- `app/core/database.py`
+Original patch note file: `README_PREVIEW_SORT_PERFORMANCE_1_3_25.md`

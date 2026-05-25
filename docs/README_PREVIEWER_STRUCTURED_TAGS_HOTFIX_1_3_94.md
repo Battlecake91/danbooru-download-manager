@@ -1,26 +1,21 @@
-# 1.3.94 Previewer: aufgeschlüsselte Tags im echten Preview-Fenster
+# 1.3.94 - Previewer Structured Tags Hotfix
 
-## Problem
+## Summary
 
-Die Konfig-Vorschau konnte den Modus `Aufgeschlüsselt` anzeigen, der echte Previewer zeigte aber weiterhin die rohe Tag-Zeile.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Ursache: Die SQL-Abfrage im Preview-Fenster lieferte nur `tags`, aber nicht die typisierten Felder `tags_general`, `tags_character`, `tags_copyright`, `tags_artist` und `tags_meta`. Die Preview-Karte konnte deshalb im echten Previewer nicht nach Tagtypen gruppieren und fiel auf Raw zurück.
+## Scope
 
-## Fix
+**Area:** Preview and thumbnail workflow
 
-`PreviewWindow.fetch_preview_posts_by_statuses()` liefert jetzt zusätzlich:
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-- `tags_general`
-- `tags_character`
-- `tags_copyright`
-- `tags_artist`
-- `tags_meta`
+## Release context
 
-Damit nutzt der Previewer dieselbe strukturierte Tag-Darstellung wie die Vorschau in der Konfig.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Auswirkungen
+## Source note
 
-- Keine Änderung am Datenbankschema.
-- Keine Änderung an der Konfig-UI.
-- Keine Änderung am Preview-Kartenlayout.
-- Nur die Previewer-Abfrage wurde ergänzt.
+Original patch note file: `README_PREVIEWER_STRUCTURED_TAGS_HOTFIX_1_3_94.md`

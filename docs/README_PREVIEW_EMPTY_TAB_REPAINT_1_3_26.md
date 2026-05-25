@@ -1,17 +1,21 @@
-# 1.3.26 - Preview-Tab zeichnet leeren Zustand sauber
+# 1.3.26 - Preview Empty Tab Repaint
 
-## Problem
-Wenn vom Tab **Fetch / Suche** zu **Preview / Review** gewechselt wurde, bevor jemals Posts gefetcht wurden, konnte der Preview-Tab optisch noch den Inhalt des Fetch-Tabs anzeigen.
+## Summary
 
-Ursache war ein leerer Preview-Bereich ohne sichtbares, deckendes Widget. Je nach Qt-Style/Plattform wurde dadurch der zuletzt gezeichnete Tab-Inhalt nicht sauber übermalt.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Änderung
-- `ThumbnailGrid` zeichnet jetzt bei leerer Post-Liste einen expliziten Hinweis-Kasten.
-- ScrollArea, Viewport und Container werden deckend/opaque gesetzt.
-- Beim Aktivieren des Preview-Tabs wird der leere Zustand aktiv gezeichnet.
-- Bei echten Posts verschwindet der Hinweis automatisch.
+## Scope
 
-## Geänderte Dateien
-- `app/gui/app_window.py`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
+**Area:** Preview and thumbnail workflow
+
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_PREVIEW_EMPTY_TAB_REPAINT_1_3_26.md`

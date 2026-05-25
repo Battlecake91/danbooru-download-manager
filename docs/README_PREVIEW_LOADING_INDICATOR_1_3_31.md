@@ -1,14 +1,21 @@
-# 1.3.31 - Preview-Ladeanzeige beim Tabwechsel
+# 1.3.31 - Preview Loading Indicator
 
-## Geändert
+## Summary
 
-- Das Patch-ZIP enthält ab jetzt nur noch die geänderten Dateien.
-- Der Preview-Tab zeigt beim Laden einen zentralen Ladehinweis mit endlosem Fortschrittsbalken.
-- Beim Wechsel von Fetch zu Preview wird sofort ein deckendes Ladefeld angezeigt, damit nicht mehr der Fetch-Tab optisch stehen bleibt.
-- Während `reload_posts()` läuft, wird `Lädt Preview…` angezeigt.
-- Der leere Preview-Zustand bleibt erhalten, wenn nach dem Laden keine Posts zur aktuellen Ansicht passen.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Betroffene Dateien
+## Scope
 
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
+**Area:** Preview and thumbnail workflow
+
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_PREVIEW_LOADING_INDICATOR_1_3_31.md`

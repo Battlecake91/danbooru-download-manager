@@ -1,36 +1,21 @@
-# Danbooru Manager 0.3 - konfigurierbare Statusfarben
+# 0.3 - Gui Color
 
-Dieser Patch ergänzt konfigurierbare GUI-Farben für Thumbnail-Karten.
+## Summary
 
-## Geänderte Dateien
+Improves GUI structure, colors, layout density, and user-facing polish.
 
-- `config.example.yaml`
-- `app/gui/preview_window.py`
-- `app/gui/thumbnail_grid.py`
+## Scope
 
-## Neue Config
+**Area:** GUI polish
 
-In `config.yaml` ergänzen:
+- The change focuses on usability rather than data model changes.
+- Layouts are adjusted to reduce visual noise.
+- The intent is to keep repeated review work fast.
 
-```yaml
-gui:
-  thumbnail_size: 180
-  card_width_extra: 60
+## Release context
 
-  status_colors:
-    new: "#666666"
-    potential: "#2e7d32"
-    review: "#f9a825"
-    auto_rejected: "#546e7a"
-    rejected: "#b71c1c"
-    accepted: "#1565c0"
-    downloaded: "#8e24aa"
-    saved: "#00838f"
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-  status_border_width:
-    default: 2
-    marked: 3
-    downloaded: 4
-```
+## Source note
 
-Posts mit `status = downloaded` werden über `gui.status_colors.downloaded` markiert.
+Original patch note file: `README_GUI_COLOR_0_3.md`

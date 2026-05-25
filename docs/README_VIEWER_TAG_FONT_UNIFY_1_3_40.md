@@ -1,10 +1,21 @@
-# 1.3.40 - Viewer Tag-Schrift vereinheitlicht
+# 1.3.40 - Viewer Tag Font Unify
 
-Dieses Patch-ZIP enthält nur geänderte Dateien.
+## Summary
 
-## Änderung
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-- General-/Meta-Tagzeilen verwenden jetzt dieselbe normale Schrift wie Artist/Serie/Character.
-- Widget-backed Tagzeilen speichern keinen sichtbaren Text mehr im QListWidgetItem, damit kein doppelt/geisterhaft fett gerenderter Text hinter dem Zeilenwidget erscheint.
-- Die Detailspalten nutzen ebenfalls die normale UI-Schrift statt einer separaten Monospace-Schrift.
+## Scope
 
+**Area:** Viewer workflow
+
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_VIEWER_TAG_FONT_UNIFY_1_3_40.md`

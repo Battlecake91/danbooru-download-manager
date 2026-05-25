@@ -1,56 +1,21 @@
-# Danbooru Manager 1.3.2 - Doppeltes Speichern verhindern
+# 1.3.2 - Prevent Double Save
 
-## Problem
+## Summary
 
-Ein bereits gespeicherter Post konnte erneut final gespeichert werden.
-Dadurch entstanden Dateikopien mit `_2`, `_3`, usw.
+Documents one development patch from the path to the 1.3.135 public release.
 
-## Fix
+## Scope
 
-`FinalSaveService.save_post()` prüft jetzt vor dem Speichern:
+**Area:** General development note
 
-```text
-status == saved
-oder
-final_file_path ist gesetzt
-```
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-Falls ja:
+## Release context
 
-```text
-kein Kopieren
-kein neuer Dateiname
-Meldung: Bereits gespeichert
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Neue Exception
+## Source note
 
-```python
-AlreadySavedError
-```
-
-Diese enthält:
-
-- Post-ID
-- finalen Pfad, falls vorhanden
-
-## Viewer
-
-Der Viewer fängt `AlreadySavedError` ab und zeigt eine Meldung:
-
-```text
-Post ist bereits gespeichert.
-Pfad: ...
-```
-
-Außerdem:
-
-- Button `Final speichern (F)` wird deaktiviert, wenn der aktuelle Post bereits gespeichert ist
-- nach erfolgreichem Speichern wird der Button ebenfalls deaktiviert
-
-## Geänderte Dateien
-
-```text
-app/services/final_save_service.py
-app/gui/image_viewer.py
-```
+Original patch note file: `README_PREVENT_DOUBLE_SAVE_1_3_2.md`

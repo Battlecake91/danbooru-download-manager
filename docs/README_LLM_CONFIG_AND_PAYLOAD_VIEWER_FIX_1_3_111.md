@@ -1,41 +1,21 @@
-# Patch 1.3.111 - LLM Config und Payload-Viewer Fix
+# 1.3.111 - Llm Config And Payload Viewer Fix
 
-## Problem
+## Summary
 
-Nach Patch 1.3.110 konnte der Konfigurations-Tab beim Lazy-Laden bei `Lade Konfiguration...` hängen beziehungsweise abbrechen.
-Grund: Die UI verwendete `llm_run_after_fetch_checkbox` und `llm_skip_scored_checkbox`, diese Widgets wurden aber im finalen Stand nicht zuverlässig angelegt.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Außerdem konnte `Letzte LLM-Payloads` ohne verwertbaren Inhalt erscheinen, wenn nach einem Fetch keine Payload erzeugt wurde oder die LLM-Batch-Vorbereitung deaktiviert war.
+## Scope
 
-## Änderungen
+**Area:** Viewer workflow
 
-### `app/gui/config_tab.py`
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-- `llm_run_after_fetch_checkbox` wird wieder korrekt erstellt.
-- `llm_skip_scored_checkbox` wird wieder korrekt erstellt.
-- Beide Checkboxen werden vor dem Einfügen ins FormLayout angelegt.
-- Tooltips ergänzt.
+## Release context
 
-### `app/services/llm_batch_service.py`
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- `llm.last_fetch_payloads` und `llm.last_fetch_payload_summary` werden jetzt immer gemeinsam geschrieben.
-- Auch bei deaktivierter LLM-Batch-Vorbereitung oder leerer Kandidatenliste wird `last_fetch_payloads` sauber auf `[]` gesetzt.
-- Dadurch zeigt der Viewer keine veralteten Payloads mehr an.
+## Source note
 
-### `app/gui/preview_window.py`
-
-- Wenn keine Payloads gespeichert sind, aber eine Summary existiert, zeigt `Letzte LLM-Payloads` jetzt die Summary an:
-  - Eingangsposts
-  - Kandidaten
-  - übersprungene Posts
-  - Batches
-  - Payloads
-  - Hinweis/Grund
-
-## Test
-
-```bash
-python -m compileall app
-```
-
-Der Compile-Test läuft ohne Syntaxfehler durch.
+Original patch note file: `README_LLM_CONFIG_AND_PAYLOAD_VIEWER_FIX_1_3_111.md`

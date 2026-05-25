@@ -1,15 +1,21 @@
-# 1.3.128 - i18n tab title fix
+# 1.3.128 - I18N Tab Title Fix
 
-Fixes the Importer tab title falling back to a raw translation key.
+## Summary
 
-Changes:
+Moves visible UI text toward the shared internationalization layer and prepares the application for English-first operation.
 
-- Keeps the internal lazy-tab key `import` unchanged.
-- Maps that internal key to the translation key `tabs.importer` for visible tab labels.
-- Adds `tabs.import` as a compatibility alias in both locale files.
+## Scope
 
-Validation:
+**Area:** Internationalization
 
-```bash
-python3 -m compileall -q main.py app
-```
+- Visible strings move into language resources.
+- English is treated as the main release language.
+- German remains useful during the migration where supported by the application.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_TAB_TITLE_FIX_1_3_128.md`

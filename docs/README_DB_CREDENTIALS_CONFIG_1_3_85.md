@@ -1,40 +1,21 @@
-# 1.3.85 - Danbooru-Zugangsdaten in SQLite-Konfiguration
+# 1.3.85 - Db Credentials Config
 
-## Ziel
+## Summary
 
-Username und API-Key können jetzt in der Konfigurationsseite gepflegt und in der SQLite-Tabelle `app_settings` gespeichert werden.
+Improves the application configuration UI, database-backed settings, preview configuration, and runtime defaults.
 
-## Konfigurationsseite
+## Scope
 
-Im Bereich **Fetch** gibt es neue Felder:
+**Area:** Configuration and database
 
-- `username`
-- `api_key`
-- Checkbox **API-Key anzeigen**
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
 
-Der API-Key wird standardmäßig als Passwortfeld verdeckt angezeigt.
+## Release context
 
-## Runtime-Verhalten
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Beim Speichern werden folgende app_settings geschrieben:
+## Source note
 
-- `username`
-- `api_key`
-
-Nach dem Speichern werden die Werte direkt in das laufende `config`-Dict übernommen. Neue Fetch-/Importer-/Download-Services verwenden damit die DB-Zugangsdaten.
-
-Beim Programmstart werden vorhandene `app_settings` nach `db.initialize_schema()` zusätzlich auf die Runtime-Konfiguration gelegt. Dadurch wirken in SQLite gespeicherte Zugangsdaten auch nach einem Neustart.
-
-Hinweis: `database_file` selbst kann nicht auf diese Weise vor dem Öffnen der DB geändert werden, weil dafür bereits eine Datenbankverbindung bestehen muss.
-
-## Sicherheit
-
-Der API-Key wird in SQLite als Klartext gespeichert. Das ist keine Verschlüsselung, sondern nur zentrale lokale Ablage. Die DB-Datei sollte entsprechend geschützt werden.
-
-Damit der API-Key nicht versehentlich im UI herumliegt:
-
-- das Feld ist standardmäßig verdeckt
-- `Raw app_settings` maskiert `api_key`
-- Konfigurations-Export maskiert `api_key` mit `********`
-- beim Import wird ein maskierter API-Key nicht übernommen, damit kein echter Key durch `********` ersetzt wird
-
+Original patch note file: `README_DB_CREDENTIALS_CONFIG_1_3_85.md`

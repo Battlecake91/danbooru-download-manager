@@ -1,28 +1,21 @@
-# Patch 1.3.122 - Viewer i18n pass
+# 1.3.122 - I18N Viewer
 
-## Goal
+## Summary
 
-Continue the English UI migration by moving the main image viewer to the i18n layer.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-## Changed files
+## Scope
 
-- `app/gui/image_viewer.py`
-- `app/i18n/locales/en.json`
-- `app/i18n/locales/de.json`
+**Area:** Viewer workflow
 
-## What changed
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
 
-- Viewer window title and post-specific title are translated.
-- Toolbar labels and tooltips are translated.
-- Personal rating label and navigation controls are translated.
-- Category label, category details button and category status text are translated.
-- Parent/child warning, list text and context menu are translated.
-- Tag loading messages and filename-exclude messages are translated.
-- Filename preview text is translated.
-- Save, refetch, delete-local-file and remove-from-database dialogs are translated.
-- Tag context menu actions inside the viewer are translated.
-- Local image/folder warnings are translated.
+## Release context
 
-## Notes
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-This patch intentionally focuses on the viewer tab/window. Other tabs still contain German UI strings and should be migrated in separate, smaller patches.
+## Source note
+
+Original patch note file: `README_I18N_VIEWER_1_3_122.md`

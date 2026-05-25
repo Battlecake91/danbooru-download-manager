@@ -1,35 +1,21 @@
-# 1.3.107 - LLM Payload Compaction + Confidence
+# 1.3.107 - Llm Payload Compaction
 
-Dieser Patch macht den LLM-Payload kleiner und aussagekraeftiger.
+## Summary
 
-## Aenderungen
+Adds or stabilizes experimental LLM payload handling, preselection support, privacy handling, and debug visibility.
 
-- Payload-Schema auf `schema_version: 3` angehoben.
-- `known_tag_preferences` enthaelt jetzt zusaetzlich:
-  - `confidence`
-  - `conflict`, falls manuelle Bewertung und Historie gegeneinander laufen
-- Schwache, nicht hilfreiche Tag-Praeferenzen werden aus dem Payload entfernt.
-- Kategorieprofile enthalten `profile_confidence`:
-  - `high`
-  - `medium`
-  - `low`
-  - `very_low`
-- Sehr schwache Kategorieprofile mit weniger als 5 gespeicherten Posts senden keine grossen Top-Tag-Listen mehr.
-- Beispielposts werden gekuerzt:
-  - Standard: maximal 30 Tags je Beispiel
-  - Prioritaet fuer Tags im aktuellen Batch, starke Preference-Tags und Kategorieprofil-Tags
-- Neuer Payload-Block `payload_stats` zeigt, wie stark der Payload kompaktiert wurde.
+## Scope
 
-## Neue Konfiguration
+**Area:** LLM and recommendation support
 
-```text
-llm.max_example_tags: 30
-```
+- The feature is experimental and should be treated as decision support.
+- Payloads are compacted so only relevant post metadata is sent.
+- Debug tools make it easier to inspect what the model receives.
 
-Im Konfigurations-Tab gibt es dazu das Feld `Tags/Beispiel`.
+## Release context
 
-## Zweck
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Die LLM soll weniger JSON-Ballast bekommen und staerkere Signale klarer erkennen.
-Vorher bekam sie viele neutrale oder widerspruechliche Rohdaten. Jetzt bekommt sie weniger Daten,
-aber mit Confidence- und Conflict-Hinweisen. Ja, weniger Laerm hilft manchmal. Welch Ketzeridee.
+## Source note
+
+Original patch note file: `README_LLM_PAYLOAD_COMPACTION_1_3_107.md`

@@ -1,78 +1,21 @@
-# Danbooru Manager 0.6 - Thumbnail-Quelle und Hotkeys
+# 0.6 - Hotkeys Thumbnail Source
 
-## Neu
+## Summary
 
-### Bessere Thumbnail-Qualität
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Die Download-Quelle für Thumbnails ist nun konfigurierbar:
+## Scope
 
-```yaml
-thumbnail_download_source: "large"
-thumbnail_redownload_existing: false
-```
+**Area:** Preview and thumbnail workflow
 
-Mögliche Werte:
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-- `preview`: kleine Danbooru-Vorschau, schnell, aber unscharf
-- `large`: `large_file_url`, meist guter Kompromiss
-- `file`: Originaldatei, scharf, aber potentiell groß
-- `best`: `file -> large -> preview`
+## Release context
 
-Die neuen Cache-Dateien enthalten die Quelle im Namen:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-12345678_large.jpg
-12345678_preview.jpg
-```
+## Source note
 
-Wenn bereits unscharfe `preview`-Thumbnails vorhanden sind, reicht meist:
-
-```yaml
-thumbnail_download_source: "large"
-```
-
-und danach ein neuer Fetch-Lauf. Der neue Pfad wird in der Datenbank gesetzt.
-
-Falls wirklich überschrieben werden soll:
-
-```yaml
-thumbnail_redownload_existing: true
-```
-
-### Tastaturbedienung
-
-Die Grid-Ansicht unterstützt nun Auswahl und Hotkeys.
-
-Navigation:
-
-- `←`, `→`, `↑`, `↓`: aktuelle Karte bewegen
-- `Shift + Pfeiltaste`: Bereich auswählen
-- `Leertaste`: aktuelle Karte zur Auswahl hinzufügen/entfernen
-- `Ctrl + A`: alle sichtbaren Karten auswählen
-- `Esc`: Auswahl löschen
-- `Enter`: Originalpost öffnen
-
-Status-Hotkeys:
-
-- `H`: Hohes Potential
-- `P`: Prüfen
-- `S`: Zum Speichern vormerken
-- `A`: Automatisch aussortiert
-- `Entf`: Ablehnen
-- `G`: Als gespeichert markieren
-- `K`: Bereits bekannt
-- `N`: Neu zurücksetzen
-
-Maus:
-
-- Linksklick: Karte auswählen
-- Ctrl + Linksklick: Karte zur Mehrfachauswahl hinzufügen/entfernen
-- Shift + Linksklick: Bereich auswählen
-- Rechtsklick: Kontextmenü
-
-## Geänderte Dateien
-
-- `config.example.yaml`
-- `app/core/config.py`
-- `app/danbooru/thumbnail_cache.py`
-- `app/gui/thumbnail_grid.py`
+Original patch note file: `README_HOTKEYS_THUMBNAIL_SOURCE_0_6.md`

@@ -1,19 +1,21 @@
-# 1.3.89 - Previewer-Layout wiederhergestellt
+# 1.3.89 - Config Preview Card Revert
 
-Dieser Patch repariert den Fehler aus 1.3.88.
+## Summary
 
-## Problem
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-1.3.88 hat die gemeinsame `ThumbnailCard` geändert, um die Konfig-Vorschau anzupassen. Dadurch wurde aber auch das echte Preview-Fenster verändert.
+## Scope
 
-## Fix
+**Area:** Preview and thumbnail workflow
 
-- `ThumbnailCard` ist wieder auf das vorherige Previewer-Layout zurückgesetzt.
-- Das echte Preview-Fenster sieht damit wieder aus wie vor 1.3.88.
-- Die Konfig-Vorschau nutzt weiterhin die echte `ThumbnailCard`, verändert sie aber nicht mehr global.
-- Keine Datenbankänderung.
-- Keine Änderung an Fetch, Import oder Scoring.
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-## Hinweis
+## Release context
 
-Falls die Konfig-Vorschau später noch genauer angepasst werden soll, muss das über eine separate Vorschau-Komponente passieren. Die globale `ThumbnailCard` darf dafür nicht mehr umgebaut werden.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_CONFIG_PREVIEW_CARD_REVERT_1_3_89.md`

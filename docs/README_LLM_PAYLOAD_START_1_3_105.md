@@ -1,64 +1,21 @@
-# 1.3.105 - LLM-Integration Start: Payload statt Blindflug
+# 1.3.105 - Llm Payload Start
 
-Dieser Patch entfernt die Preview-Funktion **Kategorie-Details**, weil sie im Workflow keinen echten Nutzen bringt.
+## Summary
 
-## Neu
+Introduces startup or first-run behavior needed to make the application usable without manual file editing.
 
-### Previewer
+## Scope
 
-- Neuer Button: **LLM-Payload**
-- Rechts oben neben den normalen Aktionen.
-- Erzeugt für die aktuell ausgewählten Preview-Posts eine JSON-Payload.
-- Die Payload wird in einem Dialog angezeigt und kann in die Zwischenablage kopiert werden.
-- Es wird noch nichts automatisch an einen LLM-Anbieter gesendet.
+**Area:** LLM and recommendation support
 
-Das ist absichtlich die erste Stufe, damit der Prompt und die exportierten Tags kontrollierbar bleiben, bevor ein Modell anfängt, selbstbewusst Unsinn zu würfeln.
+- The feature is experimental and should be treated as decision support.
+- Payloads are compacted so only relevant post metadata is sent.
+- Debug tools make it easier to inspect what the model receives.
 
-### Konfiguration
+## Release context
 
-Im Tab **Scoring** gibt es nun grundlegende LLM-Einstellungen:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- LLM aktivieren
-- Backend: `none`, `openai_compatible`, `local`
-- Endpoint-URL
-- Modell
-- API-Key-Umgebungsvariable
-- Timeout
-- Posts pro Request
-- Tags pro Post
-- optionaler System-Prompt
-- Tag-Export-Modus: Original, Alias oder gehashte Alias-Tags
-- Hash-Prefix und Hash-Länge
-- optionale Tag-Legende
+## Source note
 
-Die Werte werden wie die restliche Konfiguration in `app_settings` gespeichert.
-
-## Payload-Inhalt
-
-Die Payload enthält:
-
-- Aufgabe: `danbooru_post_preselection`
-- erwartetes Antwortschema
-- verfügbare Kategorien
-- pro Post:
-  - Post-ID
-  - Rating
-  - Danbooru-Score
-  - Status
-  - lokale Bewertung
-  - bisherige Kategorie
-  - lokalen Vorauswahl-Score
-  - positive/negative lokale Signale
-  - exportierte Tags
-
-Tags mit `ignore_llm_input` werden ausgelassen. Der bestehende Privacy-Pfad über Alias und Salted Hash wird weiterverwendet.
-
-## Entfernt
-
-- Button **Kategorie-Details** im Previewer
-- Kontextmenüpunkt **Kategorie-Details anzeigen**
-- Previewer-Signalpfad für Kategorie-Details
-
-## Nächster sinnvoller Schritt
-
-Danach kann ein Worker ergänzt werden, der diese Payload tatsächlich an einen konfigurierten OpenAI-kompatiblen oder lokalen Endpunkt sendet und die Antwort als `llm_score` / Kategorie-Vorschlag zurück in die Datenbank schreibt.
+Original patch note file: `README_LLM_PAYLOAD_START_1_3_105.md`

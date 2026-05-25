@@ -1,32 +1,21 @@
-# 1.3.81 Importer MD5-Lookup Hotfix
+# 1.3.81 - Importer Md5 Lookup Hotfix
 
-## Problem
+## Summary
 
-Der bestehende Datei-Importer rief `DanbooruApi.get_post_by_md5()` auf, aber diese Methode war im Patch 1.3.80 nicht im ausgelieferten Patch-ZIP enthalten. Dadurch konnte der Importer mit folgendem Fehler abbrechen:
+Improves importing existing local Danbooru files into the SQLite database using metadata lookup and safer file handling.
 
-```text
-'DanbooruApi' object has no attribute 'get_post_by_md5'
-```
+## Scope
 
-## Fix
+**Area:** Import workflow
 
-`app/danbooru/api.py` enthält jetzt die Methode:
+- Existing files can be connected to database records.
+- The importer avoids blind overwrites and reports skipped files.
+- Imported posts can participate in scoring and category workflows.
 
-```python
-def get_post_by_md5(self, md5_hash: str) -> dict[str, Any] | None:
-```
+## Release context
 
-Die Methode validiert den 32-stelligen MD5-Hash und sucht den Post über die normale Danbooru-Postsuche:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-/posts.json?tags=md5:<hash>&limit=1
-```
+## Source note
 
-Wenn kein Post gefunden wird, gibt sie `None` zurück.
-
-## Betroffene Dateien
-
-```text
-app/danbooru/api.py
-docs/README_IMPORTER_MD5_LOOKUP_HOTFIX_1_3_81.md
-```
+Original patch note file: `README_IMPORTER_MD5_LOOKUP_HOTFIX_1_3_81.md`

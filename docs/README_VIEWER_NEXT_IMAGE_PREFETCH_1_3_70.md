@@ -1,51 +1,21 @@
-# 1.3.70 - Viewer Next-Image-Prefetch
+# 1.3.70 - Viewer Next Image Prefetch
 
-## Ziel
+## Summary
 
-Der Viewer lädt und dekodiert jetzt das nächste lokal vorhandene Bild im Hintergrund vor. Dadurch soll beim normalen Vorwärtsblättern die Zeit in `qpixmap_load` sinken, weil das Bild bereits als `QImage` vorbereitet ist.
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-## Technische Umsetzung
+## Scope
 
-- Der Viewer nutzt einen einzelnen Hintergrund-Worker (`ThreadPoolExecutor(max_workers=1)`).
-- Im Worker wird ausschließlich `QImage` geladen.
-- `QPixmap` wird weiterhin nur im GUI-Thread erzeugt.
-- Das ist wichtig, weil `QPixmap` nicht sauber für Worker-Threads gedacht ist.
-- Der bestehende Pixmap-LRU-Cache bleibt erhalten.
-- Prefetch nutzt nur bereits lokal vorhandene Dateien.
-- Fehlende Originalbilder werden beim Prefetch nicht heruntergeladen.
+**Area:** Fetch workflow
 
-## Neue Config-Optionen
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-Unter `viewer` optional:
+## Release context
 
-```yaml
-viewer:
-  prefetch_next_image: true
-  prefetch_next_count: 1
-  pixmap_cache_items: 12
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-`prefetch_next_image` aktiviert/deaktiviert das Vorladen.
+## Source note
 
-`prefetch_next_count` legt fest, wie viele folgende Bilder vorbereitet werden. Standard ist 1. Höhere Werte können mehr RAM verbrauchen.
-
-`pixmap_cache_items` begrenzt weiterhin den Bildcache.
-
-## Performance-Log
-
-Der Viewer-Performance-Test enthält zusätzlich:
-
-```text
-prefetch_schedule=...
-```
-
-Das misst nur die Zeit zum Einplanen des Prefetch-Jobs, nicht das Hintergrund-Decoding selbst.
-
-Wenn der Prefetch greift, sollte `qpixmap_load` beim nächsten Bild oft deutlich kleiner werden. Bei sehr schnellem Durchklicken kann der Worker noch nicht fertig sein, dann lädt der Viewer wie bisher synchron.
-
-## Verhalten
-
-- Beim Anzeigen von Bild N wird Bild N+1 vorbereitet.
-- Beim Wechsel auf Bild N+1 wird das vorbereitete `QImage` in eine `QPixmap` umgewandelt und im Cache abgelegt.
-- Beim Schließen des Viewers wird der Prefetch-Worker beendet.
-
+Original patch note file: `README_VIEWER_NEXT_IMAGE_PREFETCH_1_3_70.md`

@@ -1,14 +1,21 @@
-# 1.3.123 - Viewer tag filter i18n and wider tag panel
+# 1.3.123 - I18N Viewer Tag Width
 
-Changes:
+## Summary
 
-- Translated the remaining filename-tag filter checkbox in the viewer tag panel.
-- Added i18n keys for the checkbox and tooltip.
-- Increased the viewer side panel width so typed tags, especially character tags, are easier to read.
-- Gave the Character column more stretch than Artist/Copyright inside the identity tag row.
+Improves the full viewer used for detailed review, rating, category selection, tag actions, file saving, and navigation.
 
-Validation:
+## Scope
 
-```bash
-python3 -m compileall -q main.py app
-```
+**Area:** Viewer workflow
+
+- The viewer is the place for final review decisions.
+- Manual category and rating changes are preserved in the database.
+- Tag actions are kept close to the image review flow.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_VIEWER_TAG_WIDTH_1_3_123.md`

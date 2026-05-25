@@ -1,28 +1,21 @@
-# 1.3.74 Preview-Statuswechsel: Tag-Statistik gebündelt
+# 1.3.74 - Preview Status Bulk Stats
 
-Dieser Patch reduziert die Wartezeit bei Statusänderungen im Previewer, besonders bei großen Mehrfachauswahlen.
+## Summary
 
-## Problem
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-Die bisherige Bulk-Statusfunktion schrieb zwar nur noch einen Commit, aktualisierte danach aber weiterhin für jeden einzelnen Post die Tag-Statistik. Bei 100 markierten Thumbnails bedeutete das viele redundante Aggregationen über `post_tags`, `posts`, `post_reviews` und `tag_scores`.
+## Scope
 
-## Änderung
+**Area:** Preview and thumbnail workflow
 
-`Database.set_post_statuses()` ermittelt jetzt vor der Änderung:
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-- alte Statuswerte der betroffenen Posts
-- ob `saved`, `rejected` oder `auto_rejected` überhaupt betroffen ist
-- die vereinigte Tagmenge aller betroffenen Posts
+## Release context
 
-Danach werden die Posts aktualisiert und die Tag-Statistik wird nur noch einmal für die gesamte betroffene Tagmenge berechnet.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Zusätzliche Optimierung
+## Source note
 
-Wenn weder der alte noch der neue Status Einfluss auf die Tag-Score-Statistik hat, wird die Statistikaktualisierung komplett übersprungen. Das betrifft zum Beispiel reine Wechsel zwischen `new`, `potential` und `already_known`.
-
-## Unverändert
-
-- Statuslogik bleibt gleich.
-- Thumbnail-Verschiebung für `saved`/`rejected` bleibt erhalten.
-- UI-Verhalten bleibt gleich.
-- Keine Änderung am Datenbankschema.
+Original patch note file: `README_PREVIEW_STATUS_BULK_STATS_1_3_74.md`

@@ -1,27 +1,21 @@
-# Patch 1.3.130 - Config tab English cleanup
+# 1.3.130 - I18N Config Tab
 
-This patch continues the English UI migration for the Configuration tab.
+## Summary
 
-## Changed
+Improves the application configuration UI, database-backed settings, preview configuration, and runtime defaults.
 
-- Translated visible Configuration tab labels, buttons, hints, dialog titles, and dialog messages to English.
-- Translated LLM payload debug dialogs and last-fetch payload summaries.
-- Translated preview sample post controls and status messages.
-- Translated configuration export/import/default-reset dialogs.
-- Removed remaining German comments in `config_tab.py` that were likely to show up in repository-wide German-word scans.
+## Scope
 
-## Notes
+**Area:** Configuration and database
 
-The tab still uses the existing i18n infrastructure for already migrated shared labels and the language selector. This patch mainly removes the remaining German hard-coded text from the large configuration form and its helper dialogs.
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
 
-## Validation
+## Release context
 
-```bash
-python3 -m compileall -q main.py app
-python3 - <<'PY'
-import json
-for path in ["app/i18n/locales/en.json", "app/i18n/locales/de.json"]:
-    json.load(open(path, encoding="utf-8"))
-print("locale json ok")
-PY
-```
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_CONFIG_TAB_1_3_130.md`

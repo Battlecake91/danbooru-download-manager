@@ -1,17 +1,21 @@
-# Patch 1.3.131 - Config raw app_settings cleanup
+# 1.3.131 - I18N Config Raw Settings
 
-This patch fixes the diagnostic Raw app_settings area in the Config tab.
+## Summary
 
-Changes:
+Improves the application configuration UI, database-backed settings, preview configuration, and runtime defaults.
 
-- Enlarges the Raw app_settings text area so the diagnostic view is usable.
-- Adds a short hint explaining that the area is only a diagnostic view.
-- Collapses large debug/settings values instead of dumping their full content into the raw view:
-  - `llm.system_prompt`
-  - `llm.last_fetch_payloads`
-  - `llm.last_fetch_payload_summary`
-  - `fetch.last_payload`
-- Keeps secret settings masked as before.
-- Truncates other unexpectedly large values to a short one-line preview.
+## Scope
 
-The actual settings are not removed or changed. Only their raw diagnostic display is made less ridiculous.
+**Area:** Configuration and database
+
+- SQLite-backed settings are the leading runtime configuration.
+- The GUI exposes settings that previously required manual edits.
+- Runtime paths are designed to work both from source and packaged executables.
+
+## Release context
+
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
+
+## Source note
+
+Original patch note file: `README_I18N_CONFIG_RAW_SETTINGS_1_3_131.md`

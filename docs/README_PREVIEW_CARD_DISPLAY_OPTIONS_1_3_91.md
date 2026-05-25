@@ -1,53 +1,21 @@
-# 1.3.91 Preview-Kartenanzeige konfigurierbar
+# 1.3.91 - Preview Card Display Options
 
-## Ziel
+## Summary
 
-Die Preview-Karte soll in der GUI-Konfiguration nicht nur in der Größe, sondern auch im sichtbaren Inhalt konfigurierbar sein.
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-## Neu
+## Scope
 
-Im Konfig-Tab **GUI** gibt es nun den Bereich **Preview-Karten-Inhalte**.
+**Area:** Preview and thumbnail workflow
 
-Dort können einzeln ein- und ausgeschaltet werden:
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-- ID
-- Rating
-- Score
-- Parent / Child-Hinweis
-- Status
-- Vorauswahl
-- Kategorie
-- Pfad
-- Tags insgesamt
-- General-Tags
-- Character-Tags
-- Meta-Tags
-- Copyright/Serie-Tags
-- Artist-Tags
+## Release context
 
-Die Vorschau im GUI-Tab nutzt diese Optionen sofort und zeigt die Karte entsprechend an.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Rating-Anzeige
+## Source note
 
-Das Rating wird in Preview-Karten nicht mehr als Rohwert wie `Rating: g` angezeigt, sondern ausgeschrieben und farbig:
-
-- `g` -> `General`
-- `s` -> `Sensitive`
-- `q` -> `Questionable`
-- `e` -> `Explicit`
-
-## Technisch
-
-Die Einstellungen werden unter `gui.preview_card.*` in `app_settings` gespeichert.
-
-`ThumbnailCard` liest die Optionen aus `config["gui"]["preview_card"]` und blendet die entsprechenden Labels aus bzw. filtert die Tagtypen.
-
-Für die Tagtyp-Filter liefert die Datenbank jetzt zusätzlich zu `tags` auch:
-
-- `tags_general`
-- `tags_character`
-- `tags_copyright`
-- `tags_artist`
-- `tags_meta`
-
-Das betrifft `fetch_preview_posts()` und `get_post_detail()`.
+Original patch note file: `README_PREVIEW_CARD_DISPLAY_OPTIONS_1_3_91.md`

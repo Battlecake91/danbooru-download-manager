@@ -1,34 +1,21 @@
-# 1.3.35 - Preview: manuelle Filter-Anwendung und stabilere Ladeanzeige
+# 1.3.35 - Preview Manual Filter Loading
 
-Dieses Patch-ZIP enthält nur die geänderten Dateien.
+## Summary
 
-## Änderungen
+Improves the preview workflow, thumbnail cards, filtering, sorting, loading behavior, and visible review metadata.
 
-### Preview-Limit
+## Scope
 
-- Standard-Limit ist jetzt 100 statt 500.
-- Der Wert kommt aus `gui.preview_limit`, falls vorhanden.
+**Area:** Preview and thumbnail workflow
 
-### Limit-Feld
+- The preview grid remains the fast triage area.
+- Cards can expose relevant metadata without opening every post.
+- Loading behavior is tuned to avoid blocking the interface.
 
-- Enter lädt neu.
-- Reiner Fokusverlust lädt nicht mehr neu.
-- Wertänderung zeigt nur noch einen Hinweis, dass `Neu laden` oder Enter nötig ist.
+## Release context
 
-### Filter
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- Status-Checkboxen laden nicht mehr automatisch neu.
-- `Alle`-Status-Checkbox lädt nicht mehr automatisch neu.
-- Kategorie-Filter lädt nicht mehr automatisch neu.
-- Sortierung lädt nicht mehr automatisch neu.
-- Suchfeld lädt weiterhin mit Enter neu.
-- Button `Neu laden` lädt wie bisher.
-- Nur die Auswahl `Ansicht` triggert weiterhin sofort ein Neuladen.
+## Source note
 
-### Preview-Ladeanzeige
-
-- Der Preview-Tab lädt beim App-Start nicht mehr im versteckten Tab vor.
-- Beim Wechsel auf Preview wird zuerst eine deckende Ladefläche angezeigt.
-- Der eigentliche Reload startet verzögert per Timer, damit Qt vorher wirklich neu zeichnen kann.
-- Nach dem Thumbnail-Aufbau wird das Grid explizit sichtbar geschaltet und neu gezeichnet.
-
+Original patch note file: `README_PREVIEW_MANUAL_FILTER_LOADING_1_3_35.md`

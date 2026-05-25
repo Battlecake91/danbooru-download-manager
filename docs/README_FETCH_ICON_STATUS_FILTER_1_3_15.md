@@ -1,39 +1,21 @@
-# 1.3.15 - Fetch-Auswahl, Icon und Statusfilter-Fix
+# 1.3.15 - Fetch Icon Status Filter
 
-## Icon
+## Summary
 
-Die Anwendung nutzt jetzt das Danbooru-Icon von Wikimedia:
+Improves the Fetch tab so Danbooru metadata, thumbnails, filters, presets, and progress reporting work more predictably.
 
-`https://upload.wikimedia.org/wikipedia/commons/b/b5/Danbooru_icon.png`
+## Scope
 
-Beim Start wird bevorzugt `app_icon_file` aus der Config genutzt. Falls kein lokales Icon konfiguriert ist, wird das Icon unter `work_dir/assets/danbooru_icon.png` gecacht.
+**Area:** Fetch workflow
 
-## Preview-Suche
+- Danbooru queries can be configured from the GUI.
+- Known and unknown posts are handled separately where useful.
+- Progress and summaries are designed to make longer runs understandable.
 
-Die Tag-/Textsuche respektiert wieder den Statusfilter.
+## Release context
 
-Wenn gespeicherte Posts durchsucht werden sollen, muss entweder der Status `Gespeichert` aktiviert oder die Ansicht `Alle bekannten Posts` gewählt werden.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-## Fetch-Tab
+## Source note
 
-Die alte Preset-/Checkbox-Mischung wurde entfernt.
-
-Es gibt jetzt eine klare Auswahl:
-
-- **Manuelle Tags / Query**
-  - ein Textfeld für die Danbooru-Query
-- **Saved Searches**
-  - Label-Feld
-  - optionales Query-Filter-Feld
-
-Mehrere Labels oder Query-Filter können per Komma getrennt werden.
-
-## Geänderte Dateien
-
-- `app/gui/fetch_tab.py`
-- `app/gui/preview_window.py`
-- `app/gui/icon_utils.py`
-- `app/gui/app_window.py`
-- `app/gui/main_window.py`
-- `app/gui/image_viewer.py`
-- `app/danbooru/api.py`
+Original patch note file: `README_FETCH_ICON_STATUS_FILTER_1_3_15.md`

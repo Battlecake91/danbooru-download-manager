@@ -1,33 +1,21 @@
-# 1.3.84 - Autovervollständigung für Serien/Charaktere/Artist repariert
+# 1.3.84 - Tag Completion Identity Types
 
-## Problem
+## Summary
 
-Die Suchfelder/Felder mit Tag-Autovervollständigung haben ihre Vorschlagsliste aus den häufigsten Tags aufgebaut. Dadurch wurden die begrenzten Vorschlagsplätze fast vollständig von sehr häufigen General-Tags belegt.
+Improves tag display, tag scoring, aliases, autocomplete, selection, context-menu actions, and filename-exclude behavior.
 
-Folge: Character-, Copyright-/Serien- und Artist-Tags waren zwar in der Datenbank vorhanden, wurden aber oft nicht vorgeschlagen.
+## Scope
 
-## Änderung
+**Area:** Tag management
 
-`Database.suggest_tags()` reserviert die Vorschläge jetzt nach Tagtyp:
+- Tags are stored locally for search, scoring, aliases, and autocomplete.
+- Typed tags distinguish artist, character, copyright, general, and meta information.
+- Context actions avoid unnecessary full-table reloads where possible.
 
-- Copyright / Serie
-- Character
-- Artist
-- Meta
-- General
+## Release context
 
-Die Liste wird weiterhin nach Häufigkeit sortiert, aber General-Tags dürfen die Vorschlagsliste nicht mehr komplett verdrängen.
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-Zusätzlich nutzt der Kategorie-Tab jetzt ebenfalls `suggest_tags()` statt `fetch_tag_overview(limit=5000)`, damit Include-Regeln und globale Bedingungen dieselbe bessere Vorschlagsbasis bekommen.
+## Source note
 
-## Betroffene Stellen
-
-- Fetch-Suche / manuelle Query
-- Preview-Suche
-- Kategorie-Tab Tagfelder
-
-## Keine Änderung
-
-- keine Änderung am Datenbankschema
-- keine Änderung an gespeicherten Tags
-- keine Änderung an Fetch- oder Kategorie-Logik
+Original patch note file: `README_TAG_COMPLETION_IDENTITY_TYPES_1_3_84.md`

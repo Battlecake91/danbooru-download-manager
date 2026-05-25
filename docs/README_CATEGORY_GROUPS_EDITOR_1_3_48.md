@@ -1,58 +1,21 @@
-# 1_3_48 Kategorie-Regelgruppen
+# 1.3.48 - Category Groups Editor
 
-Dieses Patch-ZIP enthält nur die geänderten Dateien.
+## Summary
 
-## Kategorie-Tab
+Improves category assignment, rule editing, rule explanations, priority handling, and automatic folder-based organization.
 
-- Kategorien haben links eine sichtbare Priorität.
-- Mit `↑ Kategorie` und `↓ Kategorie` kann die Reihenfolge verändert werden.
-- Bei `first` gewinnt weiterhin die erste passende Kategorie.
+## Scope
 
-## Neue Regelgruppen-Logik
+**Area:** Category and rule system
 
-Eine Zeile in der Tabelle ist eine Gruppe.
+- Categories can be matched from tag rules.
+- Rules may include positive and negative tag conditions.
+- Category priority and explanation dialogs help diagnose automatic decisions.
 
-- Innerhalb einer Gruppe gilt `UND`.
-- Tags mit `-` sind Ausschlüsse.
-- Mehrere Gruppen sind `ODER`.
+## Release context
 
-Beispiel:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-```text
-tag1 tag2 -tag3
-tag4 tag5
-```
+## Source note
 
-Bedeutet:
-
-```text
-(tag1 UND tag2 UND NICHT tag3) ODER (tag4 UND tag5)
-```
-
-## Bedienung
-
-- Gruppen können direkt in der Tabelle bearbeitet werden.
-- Doppelklick auf den Ausdruck, bearbeiten, Enter.
-- Neue Gruppen können unten per Ausdruck hinzugefügt werden.
-- Gruppen können gelöscht oder per Pfeil verschoben werden.
-
-## Kompatibilität
-
-Vorhandene alte Regeln werden beim Anzeigen in Regelgruppen übersetzt:
-
-- alte `include`-Regeln werden als einzelne ODER-Gruppen angezeigt.
-- alte `include_group_N`-Regeln werden als UND-Gruppen angezeigt.
-- alte globale `exclude`-Regeln werden in die betroffenen Gruppen übernommen.
-
-Nach dem Speichern schreibt die App die neuen Regeltypen:
-
-```text
-group_0_include
-group_0_exclude
-group_1_include
-group_1_exclude
-```
-
-## Matching
-
-Kategorie-Vorschlag und Preview-Kategorisierung unterstützen die neue Regelgruppen-Logik.
+Original patch note file: `README_CATEGORY_GROUPS_EDITOR_1_3_48.md`

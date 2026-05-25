@@ -1,52 +1,21 @@
-# 1.3.59 - Getrennte Scoring-Ignore-Flags
+# 1.3.59 - Scoring Ignore Flags
 
-Dieser Patch ergänzt getrennte Ignore-Flags für automatisierte Tag-Nutzung.
+## Summary
 
-## Neue Flags pro Tag
+Documents one development patch from the path to the 1.3.135 public release.
 
-In `tag_scores` werden drei getrennte Spalten geführt:
+## Scope
 
-- `ignore_category_influence`
-- `ignore_recommendation_score`
-- `ignore_llm_input`
+**Area:** General development note
 
-Aktiv ausgewertet wird in diesem Patch nur `ignore_category_influence`.
-Die anderen beiden Flags sind bewusst schon im Datenmodell und in der UI vorhanden,
-damit Vorauswahl- und LLM-Logik später darauf aufbauen können, ohne wieder eine
-Migration aus dem Boden zu prügeln.
+- The note records one patch-level step.
+- It belongs to the accumulated release history.
+- The current public baseline is version 1.3.135.
 
-## Tag-Tab
+## Release context
 
-Der Tag-Tab zeigt neue Spalten:
+This note is part of the accumulated development documentation for Danbooru Download Manager. The first public release is version `1.3.135`, after roughly 150 patches.
 
-- `Kat.-Scoring ignoriert`
-- `Vorauswahl ignoriert`
-- `LLM ignoriert`
+## Source note
 
-Im Rechtsklick-Menü gibt es den neuen Bereich `Scoring / Nutzung` mit Aktionen für
-Einzel- und Mehrfachauswahl:
-
-- Für Kategorie-Hinweis ignorieren / wieder nutzen
-- Für Vorauswahl ignorieren / wieder nutzen
-- Für LLM-Eingabe ignorieren / wieder nutzen
-- Für alle automatischen Bewertungen ignorieren / wieder nutzen
-
-Die sichtbaren Zellen werden lokal aktualisiert. Es wird kein vollständiger
-`reload_tags()` nach kleinen Änderungen ausgelöst.
-
-## Ähnliche Tags bearbeiten
-
-Der Dialog `Ähnliche Tags suchen/bearbeiten…` kann jetzt zusätzlich diese Flags setzen
-oder zurücknehmen. Leere beziehungsweise auf `nicht ändern` stehende Felder bleiben
-unverändert.
-
-## Kategorie-Einfluss
-
-`ignore_category_influence = 1` schließt den Tag komplett aus dem weichen
-Kategorie-Hinweis aus. Das betrifft nur den Tag-Einfluss, nicht harte Kategorie-Regeln.
-
-Beispiel: Wenn `1girl` ignoriert wird, kann eine explizite Kategorie-Regel mit `1girl`
-trotzdem weiter greifen. Nur der statistische `Tag-Hinweis` nutzt diesen Tag nicht mehr.
-
-Im Kategorie-Details-Dialog werden ignorierte Tags als
-`Für Kategorie-Hinweis ignoriert` angezeigt.
+Original patch note file: `README_SCORING_IGNORE_FLAGS_1_3_59.md`
