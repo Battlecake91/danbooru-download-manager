@@ -13,14 +13,16 @@ for asset_dir in (project_dir / "assets", project_dir / "app" / "assets"):
         datas.append((str(asset_dir), str(asset_dir.relative_to(project_dir)).replace("\\", "/")))
 
 
-def first_existing_icon() -> str | None:
-    for candidate in (
-        project_dir / "assets" / "app_icon.ico",
-        project_dir / "app" / "assets" / "app_icon.ico",
-    ):
-        if candidate.exists():
-            return str(candidate)
-    return None
+def app_icon() -> str:
+    """Return the single official Windows executable icon.
+
+    Keep this intentionally strict so release builds cannot silently fall back
+    to another icon and produce inconsistent EXE branding.
+    """
+    icon_path = project_dir / "assets" / "app_icon.ico"
+    if not icon_path.exists():
+        raise FileNotFoundError(f"Application icon not found: {icon_path}")
+    return str(icon_path)
 
 
 # Keep this list intentionally small.
@@ -132,7 +134,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=first_existing_icon(),
+    icon=app_icon(),
 )
 
 coll = COLLECT(

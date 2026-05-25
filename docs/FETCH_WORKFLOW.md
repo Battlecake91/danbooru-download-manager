@@ -2,7 +2,7 @@
 
 The Fetch tab is where new Danbooru posts are discovered and imported into the local database.
 
-It does not have to download full image files immediately. The normal workflow loads post metadata and thumbnails first. This keeps review fast and avoids filling folders with posts that are rejected five seconds later, which is the closest software gets to basic hygiene.
+In Danbooru Download Manager `1.3.152`, Fetch normally loads post metadata and thumbnails first. Full image files do not have to be downloaded immediately. This keeps review fast and avoids filling folders with posts that are rejected five seconds later, which is the closest software gets to basic hygiene.
 
 ---
 
@@ -26,7 +26,7 @@ artist_name ( rating:q or rating:e )
 
 ### Presets
 
-Presets store reusable fetch configurations. They are useful for repeated searches with the same tags, rating filters, or saved-search settings.
+Presets store reusable fetch configurations. They are useful for repeated searches with the same tags, rating filters or saved-search settings.
 
 ### Saved searches
 
@@ -53,7 +53,7 @@ Common limits include:
 - known/unknown post handling,
 - status filters.
 
-Known posts can be skipped, updated, or reused depending on the current settings. Unknown posts are added to the local database with tags, metadata, and thumbnail information.
+Known posts can be skipped, updated or reused depending on the current settings. Unknown posts are added to the local database with tags, metadata and thumbnail information.
 
 ---
 
@@ -73,6 +73,23 @@ Fetched posts then appear in the Previewer.
 
 ---
 
+## 📥 Relation to imported files
+
+The Fetch workflow can complement the importer.
+
+Imported local files may already have a local path and an optional detected post ID, but they may still need metadata. When a Danbooru post ID is known, metadata fetching can enrich imported entries with:
+
+- tags,
+- rating,
+- score,
+- parent/child information,
+- preview/thumbnail data,
+- original Danbooru link generation.
+
+In short: the importer tells the database that local files exist; Fetch can help teach those files who they are. Very dramatic, very database.
+
+---
+
 ## 🖼️ Relation to Previewer and Viewer
 
 The Fetch tab only brings posts into the local review workflow. Decisions are usually made later:
@@ -80,7 +97,7 @@ The Fetch tab only brings posts into the local review workflow. Decisions are us
 1. Fetch metadata and thumbnails.
 2. Triage posts in the Previewer.
 3. Open promising posts in the Viewer.
-4. Rate, reject, keep, categorize, or save.
+4. Rate, reject, keep, categorize or save.
 5. Download and store originals only when needed.
 
 This keeps the local collection cleaner and makes the review process faster.

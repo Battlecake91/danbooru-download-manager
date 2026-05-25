@@ -1,170 +1,212 @@
 # Danbooru Download Manager
 
-**Version:** `1.3.143`  
-**First public release:** `1.3.135`
+> **First official release:** `1.3.152`  
+> A local Danbooru download manager for fetching, previewing, rating, importing, categorizing and organizing Danbooru posts without turning your folders into archaeological debris.
 
-Danbooru Download Manager is a desktop application for managing local Danbooru downloads with a review-first workflow: fetch metadata and thumbnails, inspect posts in a fast preview grid, rate them, categorize them, and finally save originals into clean local folders.
+Danbooru Download Manager is a desktop application for managing a local Danbooru-based image collection. It focuses on **metadata-first review**, **local database-backed organization**, **manual control**, and optional experimental automation through scoring and LLM-assisted preselection.
 
-The project started as a **vibe-coding** experiment. That sounds casual, but the result was still real work: the first release took roughly **150 patches** to reach the current state. Vibe-coding helped with speed and iteration, but without understanding the architecture, database model, GUI flow, packaging behavior, and the Danbooru API, this would have collapsed into spaghetti with buttons.
-
-> ⚠️ This application is not affiliated with Danbooru. Use it responsibly and respect Danbooru's terms, rate limits, and content rules.
-
----
-
-## 📸 Screenshots
-
-The screenshots below are from Version `1.3.135` Release
-
-| First-run setup | Fetch tab |
-|---|---|
-| ![First-run setup](docs/screenshots/first-run-setup.png) | ![Fetch tab](docs/screenshots/fetch-tab.png) |
-
-| Previewer | Viewer |
-|---|---|
-| ![Previewer](docs/screenshots/previewer.png) | ![Viewer](docs/screenshots/viewer.png) |
+The project was created through **vibe-coding**, but not through button-mashing and wishful thinking. The first official release required roughly **150 patches** to reach this state. Every patch was checked against the workflow it touched, because without understanding the code, the data model and the GUI behavior, this would have collapsed into decorative Python confetti.
 
 ---
 
 ## ✨ Highlights
 
-- 🗂️ **Local Danbooru download management** with SQLite-backed post, tag, file, rating, and category state.
-- 🔎 **Later lookup and search** by tag, post ID, original Danbooru link, status, category, rating, and local metadata.
-- 🖼️ **Preview-first workflow**: load metadata and thumbnails first, download originals only when needed.
-- ⭐ **Personal rating system** for manual preselection and future learning behavior.
-- 🧠 **Learning-oriented recommendation structure** based on saved, rejected, scored, and categorized posts.
-- 🤖 **Experimental LLM integration** for preselection and category assistance.
-- 🧩 **Categories with auto-assignment**, custom output folders, priority, include/exclude rules, and manual overrides.
-- 🏷️ **Structured tag display** for artist, character, copyright, general, and meta tags.
-- 📝 **Configurable filename patterns** with typed tag placeholders and post IDs.
-- 📥 **Existing file importer** with Danbooru MD5 lookup where possible.
-- 📦 **PyInstaller-ready release workflow** for packaged Windows builds.
-- 🔄 **Portable GitHub Release updater** for packaged builds, using release ZIP assets while preserving local user data.
+- 🗂️ **Local Danbooru library management**  
+  Track downloaded, imported, saved, rejected and pending posts in a local SQLite database.
+
+- 🔎 **Search later by tag, post ID and original link**  
+  Keep metadata locally so posts can be found again by tags, Danbooru post ID, local status, category and generated original Danbooru link.
+
+- 🧭 **Fetch workflow**  
+  Load metadata and thumbnails first, review later, download originals only when needed.
+
+- 🖼️ **Previewer and Viewer workflow**  
+  Triage posts quickly in the Previewer, then rate, categorize, reject or save in the Viewer.
+
+- 📥 **Importer for existing collections**  
+  Register already downloaded files, detect post IDs from filenames where possible, keep local paths and bring older collections into the database-backed workflow.
+
+- ⭐ **Rating system with learning structure**  
+  Use local ratings, saved/rejected decisions, tag scores and manual score adjustments to improve preselection over time.
+
+- 🧩 **Categories with auto-assignment**  
+  Define categories with output folders, priorities and manual rules. Use grouped include/exclude logic for automatic assignment.
+
+- 🏷️ **Tag tools**  
+  Manage aliases, manual scores, filename exclusions, typed tags and local tag catalog data.
+
+- 🤖 **Experimental LLM integration**  
+  Build compact tag payloads for LLM-assisted preselection and category suggestions. Treat it as an assistant, not as a tiny digital judge in a robe.
+
+- 🔄 **Portable updater foundation**  
+  Release builds can check GitHub releases and update from official release assets while preserving local data.
 
 ---
 
-## 🚀 Typical workflow
+## 📸 Screenshots
 
-1. Start the application.
-2. Complete the first-run setup.
-3. Configure credentials, folders, categories, filename rules, and preview settings.
-4. Use the **Fetch** tab to load posts from manual tags, presets, or Danbooru saved searches.
-5. Review posts in the **Previewer**.
-6. Open interesting posts in the **Viewer**.
-7. Rate, reject, keep, categorize, or save posts.
-8. Let the application write final files into category-specific folders.
-9. Search and manage local posts later by tag, post ID, status, category, rating, or original Danbooru link.
+Screenshots are stored under `docs/screenshots/`. Replace the placeholders with real screenshots when preparing the public release page.
 
----
-
-## 📚 Documentation
-
-The README is intentionally kept as an overview. Detailed usage and configuration notes live in `docs/`, because stuffing everything into one README is how documentation turns into a landfill with headings.
-
-| Document | Description |
+| Area | Screenshot |
 |---|---|
-| [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md) | First start, optional API key, initial tag catalog import, and sensible tag counts. |
-| [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Credentials, folders, filename patterns, categories, preview settings, and runtime data. |
-| [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md) | How the Fetch tab works, including manual queries, presets, saved searches, limits, and results. |
-| [`docs/TESTING.md`](docs/TESTING.md) | How the first release was tested during patch-based development. |
-| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Generated changelog based on the accumulated patch documentation. |
-| [`docs/README_PORTABLE_UPDATER_1_3_141.md`](docs/README_PORTABLE_UPDATER_1_3_141.md) | Portable update workflow through GitHub Release assets. |
-| [`docs/README_UPDATE_TAB_1_3_142.md`](docs/README_UPDATE_TAB_1_3_142.md) | Dedicated Updates / Help tab for release checks and future in-app help. |
-| [`docs/screenshots/README.md`](docs/screenshots/README.md) | Screenshot placeholder locations and replacement notes. |
+| First-time setup | `docs/screenshots/first-run-setup.png` |
+| Fetch tab | `docs/screenshots/fetch-tab.png` |
+| Previewer | `docs/screenshots/previewer.png` |
+| Viewer | `docs/screenshots/viewer.png` |
 
 ---
 
-## 🧪 Testing notes
+## 🚀 Quick start
 
-Development was done in small patches. Each patch was tested for the feature or fix it introduced before moving to the next one. The first public release therefore represents an incremental test history, not one huge untested rewrite dropped into the repository like a suspicious binary meteor.
-
-Testing focused on:
-
-- ✅ GUI startup and first-run behavior
-- ✅ database migrations and DB-only configuration handling
-- ✅ Fetch tab queries, limits, summaries, and thumbnail loading
-- ✅ Previewer filters, sorting, card display options, and structured tags
-- ✅ Viewer navigation, rating, category assignment, final filename preview, and save flow
-- ✅ category rule matching, priority handling, and category reasoning dialogs
-- ✅ tag catalog import, autocomplete, aliases, scoring, and filename exclusions
-- ✅ existing file import and Danbooru MD5 lookup behavior
-- ✅ PyInstaller path handling and packaged Windows runtime behavior
-- ✅ English UI/documentation pass for the public release
-
-More details are available in [`docs/TESTING.md`](docs/TESTING.md).
-
----
-
-## 🤖 LLM integration: experimental
-
-The LLM integration can prepare compact post payloads and ask a configured backend to help with preselection or category suggestions.
-
-Depending on configuration, payloads can use raw tags, aliases, normalized tags, or privacy-oriented transformed tag data. The goal is to provide useful decision hints while keeping the workflow local-first and controllable.
-
-This feature is experimental in version `1.3.135`. Treat it as assistance, not truth handed down from a silicon oracle with questionable taste.
-
----
-
-## 🛠️ Installation from source
-
-Requirements:
-
-- Python 3.11 or newer recommended
-- Windows or Linux desktop environment
-- dependencies from `requirements.txt`
+### From source
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 python main.py
 ```
 
-On Windows PowerShell:
+### From release build
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python main.py
-```
-
-The GUI starts by default when no CLI action is given.
-
----
-
-## 📦 Building a Windows executable
-
-The repository contains PyInstaller-oriented build support.
-
-```powershell
-.\scripts\build_windows.ps1
-```
-
-Packaged builds should keep runtime data next to the executable, so a portable release can keep its database, thumbnails, settings, and logs together.
-
-Packaged builds also include `DanbooruManagerUpdater.exe`. The updater is launched from `Help -> Check for updates...`, downloads the newest Windows ZIP asset from GitHub Releases, replaces program files and preserves local data such as the database, thumbnails, logs and update cache.
-
-Release ZIP files should be uploaded as **GitHub Release assets**, not committed to the repository. GitHub has a 100 MB normal Git file limit, and your release ZIP will probably trample over it like a very confident elephant.
-
----
-
-## 📁 Repository layout
+Download the Windows ZIP from the GitHub release, extract it, and start:
 
 ```text
-app/
-  core/          database, config, filenames, categories, paths
-  danbooru/      Danbooru API and thumbnail cache
-  gui/           PySide6 windows, tabs, viewer, preview grid
-  i18n/          translation helpers and UI language support
-  services/      fetch, import, final save, LLM payloads, tag catalog
-
-docs/            user docs, patch notes, changelog, screenshots
-scripts/         build and release helper scripts
-main.py          application entry point
+DanbooruManager.exe
 ```
+
+Do not run the application directly from inside the ZIP. Extract it first. Windows already has enough bad habits.
 
 ---
 
-## 📜 License
+## 🧭 Documentation
 
-See [`LICENSE`](LICENSE).
+The README gives the overview. Detailed usage is split into focused documents so this file does not become a scroll of doom.
+
+| Document | Purpose |
+|---|---|
+| [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md) | First start, Danbooru credentials, popular tag import, sample post and importer basics |
+| [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Database-backed configuration, folders, categories, filename patterns, LLM settings |
+| [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md) | Fetch tab usage, queries, presets, saved searches, limits and Previewer flow |
+| [`docs/IMPORTER.md`](docs/IMPORTER.md) | Detailed importer behavior for existing local files and older collections |
+| [`docs/TESTING.md`](docs/TESTING.md) | How the first official release was tested through patch-based validation |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone changelog generated from the patch history |
+
+---
+
+## 🛠️ First-time setup overview
+
+On first start, the application creates its local data folder and database. The setup can optionally configure:
+
+- 🔐 Danbooru username and API key
+- 🌐 Danbooru base URL
+- 🏷️ initial import of the most popular Danbooru tags
+- 🖼️ default preview sample post
+- 📥 importer workflow for existing local collections
+
+A Danbooru API key is optional, but recommended if you want saved searches or more reliable authenticated API access.
+
+For the popular tag import, **10,000 to 20,000 tags** is a sensible first setup range. Use `5,000` for quick tests and `50,000+` only if you actually plan to maintain a large local tag catalog. Bigger is not automatically smarter. Sometimes it is just slower with confidence.
+
+See [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md) for the full setup flow.
+
+---
+
+## 📥 Importing existing files
+
+The importer is meant for existing Danbooru folders, older downloader output or manually sorted collections.
+
+It can:
+
+- scan local folders,
+- register existing files in the database,
+- detect Danbooru post IDs from filenames where possible,
+- preserve local file paths,
+- assign initial categories from folder structure,
+- prepare imported posts for later metadata fetching,
+- make imported posts searchable by local path, post ID, status, rating and tags when available.
+
+This allows the manager to adopt an existing collection instead of pretending years of local files never happened, which would be rude even by software standards.
+
+Detailed importer notes are in [`docs/IMPORTER.md`](docs/IMPORTER.md), with first-run guidance in [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md).
+
+---
+
+## 🔎 Fetch workflow overview
+
+The Fetch tab brings posts into the local database. It usually fetches metadata and thumbnails first, not full original files.
+
+Supported workflows include:
+
+- manual Danbooru tag queries,
+- reusable presets,
+- authenticated saved searches,
+- rating filters,
+- limits for posts per query and total posts,
+- known/unknown post handling,
+- thumbnail loading,
+- fetch summaries.
+
+After fetching, posts are reviewed in the Previewer and Viewer. Originals are downloaded or saved when you decide they are worth keeping.
+
+See [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md).
+
+---
+
+## 🧩 Categories and rules
+
+Categories can automatically assign posts based on tag rules and can write final files into separate folders.
+
+Rule groups use a readable include/exclude model:
+
+```text
+Group A: tag1 tag2 -tag3
+Group B: tag4 tag5
+```
+
+Meaning:
+
+```text
+(tag1 AND tag2 AND NOT tag3) OR (tag4 AND tag5)
+```
+
+Category decisions can be manually overridden in the Viewer, because full automation is how collections become haunted.
+
+---
+
+## 🤖 Experimental LLM support
+
+LLM integration is experimental in `1.3.152`.
+
+The application can prepare payloads based on tags, aliases, local scores and category context. The goal is to support preselection and category suggestions, not to replace review.
+
+Use LLM output as a suggestion. Local ratings and manual decisions remain the main source of truth.
+
+---
+
+## 🧪 Testing and release confidence
+
+`1.3.152` is the **first official release**.
+
+The release was built through roughly **150 patches**. Each patch was tested against the functionality it changed before continuing with the next patch. This included the major GUI flows, database-backed configuration, Fetch, Previewer, Viewer, importer, category rules, tag tools, packaging and release behavior.
+
+This was practical patch-level functional testing, not a full automated test suite. The application should be treated as a usable first official release with some rough edges still expected. The changelog and patch notes provide traceability for the development history.
+
+See [`docs/TESTING.md`](docs/TESTING.md).
+
+---
+
+## 🗺️ Planned improvements
+
+Planned follow-up work includes:
+
+- 📚 better user documentation,
+- ❔ a Help tab with useful tips and explanations,
+- ✨ quality-of-life improvements,
+- 🤖 more LLM tests and validation.
+
+---
+
+## ⚠️ Notes
+
+- Keep backups of important local collections.
+- Do not publish databases that contain API credentials.
+- Treat LLM suggestions as suggestions.
+- Upload large release ZIP files as GitHub release assets, not as normal Git-tracked files. GitHub gets cranky, and for once it has a point.

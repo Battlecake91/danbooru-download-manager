@@ -273,7 +273,7 @@ class PreviewWindow(QMainWindow):
         self.category_filter = QComboBox()
         self.category_filter.setToolTip(tr("preview.category_filter.tooltip", "Category filter", config=self.config))
         self.category_filter.setMinimumWidth(180)
-        self.category_filter.currentIndexChanged.connect(self.on_passive_filter_changed)
+        self.category_filter.currentIndexChanged.connect(self.on_active_filter_changed)
         self.toolbar_filters.addWidget(self.category_filter)
 
         self.toolbar_filters.addSeparator()
@@ -894,16 +894,21 @@ class PreviewWindow(QMainWindow):
         self.set_checked_statuses(statuses)
         self.schedule_reload()
 
-    def on_all_status_changed(self, state: int) -> None:
+    def on_all_status_changed(self, _state: int) -> None:
         if self._syncing_status_checkboxes:
             return
 
-        checked = state == Qt.Checked
+        # Read the checkbox state directly instead of comparing the raw Qt state
+        # value. Depending on the binding/version, Qt.Checked may be an enum while
+        # stateChanged emits an int. Comparing those directly can mis-detect the
+        # first click and fall back to the default worklist filter. Delightful.
+        checked = self.all_status_checkbox.isChecked()
 
         self._syncing_status_checkboxes = True
         try:
             for checkbox in self.status_checkboxes.values():
                 checkbox.setChecked(checked)
+            self.all_status_checkbox.setChecked(checked)
         finally:
             self._syncing_status_checkboxes = False
         self._fetch_running = False
@@ -972,12 +977,23 @@ class PreviewWindow(QMainWindow):
             # is currently offended. The visible reload still stays correct.
             self.status_bar.showMessage(tr("preview.sort_save_failed", "Sorting could not be saved: {error}", config=self.config, error=exc), 8000)
 
-        self.on_passive_filter_changed()
+        self.on_active_filter_changed()
 
-    def on_passive_filter_changed(self, *_args) -> None:
+    def on_active_filter_changed(self, *_args) -> None:
         self._filters_dirty = True
         self.status_bar.showMessage(tr("preview.filter_changed", "Filter changed. Preview reloads automatically…", config=self.config), 3000)
         self.schedule_reload()
+
+    def on_passive_filter_changed(self, *_args) -> None:
+        self._filters_dirty = True
+        self.status_bar.showMessage(
+            tr(
+                "preview.filter_changed_manual_reload",
+                "Filter changed. Press Reload, change a drop-down, or press Enter in the search field to apply.",
+                config=self.config,
+            ),
+            5000,
+        )
 
     def schedule_reload(self, *_args) -> None:
         if self._applying_viewer_query:

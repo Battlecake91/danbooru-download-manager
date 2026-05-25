@@ -1,8 +1,10 @@
-# Testing Notes for Release 1.3.135
+# Testing Notes for Release 1.3.152
 
-Danbooru Download Manager `1.3.135` was developed and tested through patch-based iteration.
+Danbooru Download Manager `1.3.152` is the **first official release**.
 
-The first release required roughly **150 patches**. Each patch was tested for the feature, fix, or refactor it introduced before the next patch was added. This does not mean the software is perfect. It means the release was built through repeated functional validation instead of one large unverified rewrite, which is the healthier option unless someone actively enjoys debugging smoke.
+The release was developed and tested through patch-based iteration. The first official release required roughly **150 patches**. Each patch was tested for the feature, fix or refactor it introduced before the next patch was added.
+
+This does not mean the software is perfect. It means the release was built through repeated functional validation instead of one giant unverified rewrite, which is usually how applications become bug terrariums.
 
 ---
 
@@ -10,14 +12,14 @@ The first release required roughly **150 patches**. Each patch was tested for th
 
 The development process followed this pattern:
 
-1. Implement a small feature, fix, or UI change.
+1. Implement a small feature, fix or UI change.
 2. Run the affected workflow manually.
 3. Verify that the new behavior works.
 4. Check that the surrounding workflow still behaves correctly.
-5. Document the patch in `docs/`.
+5. Document the patch in `docs/patches/` or the changelog.
 6. Continue with the next patch.
 
-This produced a long patch history and a generated changelog.
+This produced a long patch history and a generated milestone changelog.
 
 ---
 
@@ -32,6 +34,7 @@ Testing focused on the workflows most likely to break during active development.
 - database initialization
 - default configuration creation
 - default preview sample post handling
+- packaged executable startup behavior
 
 ### Database and configuration
 
@@ -61,6 +64,7 @@ Testing focused on the workflows most likely to break during active development.
 - structured tag display
 - tag color grouping
 - status filters
+- All/status checkbox behavior
 - sorting
 - search/autocomplete behavior
 - recommendation indicators
@@ -78,6 +82,7 @@ Testing focused on the workflows most likely to break during active development.
 - final filename preview
 - save flow
 - tag selection and tag actions
+- alias and manual score editing from tag context menus
 - filename exclusion behavior
 - cache/performance behavior
 
@@ -100,7 +105,7 @@ Testing focused on the workflows most likely to break during active development.
 - filename exclusions
 - bulk tag actions
 - saved/rejected scoring influence
-- structured tag categories such as artist, character, copyright, general, and meta
+- structured tag categories such as artist, character, copyright, general and meta
 
 ### Import and local files
 
@@ -109,6 +114,7 @@ Testing focused on the workflows most likely to break during active development.
 - local file labels
 - repair/update behavior
 - safeguards against accidental overwrite or duplicate save paths
+- post ID detection from filenames
 
 ### LLM workflow
 
@@ -121,14 +127,16 @@ Testing focused on the workflows most likely to break during active development.
 
 The LLM functionality remains experimental and was tested as an assistance workflow, not as a fully trusted automatic decision system.
 
-### Packaging and release behavior
+### Packaging, update and release behavior
 
 - PyInstaller path handling
 - packaged Windows runtime behavior
 - local data paths in packaged builds
 - tag catalog behavior after packaging
-- English UI/documentation pass
 - release ZIP creation outside the Git repository
+- portable updater packaging
+- GitHub release asset workflow
+- official release visibility for update checks
 
 ---
 
@@ -144,12 +152,13 @@ Areas that may still need more validation:
 - extremely large tag catalogs,
 - unusual filename pattern combinations,
 - non-Windows packaged builds,
-- all possible LLM provider configurations.
+- all possible LLM provider configurations,
+- updater behavior across unusual installation folders.
 
 ---
 
 ## 📌 Release confidence
 
-The release should be treated as a functional first public release, not as a final polished enterprise product. The core workflows were repeatedly tested during development, and the patch documentation provides a traceable development history.
+`1.3.152` should be treated as a functional first official release, not as a final polished enterprise product. The core workflows were repeatedly tested during development, and the patch documentation provides a traceable development history.
 
 Use the application with a normal amount of caution: keep backups of important local collections, avoid publishing credential-containing databases, and do not treat experimental LLM suggestions as final truth.

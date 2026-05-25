@@ -1,6 +1,6 @@
 # Configuration Setup
 
-Danbooru Download Manager `1.3.135` stores runtime configuration in the local database. YAML files are no longer the main configuration source for normal use.
+Danbooru Download Manager `1.3.152` stores runtime configuration in the local database. YAML files are no longer the main configuration source for normal use.
 
 The application is designed around GUI-managed settings, because repeatedly hand-editing config files is how projects slowly become rituals.
 
@@ -14,10 +14,12 @@ Important configuration areas include:
 - 📁 output folders and local runtime data paths
 - 🖼️ thumbnail and preview behavior
 - 📝 filename pattern and tag priority
-- 🧩 categories, category priority, and output folders
-- 🏷️ tag aliases, scores, and filename exclusions
+- 🧩 categories, category priority and output folders
+- 🏷️ tag aliases, scores and filename exclusions
+- 📥 importer behavior and local file handling
 - 🤖 optional LLM provider settings
 - 🌐 UI language and translated labels
+- 🔄 update/release behavior for packaged builds
 
 ---
 
@@ -39,7 +41,7 @@ Do not commit or publish a database that contains credentials.
 
 ## 📁 Local data and output folders
 
-The application tracks local posts, thumbnails, tags, and configuration in a local SQLite database.
+The application tracks local posts, thumbnails, tags and configuration in a local SQLite database.
 
 Typical runtime data includes:
 
@@ -49,9 +51,26 @@ Typical runtime data includes:
 - saved/rejected state,
 - category decisions,
 - user ratings,
-- imported file references.
+- imported file references,
+- update downloads.
 
 Final saved files can be written into category-specific folders. This allows each category to behave like its own managed local collection.
+
+---
+
+## 📥 Importer configuration
+
+The importer can register existing local files in the database. Import-related behavior may depend on configured paths, supported file extensions and category/folder mapping.
+
+Importer-related decisions include:
+
+- which folder should be scanned,
+- whether folder names should be used as category hints,
+- whether detected Danbooru post IDs should be used for metadata fetching,
+- how existing local paths should be preserved,
+- how imported posts should be labeled or reviewed later.
+
+See [`IMPORTER.md`](IMPORTER.md) for detailed importer behavior.
 
 ---
 
@@ -127,7 +146,7 @@ Tags can be displayed as raw Danbooru text or as structured tag groups.
 
 ## 🤖 LLM settings
 
-LLM integration is experimental in `1.3.135`.
+LLM integration is experimental in `1.3.152`.
 
 The configuration can control provider settings and payload behavior. Depending on the setup, payloads may use:
 
