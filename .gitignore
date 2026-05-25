@@ -5,6 +5,7 @@ danbooru_saved
 # OS files
 .DS_Store
 humbs.db
+release/
 
 # Environment / secrets
 
