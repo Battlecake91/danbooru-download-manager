@@ -1,6 +1,7 @@
 # Danbooru Download Manager
 
-> **First official release:** `1.3.152`  
+> **First official release:** `1.3.152`
+
 > A local Danbooru download manager for fetching, previewing, rating, importing, categorizing and organizing Danbooru posts without turning your folders into archaeological debris.
 
 Danbooru Download Manager is a desktop application for managing a local Danbooru-based image collection. It focuses on **metadata-first review**, **local database-backed organization**, **manual control**, and optional experimental automation through scoring and LLM-assisted preselection.
@@ -24,7 +25,7 @@ The project was created through **vibe-coding**, but not through button-mashing 
   Triage posts quickly in the Previewer, then rate, categorize, reject or save in the Viewer.
 
 - 📥 **Importer for existing collections**  
-  Register already downloaded files, detect post IDs from filenames where possible, keep local paths and bring older collections into the database-backed workflow.
+  Register already downloaded files, detect post IDs from filenames where possible(post-ID or md5-hash in filename), keep local paths and bring older collections into the database-backed workflow.
 
 - ⭐ **Rating system with learning structure**  
   Use local ratings, saved/rejected decisions, tag scores and manual score adjustments to improve preselection over time.
@@ -44,8 +45,6 @@ The project was created through **vibe-coding**, but not through button-mashing 
 ---
 
 ## 📸 Screenshots
-
-The screenshots below are placeholders stored under `docs/screenshots/`. Replace the image files with real captures before preparing the public release page.
 
 ### 🧭 First-time setup
 
