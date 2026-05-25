@@ -5,9 +5,6 @@ danbooru_saved
 # OS files
 .DS_Store
 humbs.db
-release/
-
-# Environment / secrets
 
 # Logs
 *.log
@@ -33,7 +30,3 @@ ENV/
 .pyright/
 .ruff_cache/
 
-release/
-dist/
-build/
-*.zip
