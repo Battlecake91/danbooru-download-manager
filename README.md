@@ -13,7 +13,7 @@ The project started as a **vibe-coding** experiment. That sounds casual, but the
 
 ## 📸 Screenshots
 
-The screenshots below are placeholders. Replace the image files in `docs/screenshots/` with actual captures before publishing the release.
+The screenshots below are from Version `1.3.135` Release
 
 | First-run setup | Fetch tab |
 |---|---|
