@@ -14,7 +14,16 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["pytest", "tkinter", "PySide6"],
+    excludes=[
+        "pytest",
+        "unittest",
+        "tkinter",
+        "PySide6",
+        "PyQt5",
+        "PyQt6",
+        "numpy",
+        "PIL",
+    ],
     noarchive=False,
     optimize=0,
 )
