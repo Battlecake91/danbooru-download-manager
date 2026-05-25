@@ -31,3 +31,8 @@ ENV/
 .mypy_cache/
 .pyright/
 .ruff_cache/
+
+release/
+dist/
+build/
+*.zip
