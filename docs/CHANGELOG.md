@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.140 - Viewer Tag Context Menu English Cleanup
+
+- **Viewer Tag Context Menu** - Translates remaining German right-click tag menu entries and dialog titles in the viewer to English. ([note](README_VIEWER_TAG_CONTEXT_MENU_ENGLISH_1_3_140.md))
+
 ## 1.3.139 - Category Rule Save Fix
 
 - Fixed a regression introduced during the database module split where saving category rule groups failed with a `parse_category_group_expression()` argument error.

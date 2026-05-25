@@ -1645,7 +1645,7 @@ class ImageViewerWindow(QMainWindow):
             )
             menu.addAction(remove_exclude_action)
 
-        scoring_menu = QMenu("Scoring / Nutzung", menu)
+        scoring_menu = QMenu("Scoring / usage", menu)
         scoring_actions = [
             (
                 self.t("viewer.ignore_category_hint", "Ignore Category Hint"),
@@ -1668,12 +1668,12 @@ class ImageViewerWindow(QMainWindow):
                 False,
             ),
             (
-                "LLM-Eingabe ignorieren",
+                "Ignore LLM input",
                 "ignore_llm_input",
                 True,
             ),
             (
-                "LLM-Eingabe wieder nutzen",
+                "Use LLM input again",
                 "ignore_llm_input",
                 False,
             ),
@@ -1710,7 +1710,7 @@ class ImageViewerWindow(QMainWindow):
 
         menu.addSeparator()
 
-        alias_action = QAction("Alias bearbeiten", menu)
+        alias_action = QAction("Edit alias", menu)
         alias_action.triggered.connect(
             lambda checked=False, tag=frozen_tags[0]: QTimer.singleShot(
                 0,
@@ -1730,7 +1730,7 @@ class ImageViewerWindow(QMainWindow):
 
         menu.addSeparator()
 
-        copy_action = QAction("Tag(s) kopieren", menu)
+        copy_action = QAction("Copy tag(s)", menu)
         copy_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                 0,
@@ -1739,7 +1739,7 @@ class ImageViewerWindow(QMainWindow):
         )
         menu.addAction(copy_action)
 
-        query_clipboard_action = QAction("Als Query in Zwischenablage", menu)
+        query_clipboard_action = QAction("Copy as query", menu)
         query_clipboard_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                 0,
@@ -1748,7 +1748,7 @@ class ImageViewerWindow(QMainWindow):
         )
         menu.addAction(query_clipboard_action)
 
-        query_preview_action = QAction("Als Query in Preview suchen", menu)
+        query_preview_action = QAction("Search as query in preview", menu)
         query_preview_action.triggered.connect(
             lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
                 0,
@@ -1763,7 +1763,7 @@ class ImageViewerWindow(QMainWindow):
         try:
             action()
         except Exception as exc:
-            QMessageBox.critical(self, "Tag-Aktion fehlgeschlagen", str(exc))
+            QMessageBox.critical(self, "Tag Action Failed", str(exc))
 
     def add_tags_to_category(self, tags: list[str], category_name: str, rule_type: str) -> None:
         for tag in tags:
@@ -1862,7 +1862,7 @@ class ImageViewerWindow(QMainWindow):
 
         text, ok = QInputDialog.getText(
             self,
-            "Alias bearbeiten",
+            "Edit alias",
             self.t("viewer.llm_alias_prompt", "LLM alias for tag '{tag}'\nLeave empty to remove:", tag=tag),
             text=current_alias,
         )
