@@ -2,6 +2,10 @@
 
 This changelog is generated from the English development notes in `docs/`. It summarizes the patch history that led to the first public release.
 
+## 1.3.137
+
+- **Database Split** - Refactors the oversized database module into focused `app/core/db/` modules while keeping the public `app.core.database` import path compatible. ([note](README_DATABASE_SPLIT_1_3_137.md))
+
 ## 1.3.136
 
 - **English Source Cleanup** - Removes remaining German source text from Python files, adds a documentation note, and increments the release script default version. ([note](README_ENGLISH_SOURCE_CLEANUP_1_3_136.md))
