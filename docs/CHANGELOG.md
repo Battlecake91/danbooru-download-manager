@@ -2,7 +2,19 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.191 — Current release
+## 1.3.192 — Current release
+
+### Fixed
+
+- Fixed the Viewer freezing while generating the final filename preview on large databases.
+- Replaced expensive historical tag-metadata aggregation with lightweight stored tag metadata for filename sorting.
+- Reduced synchronous database work performed while opening a post in the Viewer.
+
+See [`RELEASE_NOTES_1.3.192.md`](RELEASE_NOTES_1.3.192.md) for the complete release summary.
+
+---
+
+## 1.3.191
 
 ### Fixed
 

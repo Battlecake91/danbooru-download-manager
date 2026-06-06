@@ -571,6 +571,32 @@ def push_git(project_root: Path, tag: str, push_branch: bool) -> None:
     run_command(["git", "push", "origin", tag], cwd=project_root)
 
 
+def resolve_release_notes_file(
+    project_root: Path,
+    version: str,
+    notes_file: str | None,
+) -> Path:
+    """Resolve and validate the release notes file used for publishing."""
+    if notes_file:
+        notes_path = Path(notes_file)
+        if not notes_path.is_absolute():
+            notes_path = project_root / notes_path
+    else:
+        notes_path = project_root / "docs" / f"RELEASE_NOTES_{version}.md"
+
+    if not notes_path.is_file():
+        try:
+            display_path = notes_path.relative_to(project_root)
+        except ValueError:
+            display_path = notes_path
+        raise FileNotFoundError(
+            f"Release notes file not found: {display_path}. "
+            f"Create docs/RELEASE_NOTES_{version}.md or pass --notes-file explicitly."
+        )
+
+    return notes_path
+
+
 def create_github_release(
     project_root: Path,
     version: str,
@@ -623,15 +649,13 @@ def create_github_release(
         f"{release_title} {version}",
     ]
 
-    if notes_file:
-        notes_path = project_root / notes_file
-        if notes_path.exists():
-            command.extend(["--notes-file", str(notes_path)])
-        else:
-            print_warn(f"Notes file not found, using generated notes: {notes_path}")
-            command.extend(["--notes", f"Release {version}"])
-    else:
-        command.extend(["--notes", f"Release {version}"])
+    notes_path = resolve_release_notes_file(
+        project_root=project_root,
+        version=version,
+        notes_file=notes_file,
+    )
+    print_info(f"Using release notes: {notes_path.relative_to(project_root)}")
+    command.extend(["--notes-file", str(notes_path)])
 
     if draft:
         command.append("--draft")
@@ -757,8 +781,11 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--notes-file",
-        default="docs/CHANGELOG.md",
-        help="Release notes file for GitHub release.",
+        default=None,
+        help=(
+            "Release notes file for GitHub release. "
+            "Default: docs/RELEASE_NOTES_<detected version>.md"
+        ),
     )
 
     return parser.parse_args()
