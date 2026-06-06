@@ -2,21 +2,37 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.190 — Viewer startup hotfix candidate
+## 1.3.190 — Current release
+
+### Added
+
+- Persistent Fetch-exclude tag blacklist with Viewer and Tag-tab actions.
+- Fetch Advanced Filter for minimum and maximum width and height.
+- Three-step importer: Source, Review and Import Process.
+- Import confidence classification with local and remote thumbnails.
+- Side-by-side importer comparison viewer with keyboard navigation.
+- Resolution comparison and best-version replacement for imported files.
+
+### Changed
+
+- Corrected `rating:s` to Sensitive and kept General as the green rating group.
+- Reorganized Fetch, Configuration and Importer controls around the current workflow.
+- Added coordinated SQLite writes and asynchronous settings persistence.
+- Improved repeated Fetch execution and worker lifecycle handling.
 
 ### Fixed
 
 - Replaced the Viewer startup N+1 query loop with a chunked aggregate score query.
 - Prevented the GUI from appearing frozen while opening the Viewer with a large Preview result set.
+- Fixed database write-gate leaks triggered by Preview tag identity calculation.
+- Fixed repeated Fetch runs after Configuration or Previewer activity.
+- Fixed importer ID validation, hyphenated tags and resolution comparison behavior.
 
-### Release status
-
-- `1.3.189` has been withdrawn and must not be published as a stable release.
-- `1.3.190` is a corrective development build and requires validation before a replacement release is published.
+See [`RELEASE_NOTES_1.3.190.md`](RELEASE_NOTES_1.3.190.md) for the complete release summary.
 
 ---
 
-## 1.3.189 — Withdrawn release candidate
+## 1.3.189 — Withdrawn intermediate build
 
 ### Added
 
@@ -53,7 +69,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Leaked write slots after failed SQL and batch operations.
 - Unintended Previewer writes during tag identity calculation.
 
-See [`RELEASE_NOTES_1.3.189.md`](RELEASE_NOTES_1.3.189.md) for the release-focused summary.
+The changes from this intermediate build were corrected and released as `1.3.190`.
 
 ---
 
