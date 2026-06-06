@@ -215,7 +215,7 @@ class DatabaseSchemaMixin:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
 
-        self.connection.executescript(schema)
+        self.executescript(schema)
         self.migrate_schema()
         self.create_safe_indexes()
 

@@ -133,14 +133,20 @@ class DatabaseMaintenanceMixin:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
         self.commit()
-        row = self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
-        self.commit()
-        return list(row) if row is not None else []
+        self._acquire_write_gate()
+        try:
+            row = self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            return list(row) if row is not None else []
+        finally:
+            self._release_write_gate()
 
     def vacuum_database(self) -> None:
         """Compact the database file using VACUUM."""
         if self.connection is None:
             raise RuntimeError("Database is not connected")
         self.commit()
-        self.connection.execute("VACUUM")
-        self.commit()
+        self._acquire_write_gate()
+        try:
+            self.connection.execute("VACUUM")
+        finally:
+            self._release_write_gate()

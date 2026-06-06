@@ -1,10 +1,12 @@
-## 1.3.176
+## 1.3.177 - Central SQLite write coordination
 
-### Preview startup fix
-
-- Restored Previewer GUI configuration initialization after moving resolution filters to Fetch.
-- Fixed the startup `NameError` affecting saved sort order and thumbnail-size settings.
-- Reused the validated GUI configuration for the Previewer limit and toolbar defaults.
+- Added one process-wide FIFO write coordinator per database file.
+- Serialize write transactions from Fetch, Importer, Configuration, Viewer actions and maintenance tools before they reach SQLite.
+- Keep read-only Previewer queries concurrent while a writer is active by retaining WAL mode.
+- Hold the write slot from the first mutating statement until commit or rollback.
+- Release queued writers safely when a connection commits, rolls back, closes or fails.
+- Route schema scripts, WAL checkpoints and VACUUM through the same coordinator.
+- Retain SQLite busy-timeout retries as protection against external processes.
 
 ## 1.3.175
 
