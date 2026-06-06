@@ -180,10 +180,28 @@ class DatabaseConnectionMixin:
 
         params = tuple(parameters)
         started = time.monotonic()
+        main_thread_autocommit = (
+            is_mutating
+            and operation != "BEGIN"
+            and threading.current_thread() is threading.main_thread()
+            and not self.connection.in_transaction
+        )
         try:
             for delay in self._lock_retry_delays():
                 try:
                     cursor = self.connection.execute(sql, params)
+                    if main_thread_autocommit:
+                        # GUI actions are expected to be short, standalone writes.
+                        # Keeping their transaction open until an eventual caller
+                        # commit lets an overlooked code path monopolize the global
+                        # write gate and starve every later Fetch. Commit immediately
+                        # unless the caller explicitly opened a transaction first.
+                        self.connection.commit()
+                        self._trace(
+                            f"MAIN_THREAD_AUTOCOMMIT operation={operation} "
+                            f"duration={time.monotonic() - started:.3f}s"
+                        )
+                        self._release_write_gate()
                     if is_mutating and time.monotonic() - started >= 0.100:
                         self._trace(f"SQL slow operation={operation} duration={time.monotonic() - started:.3f}s in_transaction={self.connection.in_transaction}")
                     return cursor

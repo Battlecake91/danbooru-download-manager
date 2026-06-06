@@ -1,6 +1,14 @@
 ## 1.3.182
 
 
+## 1.3.185
+
+- Fixed repeated Fetch runs stalling behind a GUI write left open by Previewer actions.
+- Main-thread standalone writes are now committed immediately unless an explicit transaction is already active.
+- Background Fetch, Import and configuration workers continue to use normal queued transactions.
+- Added `MAIN_THREAD_AUTOCOMMIT` database trace entries for diagnosis.
+
+
 ## 1.3.184
 
 - Fixed repeated Fetch starts hanging after the Previewer had been opened.
