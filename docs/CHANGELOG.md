@@ -1,3 +1,10 @@
+## 1.3.163 - Preserve hyphenated tags during importer matching
+
+- Preserve internal hyphens while parsing tags from imported filenames.
+- Correctly recognize tags such as `one-piece_swimsuit` and `chain-link`.
+- Continue treating spaced dashes as filename separators.
+- Prevent false mismatch results caused by phantom tags such as `one_piece` or `link`.
+
 ## 1.3.162 - Importer thumbnail comparison layout
 
 - Moved the resolution column directly next to the post ID.

@@ -47,7 +47,12 @@ def normalize_filename_for_tag_scan(filename: str) -> list[str]:
     stem = POST_ID_HINT_RE.sub("_", stem)
     stem = POST_ID_FALLBACK_RE.sub("_", stem)
     stem = re.sub(r"konachan(?:\.com)?", "_", stem)
-    stem = re.sub(r"[^a-z0-9_]+", "_", stem)
+    # Preserve hyphens inside Danbooru tags. Tags such as
+    # ``one-piece_swimsuit`` and ``chain-link`` are valid catalogue entries;
+    # turning every hyphen into an underscore creates unrelated phantom tags.
+    # Only hyphens used as visible filename separators are normalized away.
+    stem = re.sub(r"\s+[-–—]+\s+", "_", stem)
+    stem = re.sub(r"[^a-z0-9_-]+", "_", stem)
     return [part for part in re.sub(r"_+", "_", stem).strip("_").split("_") if part]
 
 

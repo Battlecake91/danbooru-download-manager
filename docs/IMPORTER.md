@@ -146,6 +146,8 @@ Confidence is classified as follows:
 
 Filename validation is intentionally strict. For a filename containing `smile_1girl_blue_hair`, all three recognized tags must be present on the fetched Danbooru post. One matching generic tag is not sufficient.
 
+Hyphens inside real Danbooru tags are preserved during this check. For example, `one-piece_swimsuit` and `chain-link` remain intact instead of being misread as unrelated tags such as `one_piece` or `link`. Spaced dashes used only as filename separators are still ignored.
+
 The resolution column displays the local and Danbooru dimensions with `✓`, `✗`, or `?`. Independent checkboxes above the table can freely combine green, yellow and red candidates. Red candidates are excluded from import by default.
 
 ## Inspecting scan candidates
