@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import os
 import shutil
 import subprocess
@@ -73,25 +72,39 @@ def wait_for_process(pid: int | None, timeout_seconds: int = 60) -> None:
 
 def process_exists(pid: int) -> bool:
     if os.name == "nt":
-        completed = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-            text=True,
-            capture_output=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        # Query the process directly instead of parsing localized tasklist output.
+        # The frozen updater can receive stdout=None from tasklist, which caused
+        # the previous implementation to crash while calling splitlines().
+        import ctypes
+        from ctypes import wintypes
+
+        process_query_limited_information = 0x1000
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        handle = kernel32.OpenProcess(
+            process_query_limited_information,
+            False,
+            pid,
         )
-        if completed.returncode != 0:
-            log(f"tasklist failed with exit code {completed.returncode}: {completed.stderr.strip()}")
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+
+        error_code = ctypes.get_last_error()
+        # ERROR_INVALID_PARAMETER means that no process with this PID exists.
+        if error_code == 87:
             return False
 
-        for row in csv.reader(completed.stdout.splitlines()):
-            if len(row) < 2:
-                continue
-            try:
-                listed_pid = int(row[1].strip())
-            except ValueError:
-                continue
-            if listed_pid == pid:
-                return True
+        # Access denied still means that the process exists, even though it
+        # cannot be queried with the current permissions.
+        if error_code == 5:
+            return True
+
+        log(f"OpenProcess failed for PID {pid} with Windows error {error_code}; assuming process exited.")
         return False
 
     try:
