@@ -1,5 +1,5 @@
 from __future__ import annotations
 
-__version__ = "1.3.192"
+__version__ = "1.3.193"
 APP_NAME = "DanbooruManager"
 GITHUB_REPOSITORY = "Battlecake91/danbooru-download-manager"
