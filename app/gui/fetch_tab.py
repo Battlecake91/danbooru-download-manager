@@ -61,6 +61,8 @@ class FetchWorker(QObject):
     @Slot()
     def run(self) -> None:
         worker_db: Database | None = None
+        result: object | None = None
+        failure: str | None = None
 
         try:
             self.log.emit(tr("fetch.log.started", config=self.config))
@@ -96,11 +98,8 @@ class FetchWorker(QObject):
             result.llm_skipped_reason = llm_result.skipped_reason
             result.llm_errors = llm_result.errors
 
-            self.log.emit(tr("fetch.log.finished", config=self.config))
-            self.finished.emit(result)
-
         except Exception:
-            self.failed.emit(traceback.format_exc())
+            failure = traceback.format_exc()
 
         finally:
             if worker_db is not None:
@@ -109,6 +108,13 @@ class FetchWorker(QObject):
                     self.log.emit(tr("fetch.log.worker_db_closed", config=self.config))
                 except Exception:
                     pass
+
+        if failure is not None:
+            self.failed.emit(failure)
+            return
+
+        self.log.emit(tr("fetch.log.finished", config=self.config))
+        self.finished.emit(result)
 
 
 class TagSuggestionWorker(QObject):
@@ -305,6 +311,8 @@ class FetchTab(QWidget):
         self.db = db
         self.thread: QThread | None = None
         self.worker: FetchWorker | None = None
+        self._pending_fetch_result: object | None = None
+        self._pending_fetch_failure: str | None = None
         self.suggestion_thread: QThread | None = None
         self.suggestion_worker: TagSuggestionWorker | None = None
         self.pending_suggestion_token: str | None = None
@@ -854,12 +862,15 @@ class FetchTab(QWidget):
         self.thread.started.connect(self.worker.run)
         self.worker.log.connect(self.log_text.append)
         self.worker.progress.connect(self.on_fetch_progress)
-        self.worker.finished.connect(self.on_fetch_finished)
-        self.worker.failed.connect(self.on_fetch_failed)
+        self.worker.finished.connect(self.on_worker_result_ready)
+        self.worker.failed.connect(self.on_worker_failure_ready)
 
         self.worker.finished.connect(self.thread.quit)
         self.worker.failed.connect(self.thread.quit)
-        self.thread.finished.connect(self.cleanup_thread)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.failed.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.on_fetch_thread_finished)
+        self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.start()
 
@@ -1008,30 +1019,49 @@ class FetchTab(QWidget):
             )
         return "\n".join(lines)
 
-    def on_fetch_finished(self, result: object) -> None:
-        summary = self.format_fetch_summary(result)
-        self.log_text.append(summary)
+    def on_worker_result_ready(self, result: object) -> None:
+        self._pending_fetch_result = result
+        self._pending_fetch_failure = None
+        self.progress_bar.setFormat(tr("fetch.progress.finishing", "Finishing fetch…", config=self.config))
+        self.fetch_progress_label.setText(tr("fetch.progress.finishing", "Finishing fetch…", config=self.config))
+
+    def on_worker_failure_ready(self, traceback_text: str) -> None:
+        self._pending_fetch_failure = traceback_text
+        self._pending_fetch_result = None
+
+    def on_fetch_thread_finished(self) -> None:
+        result = self._pending_fetch_result
+        failure = self._pending_fetch_failure
+        self._pending_fetch_result = None
+        self._pending_fetch_failure = None
+        self.thread = None
+        self.worker = None
+
         self.fetch_button.setEnabled(True)
         self.save_preset_button.setEnabled(True)
         self.delete_preset_button.setEnabled(True)
         self.progress_bar.setVisible(False)
+
+        if failure is not None:
+            self.log_text.append(tr("fetch.failed", config=self.config))
+            self.log_text.append(failure)
+            self.fetch_progress_label.setVisible(False)
+            self.fetch_failed_signal.emit()
+            QMessageBox.critical(self, tr("fetch.failed", config=self.config), failure)
+            return
+
+        if result is None:
+            failure = "Fetch thread finished without a result."
+            self.log_text.append(failure)
+            self.fetch_progress_label.setVisible(False)
+            self.fetch_failed_signal.emit()
+            QMessageBox.critical(self, tr("fetch.failed", config=self.config), failure)
+            return
+
+        summary = self.format_fetch_summary(result)
+        self.log_text.append(summary)
         self.fetch_progress_label.setText(summary.replace("\n", " | "))
         self.fetch_progress_label.setToolTip(summary)
         self.fetch_progress_label.setVisible(True)
         self.fetch_finished.emit()
         self.open_preview_requested.emit()
-
-    def on_fetch_failed(self, traceback_text: str) -> None:
-        self.log_text.append(tr("fetch.failed", config=self.config))
-        self.log_text.append(traceback_text)
-        self.fetch_button.setEnabled(True)
-        self.save_preset_button.setEnabled(True)
-        self.delete_preset_button.setEnabled(True)
-        self.progress_bar.setVisible(False)
-        self.fetch_progress_label.setVisible(False)
-        self.fetch_failed_signal.emit()
-        QMessageBox.critical(self, tr("fetch.failed", config=self.config), traceback_text)
-
-    def cleanup_thread(self) -> None:
-        self.thread = None
-        self.worker = None

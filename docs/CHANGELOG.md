@@ -376,3 +376,13 @@ This changelog summarizes the project history by larger development milestones i
 - Added direct manual Match and Mismatch decisions.
 - Manual decisions immediately update candidate confidence and import selection.
 - Kept the external remote-image action available from the comparison viewer.
+
+
+## 1.3.183
+
+### Fetch restart lifecycle
+
+- Keep the Fetch action disabled until the worker database is closed and the QThread has fully stopped.
+- Publish the final Fetch result only after worker cleanup has completed.
+- Delete finished worker and thread objects through Qt's event loop.
+- Prevent an immediate second Fetch from starting inside the shutdown phase of the previous run.
