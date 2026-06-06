@@ -180,9 +180,15 @@ class PreviewWindow(QMainWindow):
 
         self.config = config
         self.db = db
+
+        gui_config = self.config.get("gui")
+        if not isinstance(gui_config, dict):
+            gui_config = {}
+            self.config["gui"] = gui_config
+
         self.final_save_service = FinalSaveService(config, db)
         self.recommendation_engine = RecommendationEngine(db)
-        self.current_limit = int((config.get("gui", {}) or {}).get("preview_limit", 100))
+        self.current_limit = int(gui_config.get("preview_limit", 100))
         self.current_offset = 0
 
         self.viewer_windows_by_post_id: dict[int, ImageViewerWindow] = {}

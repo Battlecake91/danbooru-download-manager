@@ -1,4 +1,4 @@
-Filter for resolution (min / max width and heigth)
+-Filter for resolution (min / max width and heigth)
 Better documentation which type of API key is necessary
 Better error messages for danbooru-api-errors (what's wrong? + error message from danbooru)
 Tooltips for options

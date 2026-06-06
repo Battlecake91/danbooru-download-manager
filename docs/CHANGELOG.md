@@ -1,3 +1,11 @@
+## 1.3.176
+
+### Preview startup fix
+
+- Restored Previewer GUI configuration initialization after moving resolution filters to Fetch.
+- Fixed the startup `NameError` affecting saved sort order and thumbnail-size settings.
+- Reused the validated GUI configuration for the Previewer limit and toolbar defaults.
+
 ## 1.3.175
 
 ### Fetch resolution filtering
