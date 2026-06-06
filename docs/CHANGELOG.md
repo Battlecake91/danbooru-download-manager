@@ -1,3 +1,9 @@
+## 1.3.159 - Importer candidate inspection
+
+- Added buttons to open the selected local file and the matched remote Danbooru image.
+- Double-clicking local-file columns opens the local image; double-clicking other candidate columns opens the remote image.
+- Made all candidate table text cells read-only while preserving the import checkbox.
+
 ## 1.3.156
 
 - Added filename/tag validation for post-ID imports to avoid Konachan and other booru ID collisions.

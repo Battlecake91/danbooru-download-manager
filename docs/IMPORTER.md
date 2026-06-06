@@ -147,3 +147,7 @@ Confidence is classified as follows:
 Filename validation is intentionally strict. For a filename containing `smile_1girl_blue_hair`, all three recognized tags must be present on the fetched Danbooru post. One matching generic tag is not sufficient.
 
 The resolution column displays the local and Danbooru dimensions with `✓`, `✗`, or `?`. Filters above the table can show only green, yellow, or red candidates. Red candidates are excluded from import by default.
+
+## Inspecting scan candidates
+
+Select a candidate and use **Open local file** or **Open remote image** to compare both images with the system viewer or browser. Double-clicking the local filename/path opens the local file; double-clicking another candidate column opens the remote image. Candidate text cells are read-only; only the import checkbox can be changed.

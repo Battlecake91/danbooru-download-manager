@@ -5,8 +5,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QObject, Qt, QThread, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -231,6 +231,14 @@ class ImportTab(QWidget):
         self.confidence_filter.currentIndexChanged.connect(self.apply_candidate_filter)
         review_row.addWidget(self.confidence_filter)
         review_row.addStretch(1)
+        self.open_local_button = QPushButton(tr("import.button.open_local", "Open local file", config=self.config))
+        self.open_local_button.clicked.connect(self.open_selected_local_file)
+        self.open_local_button.setEnabled(False)
+        review_row.addWidget(self.open_local_button)
+        self.open_remote_button = QPushButton(tr("import.button.open_remote", "Open remote image", config=self.config))
+        self.open_remote_button.clicked.connect(self.open_selected_remote_image)
+        self.open_remote_button.setEnabled(False)
+        review_row.addWidget(self.open_remote_button)
         self.main_layout.addLayout(review_row)
 
         self.candidate_table = QTableWidget(0, 8)
@@ -247,6 +255,8 @@ class ImportTab(QWidget):
         self.candidate_table.setAlternatingRowColors(True)
         self.candidate_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.candidate_table.setSortingEnabled(True)
+        self.candidate_table.itemSelectionChanged.connect(self.update_candidate_open_buttons)
+        self.candidate_table.itemDoubleClicked.connect(self.open_candidate_from_item)
         header = self.candidate_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
@@ -339,6 +349,7 @@ class ImportTab(QWidget):
         self.import_button.setEnabled(enabled and bool(self.scan_candidates))
         self.confidence_filter.setEnabled(enabled)
         self.candidate_table.setEnabled(enabled)
+        self.update_candidate_open_buttons()
         self.rename_category_button.setEnabled(enabled)
         self.refresh_categories_button.setEnabled(enabled)
 
@@ -617,8 +628,12 @@ class ImportTab(QWidget):
             reason = QTableWidgetItem(candidate.reason)
             path = QTableWidgetItem(candidate.path)
             path.setData(Qt.UserRole, candidate.path)
+            path.setData(Qt.UserRole + 1, candidate.remote_image_url)
+            path.setData(Qt.UserRole + 2, candidate.remote_post_url)
             row_background = colors.get(candidate.confidence)
             for column, item in enumerate((check, confidence, post_id, filename, tags, resolution, reason, path)):
+                if column != 0:
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 if row_background is not None:
                     item.setBackground(row_background)
                     item.setForeground(QColor(0, 0, 0))
@@ -627,6 +642,46 @@ class ImportTab(QWidget):
                 self.candidate_table.setItem(row, column, item)
         self.candidate_table.setSortingEnabled(True)
         self.apply_candidate_filter()
+
+    def selected_candidate_path_item(self) -> QTableWidgetItem | None:
+        row = self.candidate_table.currentRow()
+        if row < 0:
+            return None
+        return self.candidate_table.item(row, 7)
+
+    def update_candidate_open_buttons(self) -> None:
+        if not hasattr(self, "open_local_button"):
+            return
+        item = self.selected_candidate_path_item()
+        enabled = self.thread is None and item is not None
+        local_path = str(item.data(Qt.UserRole) or item.text()) if item else ""
+        remote_url = str(item.data(Qt.UserRole + 1) or item.data(Qt.UserRole + 2) or "") if item else ""
+        self.open_local_button.setEnabled(enabled and Path(local_path).is_file())
+        self.open_remote_button.setEnabled(enabled and bool(remote_url))
+
+    def open_selected_local_file(self) -> None:
+        item = self.selected_candidate_path_item()
+        if item is None:
+            return
+        path = Path(str(item.data(Qt.UserRole) or item.text()))
+        if not path.is_file():
+            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.local_file_missing", "Local file no longer exists.", config=self.config))
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
+
+    def open_selected_remote_image(self) -> None:
+        item = self.selected_candidate_path_item()
+        if item is None:
+            return
+        remote_url = str(item.data(Qt.UserRole + 1) or item.data(Qt.UserRole + 2) or "").strip()
+        if remote_url:
+            QDesktopServices.openUrl(QUrl(remote_url))
+
+    def open_candidate_from_item(self, item: QTableWidgetItem) -> None:
+        if item.column() in (3, 7):
+            self.open_selected_local_file()
+        else:
+            self.open_selected_remote_image()
 
     def apply_candidate_filter(self) -> None:
         wanted = self.confidence_filter.currentData() if hasattr(self, "confidence_filter") else "all"

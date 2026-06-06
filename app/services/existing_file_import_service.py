@@ -107,6 +107,8 @@ class ExistingFileImportCandidate:
     remote_width: int | None = None
     remote_height: int | None = None
     resolution_status: str = "unknown"
+    remote_image_url: str = ""
+    remote_post_url: str = ""
     importable: bool = True
 
 
@@ -491,6 +493,8 @@ class ExistingFileImportService:
             remote_width=remote_width,
             remote_height=remote_height,
             resolution_status=resolution_status,
+            remote_image_url=str(post.get("large_file_url") or post.get("file_url") or post.get("preview_file_url") or ""),
+            remote_post_url=f"{str(self.config.get('base_url') or 'https://danbooru.donmai.us').rstrip('/')}/posts/{int(post['id'])}",
             importable=confidence != "mismatch",
         )
 
