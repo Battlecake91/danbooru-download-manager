@@ -124,10 +124,12 @@ The importer is meant for existing Danbooru folders, older downloader output or 
 
 It can:
 
-- scan local folders,
-- register existing files in the database,
+- scan local folders into a review table before changing the database,
+- filter candidates by high confidence, questionable evidence or definite mismatch,
+- compare local image dimensions with the Danbooru original,
+- register only selected files in the database,
 - detect Danbooru post IDs or MD5 hashes from filenames,
-- reject obvious foreign-board ID collisions by checking filename tags against the fetched Danbooru post,
+- reject foreign-board ID collisions by requiring every recognized filename tag to exist on the fetched Danbooru post,
 - preserve local file paths,
 - assign initial categories from folder structure,
 - optionally fetch and cache thumbnails during import,

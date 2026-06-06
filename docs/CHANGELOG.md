@@ -6,6 +6,11 @@
 
 # Changelog
 
+## 1.3.158 - Importer review table readability
+
+- Changed the text color of green, yellow and red importer candidate rows to black.
+- Kept the normal theme text color for rows without a confidence background.
+
 This changelog summarizes the project history by larger development milestones instead of listing every internal patch. Detailed patch notes are kept under `docs/patches/` for archaeology, blame assignment and other ancient rituals developers pretend are healthy.
 
 ---
@@ -177,3 +182,15 @@ This changelog summarizes the project history by larger development milestones i
 
 - Initial project setup and early startup behavior.
 - Detailed historical notes remain in `docs/patches/README_*.md` files.
+
+## 1.3.157
+
+### Importer review workflow
+
+- Replaced the direct folder import flow with a scan-and-review candidate list.
+- Filename evidence is now strict: every recognized filename tag must exist on the fetched Danbooru post. A single generic match no longer validates an ID.
+- Added confidence classes with colored rows: high confidence, questionable, and definite mismatch.
+- Added filters for all three confidence classes.
+- Added local-versus-Danbooru resolution comparison with match, mismatch, and unknown indicators.
+- Definite mismatches are not selected for import by default; questionable candidates remain available for manual decisions.
+- The candidate model is prepared for a later side-by-side local/original comparison viewer.

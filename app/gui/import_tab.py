@@ -5,7 +5,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +20,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
     QVBoxLayout,
     QWidget,
 )
@@ -26,8 +30,10 @@ from PySide6.QtWidgets import (
 from app.core.database import Database
 from app.i18n.i18n import tr
 from app.services.existing_file_import_service import (
+    ExistingFileImportCandidate,
     ExistingFileImportProgress,
     ExistingFileImportService,
+    ExistingFileScanResult,
 )
 
 
@@ -49,6 +55,7 @@ class ExistingFileImportWorker(QObject):
         update_existing: bool = True,
         fetch_thumbnails: bool = False,
         post_ids: list[int] | None = None,
+        candidate_paths: list[str] | None = None,
     ) -> None:
         super().__init__()
         self.config = config
@@ -61,6 +68,7 @@ class ExistingFileImportWorker(QObject):
         self.update_existing = bool(update_existing)
         self.fetch_thumbnails = bool(fetch_thumbnails)
         self.post_ids = list(post_ids or [])
+        self.candidate_paths = list(candidate_paths or [])
 
     @Slot()
     def run(self) -> None:
@@ -72,7 +80,9 @@ class ExistingFileImportWorker(QObject):
             worker_db.initialize_schema()
 
             service = ExistingFileImportService(self.config, worker_db, progress_callback=self.progress.emit)
-            if self.mode == "import":
+            if self.mode == "scan":
+                result = service.scan_folder(self.folder, recursive=self.recursive)
+            elif self.mode == "import":
                 self.log.emit(tr("import.log.import_started", "Existing file import started.", config=self.config))
                 result = service.import_folder(
                     self.folder,
@@ -81,6 +91,7 @@ class ExistingFileImportWorker(QObject):
                     rename_after_import=self.rename_after_import,
                     update_existing=self.update_existing,
                     fetch_thumbnails=self.fetch_thumbnails,
+                    candidate_paths=self.candidate_paths or None,
                 )
             elif self.mode == "repair":
                 if self.old_category_id is None:
@@ -120,6 +131,7 @@ class ImportTab(QWidget):
         self.thread: QThread | None = None
         self.worker: ExistingFileImportWorker | None = None
         self.last_imported_post_ids: list[int] = []
+        self.scan_candidates: list[ExistingFileImportCandidate] = []
 
         self.main_layout = QVBoxLayout(self)
 
@@ -186,8 +198,13 @@ class ImportTab(QWidget):
         self.main_layout.addWidget(self.repair_group)
 
         button_row = QHBoxLayout()
-        self.import_button = QPushButton(tr("import.button.import_folder", config=self.config))
+        self.scan_button = QPushButton(tr("import.button.scan_folder", "Scan folder", config=self.config))
+        self.scan_button.clicked.connect(self.start_scan)
+        button_row.addWidget(self.scan_button)
+
+        self.import_button = QPushButton(tr("import.button.import_selected", "Import selected", config=self.config))
         self.import_button.clicked.connect(self.start_import)
+        self.import_button.setEnabled(False)
         button_row.addWidget(self.import_button)
 
         self.repair_button = QPushButton(tr("import.button.repair_category", config=self.config))
@@ -204,6 +221,39 @@ class ImportTab(QWidget):
         button_row.addStretch(1)
         self.main_layout.addLayout(button_row)
 
+        review_row = QHBoxLayout()
+        review_row.addWidget(QLabel(tr("import.label.confidence_filter", "Show", config=self.config)))
+        self.confidence_filter = QComboBox()
+        self.confidence_filter.addItem(tr("import.filter.all", "All", config=self.config), "all")
+        self.confidence_filter.addItem(tr("import.filter.high", "High confidence", config=self.config), "high")
+        self.confidence_filter.addItem(tr("import.filter.questionable", "Questionable", config=self.config), "questionable")
+        self.confidence_filter.addItem(tr("import.filter.mismatch", "Wrong ID / mismatch", config=self.config), "mismatch")
+        self.confidence_filter.currentIndexChanged.connect(self.apply_candidate_filter)
+        review_row.addWidget(self.confidence_filter)
+        review_row.addStretch(1)
+        self.main_layout.addLayout(review_row)
+
+        self.candidate_table = QTableWidget(0, 8)
+        self.candidate_table.setHorizontalHeaderLabels([
+            tr("import.table.import", "Import", config=self.config),
+            tr("import.table.confidence", "Confidence", config=self.config),
+            tr("import.table.post_id", "Post ID", config=self.config),
+            tr("import.table.filename", "Local file", config=self.config),
+            tr("import.table.tags", "Filename tags", config=self.config),
+            tr("import.table.resolution", "Resolution", config=self.config),
+            tr("import.table.reason", "Reason", config=self.config),
+            tr("import.table.path", "Path", config=self.config),
+        ])
+        self.candidate_table.setAlternatingRowColors(True)
+        self.candidate_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.candidate_table.setSortingEnabled(True)
+        header = self.candidate_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.Stretch)
+        self.candidate_table.setMinimumHeight(260)
+        self.main_layout.addWidget(self.candidate_table, stretch=1)
+
         self.progress_label = QLabel(tr("common.ready", "Ready.", config=self.config))
         self.progress_label.setWordWrap(True)
         self.main_layout.addWidget(self.progress_label)
@@ -214,8 +264,8 @@ class ImportTab(QWidget):
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(260)
-        self.main_layout.addWidget(self.log_text, stretch=1)
+        self.log_text.setMinimumHeight(120)
+        self.main_layout.addWidget(self.log_text)
 
         self.load_categories()
 
@@ -223,6 +273,7 @@ class ImportTab(QWidget):
         selected = QFileDialog.getExistingDirectory(self, tr("import.dialog.choose_folder.title", config=self.config), self.folder_edit.text().strip() or str(Path.home()))
         if selected:
             self.folder_edit.setText(selected)
+            self.clear_scan_results()
 
     def load_categories(self) -> None:
         current_id = self.current_category_id()
@@ -284,32 +335,54 @@ class ImportTab(QWidget):
         self.rename_last_import_checkbox.setEnabled(enabled)
         self.old_category_combo.setEnabled(enabled)
         self.repair_button.setEnabled(enabled)
-        self.import_button.setEnabled(enabled)
+        self.scan_button.setEnabled(enabled)
+        self.import_button.setEnabled(enabled and bool(self.scan_candidates))
+        self.confidence_filter.setEnabled(enabled)
+        self.candidate_table.setEnabled(enabled)
         self.rename_category_button.setEnabled(enabled)
         self.refresh_categories_button.setEnabled(enabled)
 
-    def start_import(self) -> None:
+    def start_scan(self) -> None:
         folder = self.folder_edit.text().strip()
-        if not folder:
-            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.select_import_folder", config=self.config))
-            return
-        if not Path(folder).expanduser().is_dir():
+        if not folder or not Path(folder).expanduser().is_dir():
             QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.folder_not_found", config=self.config, folder=folder))
             return
+        category_id = self.current_category_id() or 0
+        self.clear_scan_results()
+        self.start_worker(
+            mode="scan", folder=folder, category_id=category_id,
+            recursive=self.recursive_checkbox.isChecked(), rename_after_import=False,
+        )
 
+    def selected_candidate_paths(self) -> list[str]:
+        paths: list[str] = []
+        for row in range(self.candidate_table.rowCount()):
+            check_item = self.candidate_table.item(row, 0)
+            path_item = self.candidate_table.item(row, 7)
+            if check_item and path_item and check_item.checkState() == Qt.Checked:
+                paths.append(path_item.data(Qt.UserRole) or path_item.text())
+        return paths
+
+    def start_import(self) -> None:
+        folder = self.folder_edit.text().strip()
+        if not folder or not Path(folder).expanduser().is_dir():
+            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.folder_not_found", config=self.config, folder=folder))
+            return
+        candidate_paths = self.selected_candidate_paths()
+        if not candidate_paths:
+            QMessageBox.information(self, tr("import.title", config=self.config), tr("import.info.no_candidates_selected", "No import candidates selected.", config=self.config))
+            return
         category_id = self.current_category_id()
         if category_id is None:
             QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.select_category", config=self.config))
             return
-
         self.start_worker(
-            mode="import",
-            folder=folder,
-            category_id=category_id,
+            mode="import", folder=folder, category_id=category_id,
             recursive=self.recursive_checkbox.isChecked(),
             rename_after_import=self.rename_after_import_checkbox.isChecked(),
             update_existing=self.update_existing_checkbox.isChecked(),
             fetch_thumbnails=self.fetch_thumbnails_checkbox.isChecked(),
+            candidate_paths=candidate_paths,
         )
 
     def start_repair_category(self) -> None:
@@ -390,6 +463,7 @@ class ImportTab(QWidget):
         update_existing: bool = True,
         fetch_thumbnails: bool = False,
         post_ids: list[int] | None = None,
+        candidate_paths: list[str] | None = None,
     ) -> None:
         if self.thread is not None:
             QMessageBox.information(self, tr("import.importer_title", config=self.config), tr("import.info.already_running", config=self.config))
@@ -415,6 +489,7 @@ class ImportTab(QWidget):
             update_existing=update_existing,
             fetch_thumbnails=fetch_thumbnails,
             post_ids=post_ids,
+            candidate_paths=candidate_paths,
         )
         self.worker.moveToThread(self.thread)
 
@@ -464,6 +539,12 @@ class ImportTab(QWidget):
 
     def on_finished(self, result: object) -> None:
         self.set_controls_enabled(True)
+        if isinstance(result, ExistingFileScanResult):
+            self.scan_candidates = list(result.candidates)
+            self.populate_candidate_table()
+            self.progress_label.setText(tr("import.scan.summary", "Scan complete: {count} files", config=self.config, count=len(self.scan_candidates)))
+            self.import_button.setEnabled(bool(self.scan_candidates))
+            return
         imported_ids = list(getattr(result, "imported_post_ids", []) or [])
         if imported_ids:
             self.last_imported_post_ids = imported_ids
@@ -489,6 +570,70 @@ class ImportTab(QWidget):
         self.log_text.append(summary)
         self.progress_label.setText(summary.replace("\n", " | "))
         self.import_finished.emit()
+
+    def clear_scan_results(self) -> None:
+        self.scan_candidates = []
+        if hasattr(self, "candidate_table"):
+            self.candidate_table.setRowCount(0)
+        if hasattr(self, "import_button"):
+            self.import_button.setEnabled(False)
+
+    def populate_candidate_table(self) -> None:
+        self.candidate_table.setSortingEnabled(False)
+        self.candidate_table.setRowCount(0)
+        colors = {
+            "high": QColor(211, 245, 218),
+            "questionable": QColor(255, 243, 180),
+            "mismatch": QColor(255, 205, 205),
+        }
+        labels = {
+            "high": tr("import.confidence.high", "High", config=self.config),
+            "questionable": tr("import.confidence.questionable", "Questionable", config=self.config),
+            "mismatch": tr("import.confidence.mismatch", "Mismatch", config=self.config),
+        }
+        for candidate in self.scan_candidates:
+            row = self.candidate_table.rowCount()
+            self.candidate_table.insertRow(row)
+            check = QTableWidgetItem()
+            check.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable)
+            check.setCheckState(Qt.Checked if candidate.importable else Qt.Unchecked)
+            confidence = QTableWidgetItem(labels.get(candidate.confidence, candidate.confidence))
+            confidence.setData(Qt.UserRole, candidate.confidence)
+            post_id = QTableWidgetItem(str(candidate.post_id or ""))
+            filename = QTableWidgetItem(candidate.filename)
+            tags_text = ", ".join(candidate.matched_tags)
+            if candidate.missing_tags:
+                tags_text += " | missing: " + ", ".join(candidate.missing_tags)
+            tags = QTableWidgetItem(tags_text)
+            if candidate.resolution_status == "match":
+                symbol = "✓"
+            elif candidate.resolution_status == "mismatch":
+                symbol = "✗"
+            else:
+                symbol = "?"
+            local = f"{candidate.local_width}×{candidate.local_height}" if candidate.local_width else "?"
+            remote = f"{candidate.remote_width}×{candidate.remote_height}" if candidate.remote_width else "?"
+            resolution = QTableWidgetItem(f"{symbol} {local} / {remote}")
+            reason = QTableWidgetItem(candidate.reason)
+            path = QTableWidgetItem(candidate.path)
+            path.setData(Qt.UserRole, candidate.path)
+            row_background = colors.get(candidate.confidence)
+            for column, item in enumerate((check, confidence, post_id, filename, tags, resolution, reason, path)):
+                if row_background is not None:
+                    item.setBackground(row_background)
+                    item.setForeground(QColor(0, 0, 0))
+                if not candidate.importable and column == 0:
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                self.candidate_table.setItem(row, column, item)
+        self.candidate_table.setSortingEnabled(True)
+        self.apply_candidate_filter()
+
+    def apply_candidate_filter(self) -> None:
+        wanted = self.confidence_filter.currentData() if hasattr(self, "confidence_filter") else "all"
+        for row in range(self.candidate_table.rowCount()):
+            item = self.candidate_table.item(row, 1)
+            confidence = item.data(Qt.UserRole) if item else ""
+            self.candidate_table.setRowHidden(row, wanted != "all" and confidence != wanted)
 
     def on_failed(self, traceback_text: str) -> None:
         self.set_controls_enabled(True)

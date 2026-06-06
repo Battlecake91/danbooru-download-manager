@@ -133,3 +133,17 @@ This avoids large-scale cleanup after a wrong assumption. Databases are very goo
 - [`FIRST_TIME_USAGE.md`](FIRST_TIME_USAGE.md) for the first-run importer overview.
 - [`CONFIGURATION.md`](CONFIGURATION.md) for folders and output settings.
 - [`FETCH_WORKFLOW.md`](FETCH_WORKFLOW.md) for fetching metadata and thumbnails after import.
+
+## Scan and review before importing
+
+The importer now scans a selected folder before it changes the database. Each local file is resolved through its MD5 hash or detected post ID and shown in a review table.
+
+Confidence is classified as follows:
+
+- **High confidence (green):** an exact MD5 match, or multiple recognized filename tags all match and the local resolution equals the Danbooru resolution.
+- **Questionable (yellow):** the available evidence is incomplete, the filename contains too few reliable tags, or the resolution differs or cannot be read.
+- **Mismatch (red):** the Danbooru post does not exist, the filename identifies another board, or at least one recognized filename tag is absent from the fetched post.
+
+Filename validation is intentionally strict. For a filename containing `smile_1girl_blue_hair`, all three recognized tags must be present on the fetched Danbooru post. One matching generic tag is not sufficient.
+
+The resolution column displays the local and Danbooru dimensions with `✓`, `✗`, or `?`. Filters above the table can show only green, yellow, or red candidates. Red candidates are excluded from import by default.

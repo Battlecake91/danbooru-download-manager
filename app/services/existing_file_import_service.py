@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 import requests
+from PySide6.QtGui import QImageReader
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -29,37 +30,89 @@ POST_ID_HINT_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:post|postid|post_id|id|danb
 POST_ID_FALLBACK_RE = re.compile(r"(?<!\d)(\d{5,12})(?!\d)")
 
 
-def filename_matches_danbooru_post(filename: str, post: dict[str, Any]) -> bool:
-    """Reject obvious foreign-board ID collisions and verify filename tags when possible."""
-    stem = Path(filename).stem
-    lowered = stem.casefold()
-    if "konachan.com" in lowered or lowered.startswith("konachan -"):
-        return False
-
-    post_tags: set[str] = set()
+def collect_post_tags(post: dict[str, Any]) -> set[str]:
+    tags: set[str] = set()
     for field_name in (
         "tag_string", "tag_string_general", "tag_string_character",
         "tag_string_copyright", "tag_string_artist", "tag_string_meta",
     ):
-        post_tags.update(tag.casefold() for tag in str(post.get(field_name) or "").split() if tag)
+        tags.update(tag.casefold() for tag in str(post.get(field_name) or "").split() if tag)
+    return tags
 
-    if not post_tags:
-        return False
 
-    normalized = re.sub(r"[\s\-.,;()[\]{}]+", "_", lowered)
-    normalized = re.sub(r"_+", "_", normalized).strip("_")
-    padded = f"_{normalized}_"
-    for tag in post_tags:
-        normalized_tag = re.sub(r"_+", "_", tag.strip("_"))
-        if normalized_tag and f"_{normalized_tag}_" in padded:
-            return True
+def normalize_filename_for_tag_scan(filename: str) -> list[str]:
+    stem = Path(filename).stem.casefold()
+    stem = MD5_RE.sub("_", stem)
+    stem = POST_ID_HINT_RE.sub("_", stem)
+    stem = POST_ID_FALLBACK_RE.sub("_", stem)
+    stem = re.sub(r"konachan(?:\.com)?", "_", stem)
+    stem = re.sub(r"[^a-z0-9_]+", "_", stem)
+    return [part for part in re.sub(r"_+", "_", stem).strip("_").split("_") if part]
 
-    # ID-only names contain no useful evidence. Keep them compatible unless they name another board.
-    stripped = MD5_RE.sub("", lowered)
-    stripped = POST_ID_HINT_RE.sub("", stripped)
-    stripped = POST_ID_FALLBACK_RE.sub("", stripped)
-    stripped = re.sub(r"[^a-z]+", "", stripped)
-    return len(stripped) < 3
+
+def extract_known_filename_tags(filename: str, known_tags: set[str]) -> tuple[list[str], list[str]]:
+    """Segment a filename into known Danbooru tags using longest matches.
+
+    This deliberately uses the local tag catalogue rather than the fetched post.
+    Otherwise a wrong ID can make a missing tag disappear from the evidence, which
+    is precisely the sort of circular reasoning computers adore.
+    """
+    parts = normalize_filename_for_tag_scan(filename)
+    found: list[str] = []
+    unknown: list[str] = []
+    index = 0
+    max_parts = 8
+    while index < len(parts):
+        matched = None
+        matched_length = 0
+        for length in range(min(max_parts, len(parts) - index), 0, -1):
+            candidate = "_".join(parts[index:index + length])
+            if candidate in known_tags:
+                matched = candidate
+                matched_length = length
+                break
+        if matched is not None:
+            found.append(matched)
+            index += matched_length
+        else:
+            token = parts[index]
+            if not token.isdigit() and len(token) > 1:
+                unknown.append(token)
+            index += 1
+    return found, unknown
+
+
+def local_image_size(path: Path) -> tuple[int | None, int | None]:
+    reader = QImageReader(str(path))
+    size = reader.size()
+    if not size.isValid():
+        return None, None
+    return int(size.width()), int(size.height())
+
+
+@dataclass
+class ExistingFileImportCandidate:
+    path: str
+    filename: str
+    identifier_kind: str = ""
+    identifier_value: str = ""
+    post_id: int | None = None
+    confidence: str = "questionable"
+    reason: str = ""
+    matched_tags: list[str] = field(default_factory=list)
+    missing_tags: list[str] = field(default_factory=list)
+    unknown_parts: list[str] = field(default_factory=list)
+    local_width: int | None = None
+    local_height: int | None = None
+    remote_width: int | None = None
+    remote_height: int | None = None
+    resolution_status: str = "unknown"
+    importable: bool = True
+
+
+@dataclass
+class ExistingFileScanResult:
+    candidates: list[ExistingFileImportCandidate] = field(default_factory=list)
 
 
 @dataclass
@@ -120,6 +173,7 @@ class ExistingFileImportService:
         self.category_engine = CategoryEngine(config, db)
         self.filename_builder = FilenameBuilder(config, db)
         self.progress_callback = progress_callback
+        self._known_tags_cache: set[str] | None = None
 
     def emit_progress(self, progress: ExistingFileImportProgress) -> None:
         if self.progress_callback is not None:
@@ -134,17 +188,22 @@ class ExistingFileImportService:
         rename_after_import: bool = False,
         update_existing: bool = True,
         fetch_thumbnails: bool = False,
+        candidate_paths: list[str] | None = None,
     ) -> ExistingFileImportResult:
         root = Path(folder).expanduser()
         if not root.exists() or not root.is_dir():
             raise RuntimeError(tr("import.error.import_folder_not_found", config=self.config, root=root))
 
         category = self.category_match_for_id(category_id)
+        files = (
+            [Path(item) for item in candidate_paths if Path(item).is_file()]
+            if candidate_paths is not None
+            else self.find_import_files(root, recursive=recursive)
+        )
         result = ExistingFileImportResult(
-            scanned_files=len(self.find_import_files(root, recursive=recursive)),
+            scanned_files=len(files),
             category_name=category.name,
         )
-        files = self.find_import_files(root, recursive=recursive)
         result.scanned_files = len(files)
 
         self.emit_progress(
@@ -203,7 +262,7 @@ class ExistingFileImportService:
                     self.emit_progress(base_progress)
                     continue
 
-                if not md5_hash and not filename_matches_danbooru_post(path.name, post):
+                if not md5_hash and self.evaluate_candidate(path, post, identifier_kind="post_id").confidence == "mismatch":
                     result.skipped_tag_mismatch += 1
                     base_progress.phase = "tag_mismatch"
                     base_progress.skipped_tag_mismatch = result.skipped_tag_mismatch
@@ -359,6 +418,122 @@ class ExistingFileImportService:
         )
         return result
 
+
+    def known_tag_names(self) -> set[str]:
+        if self._known_tags_cache is not None:
+            return self._known_tags_cache
+        rows = self.db.execute(
+            """
+            SELECT name AS tag FROM danbooru_tags
+            UNION
+            SELECT DISTINCT tag FROM post_tags
+            """
+        ).fetchall()
+        self._known_tags_cache = {str(row["tag"]).casefold() for row in rows if row["tag"]}
+        return self._known_tags_cache
+
+    def evaluate_candidate(
+        self,
+        path: Path,
+        post: dict[str, Any],
+        *,
+        identifier_kind: str,
+        known_tags: set[str] | None = None,
+    ) -> ExistingFileImportCandidate:
+        known = known_tags if known_tags is not None else self.known_tag_names()
+        post_tags = collect_post_tags(post)
+        filename_tags, unknown_parts = extract_known_filename_tags(path.name, known)
+        missing = sorted(tag for tag in filename_tags if tag not in post_tags)
+        local_width, local_height = local_image_size(path)
+        remote_width = int(post.get("image_width")) if post.get("image_width") else None
+        remote_height = int(post.get("image_height")) if post.get("image_height") else None
+        if local_width and local_height and remote_width and remote_height:
+            resolution_status = "match" if (local_width, local_height) == (remote_width, remote_height) else "mismatch"
+        else:
+            resolution_status = "unknown"
+
+        lower_name = path.name.casefold()
+        if "konachan.com" in lower_name or lower_name.startswith("konachan -"):
+            confidence = "mismatch"
+            reason = "Foreign-board filename prefix"
+        elif missing:
+            confidence = "mismatch"
+            reason = "Filename tags missing from Danbooru post: " + ", ".join(missing)
+        elif identifier_kind == "md5":
+            confidence = "high"
+            reason = "Exact MD5 match"
+        elif len(filename_tags) >= 2 and not unknown_parts and resolution_status == "match":
+            confidence = "high"
+            reason = "All filename tags and resolution match"
+        elif len(filename_tags) >= 2 and not unknown_parts:
+            confidence = "questionable"
+            reason = "All filename tags match; resolution differs or is unknown"
+        elif filename_tags:
+            confidence = "questionable"
+            reason = "Only limited filename-tag evidence"
+        else:
+            confidence = "questionable"
+            reason = "No reliable filename tags found"
+
+        return ExistingFileImportCandidate(
+            path=str(path),
+            filename=path.name,
+            identifier_kind=identifier_kind,
+            identifier_value=str(post.get("md5") or post.get("id") or ""),
+            post_id=int(post["id"]),
+            confidence=confidence,
+            reason=reason,
+            matched_tags=sorted(filename_tags),
+            missing_tags=missing,
+            unknown_parts=unknown_parts,
+            local_width=local_width,
+            local_height=local_height,
+            remote_width=remote_width,
+            remote_height=remote_height,
+            resolution_status=resolution_status,
+            importable=confidence != "mismatch",
+        )
+
+    def scan_folder(self, folder: str | Path, *, recursive: bool = True) -> ExistingFileScanResult:
+        root = Path(folder).expanduser()
+        if not root.exists() or not root.is_dir():
+            raise RuntimeError(tr("import.error.import_folder_not_found", config=self.config, root=root))
+        files = self.find_import_files(root, recursive=recursive)
+        known_tags = self.known_tag_names()
+        result = ExistingFileScanResult()
+        for index, path in enumerate(files, start=1):
+            md5_hash = extract_md5_from_filename(path.name)
+            post_id = extract_post_id_from_filename(path.name)
+            kind = "md5" if md5_hash else ("post_id" if post_id is not None else "")
+            try:
+                if md5_hash:
+                    post = self.api.get_post_by_md5(md5_hash)
+                elif post_id is not None:
+                    post = self.get_post_by_id_or_none(post_id)
+                else:
+                    post = None
+                if post is None:
+                    candidate = ExistingFileImportCandidate(
+                        path=str(path), filename=path.name, identifier_kind=kind,
+                        identifier_value=md5_hash or (str(post_id) if post_id else ""),
+                        post_id=post_id, confidence="mismatch",
+                        reason="No matching Danbooru post found", importable=False,
+                    )
+                else:
+                    candidate = self.evaluate_candidate(path, post, identifier_kind=kind, known_tags=known_tags)
+                    candidate.identifier_value = md5_hash or str(post_id or post.get("id") or "")
+                result.candidates.append(candidate)
+                self.emit_progress(ExistingFileImportProgress(
+                    phase="scan", current=index, total=len(files), path=str(path),
+                    post_id=candidate.post_id, message=f"Scanned {path.name}: {candidate.reason}",
+                ))
+            except Exception as exc:
+                result.candidates.append(ExistingFileImportCandidate(
+                    path=str(path), filename=path.name, identifier_kind=kind,
+                    identifier_value=md5_hash or (str(post_id) if post_id else ""),
+                    post_id=post_id, confidence="mismatch", reason=str(exc), importable=False,
+                ))
+        return result
 
     def get_post_by_id_or_none(self, post_id: int) -> dict[str, Any] | None:
         try:
