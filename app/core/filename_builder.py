@@ -4,7 +4,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.core.database import Database
 
@@ -31,19 +31,35 @@ class FilenameBuilder:
     def build_filename(self, post_id: int, source_path: Path) -> str:
         return self.build_preview_details(post_id, source_path).filename
 
-    def build_preview_details(self, post_id: int, source_path: Path) -> FilenamePreviewDetails:
+    def build_preview_details(
+        self,
+        post_id: int,
+        source_path: Path,
+        diagnostic: Callable[[str], None] | None = None,
+    ) -> FilenamePreviewDetails:
+        def diag(message: str) -> None:
+            if diagnostic is not None:
+                diagnostic(f"FILENAME {message}")
+
+        diag(f"begin post_id={post_id} source={str(source_path)!r}")
         pattern = str(self.filename_config().get("pattern", "%artists%_%characters%_%general%_%postid%"))
         max_length = int(self.filename_config().get("max_length", 180))
         extension = self.resolve_extension(post_id, source_path)
 
+        diag("typed_tags_for_post begin")
         raw_typed_tags = self.typed_tags_for_post(post_id)
+        diag("typed_tags_for_post end counts=" + repr({key: len(value) for key, value in raw_typed_tags.items()}))
+        diag("excluded_tags begin")
         excluded = self.excluded_tags()
+        diag(f"excluded_tags end count={len(excluded)}")
 
         included_tags: dict[str, list[str]] = {}
         excluded_tags: dict[str, list[str]] = {}
         for tag_type, tags in raw_typed_tags.items():
             included = [tag for tag in tags if tag not in excluded]
-            included_tags[tag_type] = self.prioritized_tags(included)
+            diag(f"prioritized_tags begin type={tag_type!r} count={len(included)}")
+            included_tags[tag_type] = self.prioritized_tags(included, diagnostic=diagnostic)
+            diag(f"prioritized_tags end type={tag_type!r}")
             excluded_tags[tag_type] = [tag for tag in tags if tag in excluded]
 
         artist_value = self.artist_placeholder_value(included_tags)
@@ -79,6 +95,7 @@ class FilenameBuilder:
         if len(filename) > max_length:
             filename = truncate_filename(filename, max_length)
 
+        diag(f"end filename={filename!r}")
         return FilenamePreviewDetails(
             post_id=post_id,
             pattern=pattern,
@@ -117,7 +134,11 @@ class FilenameBuilder:
             return value.strip().lower() in {"1", "true", "yes", "on", "y"}
         return bool(value)
 
-    def prioritized_tags(self, tags: list[str]) -> list[str]:
+    def prioritized_tags(
+        self,
+        tags: list[str],
+        diagnostic: Callable[[str], None] | None = None,
+    ) -> list[str]:
         """Return tags ordered for filename placeholders.
 
         Filename-Exclude is handled before this method. Scoring-Exclude does
@@ -130,8 +151,12 @@ class FilenameBuilder:
         if not tags or not self.prioritize_filename_tags():
             return tags
 
+        if diagnostic is not None:
+            diagnostic(f"FILENAME fetch_tag_metadata begin count={len(tags)}")
         try:
             metadata = self.db.fetch_tag_metadata(tags)
+            if diagnostic is not None:
+                diagnostic(f"FILENAME fetch_tag_metadata end count={len(metadata)}")
         except Exception:
             return tags
 

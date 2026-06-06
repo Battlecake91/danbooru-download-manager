@@ -1134,31 +1134,44 @@ class ImageViewerWindow(QMainWindow):
         os.startfile(folder)
 
     def update_category_controls(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
+        self.write_viewer_diagnostic(f"CATEGORY begin post_id={post_id}")
+
         started_at = time.perf_counter()
+        self.write_viewer_diagnostic("CATEGORY suggest_category begin")
         suggested = self.final_save_service.suggest_category(post_id)
+        self.write_viewer_diagnostic(f"CATEGORY suggest_category end name={suggested.name!r}")
         self.perf_add(metrics, "category_suggest", started_at)
         self.suggested_category_name = suggested.name
 
         started_at = time.perf_counter()
+        self.write_viewer_diagnostic("CATEGORY get_assigned_category_for_post begin")
         assigned = self.db.get_assigned_category_for_post(post_id)
+        self.write_viewer_diagnostic(f"CATEGORY get_assigned_category_for_post end found={assigned is not None}")
         self.perf_add(metrics, "category_assigned", started_at)
         assigned_name = str(assigned["name"]) if assigned is not None else None
         assigned_source = str(assigned["assignment_source"] or "manual") if assigned is not None else None
 
+        self.write_viewer_diagnostic("CATEGORY combo blockSignals/clear begin")
         self.category_combo.blockSignals(True)
         self.category_combo.clear()
+        self.write_viewer_diagnostic("CATEGORY combo blockSignals/clear end")
 
         started_at = time.perf_counter()
+        self.write_viewer_diagnostic("CATEGORY category_influence_for_post begin")
         influences = self.final_save_service.category_engine.category_influence_for_post(post_id)
+        self.write_viewer_diagnostic(f"CATEGORY category_influence_for_post end count={len(influences)}")
         self.perf_add(metrics, "category_influence", started_at)
         self.category_influence_by_name = {entry.name: entry.score for entry in influences}
         top_influence_name = influences[0].name if influences else None
 
         started_at = time.perf_counter()
+        self.write_viewer_diagnostic("CATEGORY list_categories begin")
         categories = self.final_save_service.list_categories()
+        self.write_viewer_diagnostic(f"CATEGORY list_categories end count={len(categories)}")
         self.perf_add(metrics, "category_list", started_at)
 
         started_at = time.perf_counter()
+        self.write_viewer_diagnostic("CATEGORY combo population begin")
         for category in categories:
             label = category.name
             suffixes: list[str] = []
@@ -1170,15 +1183,20 @@ class ImageViewerWindow(QMainWindow):
                 suffixes.append(self.t("viewer.category_suffix_assigned", "assigned"))
             if suffixes:
                 label = f"{category.name}  ← {', '.join(suffixes)}"
+            self.write_viewer_diagnostic(f"CATEGORY combo addItem name={category.name!r}")
             self.category_combo.addItem(label, category.name)
 
+        self.write_viewer_diagnostic("CATEGORY combo selection begin")
         target_name = assigned_name or suggested.name
         target_index = self.category_combo.findData(target_name)
         if target_index >= 0:
             self.category_combo.setCurrentIndex(target_index)
+        self.write_viewer_diagnostic(f"CATEGORY combo selection end target={target_name!r} index={target_index}")
 
         self.category_combo.blockSignals(False)
+        self.write_viewer_diagnostic("CATEGORY combo signals restored")
 
+        self.write_viewer_diagnostic("CATEGORY label update begin")
         if assigned_name:
             self.category_label.setText(self.t("viewer.category_assigned_source", "Category: assigned ({source})", source=assigned_source))
         else:
@@ -1186,8 +1204,13 @@ class ImageViewerWindow(QMainWindow):
             if top_influence_name and top_influence_name != suggested.name:
                 influence_text = self.t("viewer.category_tag_hint_append", " | tag hint: {name}", name=top_influence_name)
             self.category_label.setText(self.t("viewer.category_suggestion", "Category: suggestion {name}{hint}", name=suggested.name, hint=influence_text))
+        self.write_viewer_diagnostic("CATEGORY label update end")
         self.perf_add(metrics, "category_combo_ui", started_at)
+
+        self.write_viewer_diagnostic("CATEGORY update_final_path_preview begin")
         self.update_final_path_preview(metrics)
+        self.write_viewer_diagnostic("CATEGORY update_final_path_preview end")
+        self.write_viewer_diagnostic(f"CATEGORY end post_id={post_id}")
 
     def selected_category(self) -> CategoryMatch | None:
         name = self.category_combo.currentData()
@@ -1225,7 +1248,11 @@ class ImageViewerWindow(QMainWindow):
 
         category = self.selected_category()
         started_at = time.perf_counter()
-        preview = self.final_save_service.final_path_preview_details(self.current_post_id, category)
+        preview = self.final_save_service.final_path_preview_details(
+            self.current_post_id,
+            category,
+            diagnostic=self.write_viewer_diagnostic,
+        )
         self.perf_add(metrics, "final_path_preview", started_at)
 
         if preview:

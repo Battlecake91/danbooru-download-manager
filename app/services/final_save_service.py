@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
@@ -55,27 +55,54 @@ class FinalSaveService:
         self,
         post_id: int,
         category: CategoryMatch | None = None,
+        diagnostic: Callable[[str], None] | None = None,
     ) -> tuple[Path, FilenamePreviewDetails] | None:
+        def diag(message: str) -> None:
+            if diagnostic is not None:
+                diagnostic(f"FINAL_PATH {message}")
+
+        diag(f"begin post_id={post_id} category={getattr(category, 'name', None)!r}")
+        diag("get_post_detail begin")
         row = self.db.get_post_detail(post_id)
+        diag(f"get_post_detail end found={row is not None}")
         if row is not None and row["final_file_path"] and category is None:
             final_path = Path(str(row["final_file_path"]))
             source_path = final_path if final_path.exists() else Path(str(row["final_file_path"]))
-            details = self.filename_builder.build_preview_details(post_id, source_path)
+            diag(f"saved-path branch final_path={str(final_path)!r} exists={final_path.exists()}")
+            diag("filename_builder saved-path begin")
+            details = self.filename_builder.build_preview_details(post_id, source_path, diagnostic=diagnostic)
+            diag("filename_builder saved-path end")
             return final_path, details
 
+        diag("source_path_for_post begin")
         source_path = self.source_path_for_post(post_id, download_if_missing=False)
+        diag(f"source_path_for_post end path={str(source_path) if source_path else None!r}")
         if source_path is None:
             # No display/original file is available yet. For a pure preview, a synthetic
             # source with the correct extension is enough so the filename is still
             # visible and does not crawl out of the fog only after download.
+            diag("synthetic source get_post_detail begin")
             row = self.db.get_post_detail(post_id)
+            diag("synthetic source get_post_detail end")
             ext = str(row["file_ext"] or "bin").strip(".") if row is not None else "bin"
             source_path = Path(f"{post_id}_preview_source.{ext or 'bin'}")
+            diag(f"synthetic source path={str(source_path)!r}")
 
+        diag("effective category begin")
         effective_category = category or self.suggest_category(post_id)
+        diag(f"effective category end name={effective_category.name!r}")
+        diag("output_directory_for_category begin")
         output_dir = self.category_engine.output_directory_for_category(effective_category)
-        details = self.filename_builder.build_preview_details(post_id, source_path)
-        return unique_path(output_dir / details.filename), details
+        diag(f"output_directory_for_category end path={str(output_dir)!r}")
+        diag("filename_builder begin")
+        details = self.filename_builder.build_preview_details(post_id, source_path, diagnostic=diagnostic)
+        diag(f"filename_builder end filename={details.filename!r}")
+        desired_path = output_dir / details.filename
+        diag(f"unique_path begin desired={str(desired_path)!r}")
+        final_path = unique_path(desired_path, diagnostic=diagnostic)
+        diag(f"unique_path end result={str(final_path)!r}")
+        diag("end")
+        return final_path, details
 
     def save_post(
         self,
@@ -250,7 +277,9 @@ class FinalSaveService:
         return None
 
 
-def unique_path(path: Path) -> Path:
+def unique_path(path: Path, diagnostic: Callable[[str], None] | None = None) -> Path:
+    if diagnostic is not None:
+        diagnostic(f"UNIQUE_PATH initial exists check path={str(path)!r}")
     if not path.exists():
         return path
 
@@ -261,6 +290,8 @@ def unique_path(path: Path) -> Path:
     counter = 2
     while True:
         candidate = parent / f"{stem}_{counter}{suffix}"
+        if diagnostic is not None and (counter <= 10 or counter % 100 == 0):
+            diagnostic(f"UNIQUE_PATH probe counter={counter} candidate={str(candidate)!r}")
         if not candidate.exists():
             return candidate
         counter += 1
