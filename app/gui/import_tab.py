@@ -157,7 +157,8 @@ class ImportTab(QWidget):
 
         # Step 1: choose the source and scan it. Import actions deliberately stay out of this page.
         self.source_page = QWidget()
-        source_layout = QVBoxLayout(self.source_page)
+        self.source_layout = QVBoxLayout(self.source_page)
+        source_layout = self.source_layout
         self.import_group = QGroupBox(tr("import.group.source", config=self.config))
         self.import_layout = QFormLayout(self.import_group)
 
@@ -201,14 +202,14 @@ class ImportTab(QWidget):
             tr("import.scan.no_results", "No scan results yet.", config=self.config)
         )
         self.scan_statistics_label.setWordWrap(True)
-        self.scan_statistics_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.scan_statistics_label.setMinimumHeight(180)
+        self.scan_statistics_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.scan_statistics_label.setMinimumHeight(54)
         self.scan_statistics_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.scan_statistics_label.setStyleSheet(
             "QLabel { background: palette(base); border: 1px solid palette(mid); "
-            "border-radius: 8px; padding: 18px; font-size: 14px; font-weight: bold; }"
+            "border-radius: 8px; padding: 12px 16px; font-size: 14px; font-weight: bold; }"
         )
-        source_layout.addWidget(self.scan_statistics_label, stretch=1)
+        source_layout.addWidget(self.scan_statistics_label)
 
         self.review_results_button = QPushButton(
             tr("import.button.review_results", "Review scan results", config=self.config)
@@ -219,6 +220,28 @@ class ImportTab(QWidget):
         self.review_results_button.setMinimumHeight(44)
         self.review_results_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; }")
         source_layout.addWidget(self.review_results_button)
+
+        self.status_group = QGroupBox(
+            tr("import.group.status", "Scan status", config=self.config)
+        )
+        status_layout = QVBoxLayout(self.status_group)
+        self.progress_label = QLabel(tr("common.ready", "Ready.", config=self.config))
+        self.progress_label.setWordWrap(True)
+        self.progress_label.setMinimumHeight(36)
+        self.progress_label.setStyleSheet(
+            "QLabel { padding: 6px 10px; font-size: 13px; font-weight: bold; }"
+        )
+        status_layout.addWidget(self.progress_label)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        status_layout.addWidget(self.progress_bar)
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMinimumHeight(360)
+        status_layout.addWidget(self.log_text, stretch=1)
+        source_layout.addWidget(self.status_group, stretch=1)
         self.workflow_stack.addWidget(self.source_page)
 
         # Step 2: inspect, filter and select candidates.
@@ -313,7 +336,8 @@ class ImportTab(QWidget):
 
         # Step 3: decide what the actual import should do.
         self.process_page = QWidget()
-        process_layout = QVBoxLayout(self.process_page)
+        self.process_layout = QVBoxLayout(self.process_page)
+        process_layout = self.process_layout
         self.process_group = QGroupBox(
             tr("import.group.process", "Import process", config=self.config)
         )
@@ -378,24 +402,6 @@ class ImportTab(QWidget):
         process_layout.addStretch(1)
         self.workflow_stack.addWidget(self.process_page)
 
-        # Shared progress and log area for all workflow steps.
-        self.progress_label = QLabel(tr("common.ready", "Ready.", config=self.config))
-        self.progress_label.setWordWrap(True)
-        self.progress_label.setMinimumHeight(36)
-        self.progress_label.setStyleSheet(
-            "QLabel { padding: 6px 10px; font-size: 13px; font-weight: bold; }"
-        )
-        self.main_layout.addWidget(self.progress_label)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.main_layout.addWidget(self.progress_bar)
-
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(100)
-        self.main_layout.addWidget(self.log_text)
-
         self.load_categories()
         self.show_source_page()
 
@@ -406,6 +412,8 @@ class ImportTab(QWidget):
             self.clear_scan_results()
 
     def show_source_page(self) -> None:
+        self.source_layout.addWidget(self.status_group, stretch=1)
+        self.status_group.setTitle(tr("import.group.status", "Scan status", config=self.config))
         self.workflow_stack.setCurrentWidget(self.source_page)
 
     def show_review_page(self) -> None:
@@ -428,6 +436,8 @@ class ImportTab(QWidget):
             )
             return
         self.update_process_selection_summary()
+        self.process_layout.insertWidget(2, self.status_group, stretch=1)
+        self.status_group.setTitle(tr("import.group.import_status", "Import status", config=self.config))
         self.workflow_stack.setCurrentWidget(self.process_page)
 
     def update_process_selection_summary(self, *_args: object) -> None:
@@ -474,7 +484,7 @@ class ImportTab(QWidget):
         self.scan_statistics_label.setText(
             tr(
                 "import.scan.statistics",
-                "Scan complete\nScanned: {scanned} | Match: {matched} | Questionable: {questionable} | "
+                "Scan complete | Scanned: {scanned} | Match: {matched} | Questionable: {questionable} | "
                 "Mismatch: {mismatch} | Already known: {already_known} | "
                 "Resolution mismatch: {resolution_mismatch}",
                 config=self.config,

@@ -1,3 +1,11 @@
+## 1.3.171 - Importer status-area layout cleanup
+
+- Moved the progress and log area into the Source step instead of displaying it below every workflow page.
+- Let the scan-status area consume the remaining Source-page height, with a larger minimum log size.
+- Kept the completed scan statistics in a compact single-line summary.
+- Removed the progress and log area entirely from the Review step.
+- Reuse the same status area in the final Import Process step while an import is running.
+
 ## 1.3.170 - Import scan summary and navigation fixes
 
 - Enlarged the source-page scan summary and used the remaining page space for readable scan results.

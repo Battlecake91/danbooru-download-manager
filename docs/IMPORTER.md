@@ -12,8 +12,8 @@ The importer does not blindly move everything into the application. It scans loc
 
 The importer is split into three deliberate steps:
 
-1. **Import Source**: select the folder, target category and whether subfolders should be scanned. Start the scan here and watch its progress.
-2. **Review candidates**: inspect the scan statistics, open the candidate list, filter confidence levels, compare local and remote images, and choose which rows should be imported.
+1. **Import Source**: select the folder, target category and whether subfolders should be scanned. Start the scan here; the large status area uses the remaining page height, while the completed statistics stay in one compact line.
+2. **Review candidates**: open the candidate list, filter confidence levels, compare local and remote images, and choose which rows should be imported. The scan progress/log area is hidden in this step.
 3. **Import Process**: decide what should happen during import, including renaming, updating already-known posts and fetching thumbnails, then start the selected import.
 
 The source page no longer mixes scanning with actions that only matter after candidate review. Scan completion reports the number of scanned, matched, questionable, mismatched, already-known and resolution-mismatched candidates before the review list is opened.
