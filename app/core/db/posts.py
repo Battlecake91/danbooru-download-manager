@@ -22,6 +22,43 @@ from app.core.tag_privacy import build_tag_identity, canonicalize_tag, normalize
 class DatabasePostMixin:
     """Post browsing, status updates, file paths, and category assignment."""
 
+    def get_max_post_score(self, post_ids: Iterable[int]) -> int | None:
+        """Return the highest Danbooru score for the supplied posts.
+
+        The IDs are processed in chunks to stay below SQLite's host-parameter
+        limit. This replaces the Viewer's former N+1 detail lookup loop.
+        """
+        normalized_ids: list[int] = []
+        seen: set[int] = set()
+        for post_id in post_ids:
+            try:
+                value = int(post_id)
+            except (TypeError, ValueError):
+                continue
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized_ids.append(value)
+
+        if not normalized_ids:
+            return None
+
+        maximum: int | None = None
+        chunk_size = 900
+        for start in range(0, len(normalized_ids), chunk_size):
+            chunk = normalized_ids[start : start + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            row = self.execute(
+                f"SELECT MAX(score) AS max_score FROM posts WHERE id IN ({placeholders})",
+                chunk,
+            ).fetchone()
+            if row is None or row["max_score"] is None:
+                continue
+            value = int(row["max_score"])
+            maximum = value if maximum is None else max(maximum, value)
+
+        return maximum
+
     def fetch_preview_posts(
         self,
         view_mode: str = "worklist",

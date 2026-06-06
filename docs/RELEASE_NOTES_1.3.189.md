@@ -1,5 +1,9 @@
 # Release Notes — 1.3.189
 
+> [!WARNING]
+> **Withdrawn:** Version `1.3.189` must not be published as a stable release. A release-blocking Viewer startup freeze was found after packaging. Use `1.3.190` only as a corrective development build until validation is complete.
+
+
 Version `1.3.189` packages the importer redesign, Fetch filtering improvements and database-concurrency fixes developed after the original 1.3.152 release.
 
 ---

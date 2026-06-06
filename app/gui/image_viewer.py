@@ -630,18 +630,7 @@ class ImageViewerWindow(QMainWindow):
         self.set_status("rejected")
 
     def calculate_max_score_in_view(self) -> int | None:
-        max_score: int | None = None
-        for post_id in self.post_ids:
-            row = self.db.get_post_detail(int(post_id))
-            if row is None or row["score"] is None:
-                continue
-            try:
-                score = int(row["score"])
-            except (TypeError, ValueError):
-                continue
-            if max_score is None or score > max_score:
-                max_score = score
-        return max_score
+        return self.db.get_max_post_score(self.post_ids)
 
     def toggle_filename_preview(self, checked: bool) -> None:
         self.filename_preview_label.setVisible(checked)

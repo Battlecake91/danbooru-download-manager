@@ -2,7 +2,21 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.189 — Importer, Fetch filtering and database reliability release
+## 1.3.190 — Viewer startup hotfix candidate
+
+### Fixed
+
+- Replaced the Viewer startup N+1 query loop with a chunked aggregate score query.
+- Prevented the GUI from appearing frozen while opening the Viewer with a large Preview result set.
+
+### Release status
+
+- `1.3.189` has been withdrawn and must not be published as a stable release.
+- `1.3.190` is a corrective development build and requires validation before a replacement release is published.
+
+---
+
+## 1.3.189 — Withdrawn release candidate
 
 ### Added
 
