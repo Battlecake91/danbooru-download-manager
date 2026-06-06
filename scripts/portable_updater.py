@@ -5,6 +5,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import ctypes
 import sys
 import tempfile
 import time
@@ -14,6 +15,8 @@ from pathlib import Path
 
 PRESERVED_NAMES = {
     "danbooru_manager_data",
+    "danbooru_saved",
+    "thumbnails",
     "logs",
     "updates",
     "release",
@@ -72,39 +75,15 @@ def wait_for_process(pid: int | None, timeout_seconds: int = 60) -> None:
 
 def process_exists(pid: int) -> bool:
     if os.name == "nt":
-        # Query the process directly instead of parsing localized tasklist output.
-        # The frozen updater can receive stdout=None from tasklist, which caused
-        # the previous implementation to crash while calling splitlines().
-        import ctypes
-        from ctypes import wintypes
-
         process_query_limited_information = 0x1000
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-        kernel32.CloseHandle.restype = wintypes.BOOL
-
-        handle = kernel32.OpenProcess(
+        handle = ctypes.windll.kernel32.OpenProcess(
             process_query_limited_information,
             False,
-            pid,
+            int(pid),
         )
         if handle:
-            kernel32.CloseHandle(handle)
+            ctypes.windll.kernel32.CloseHandle(handle)
             return True
-
-        error_code = ctypes.get_last_error()
-        # ERROR_INVALID_PARAMETER means that no process with this PID exists.
-        if error_code == 87:
-            return False
-
-        # Access denied still means that the process exists, even though it
-        # cannot be queried with the current permissions.
-        if error_code == 5:
-            return True
-
-        log(f"OpenProcess failed for PID {pid} with Windows error {error_code}; assuming process exited.")
         return False
 
     try:
@@ -156,16 +135,26 @@ def should_preserve(relative_path: Path) -> bool:
     return False
 
 
-def remove_replaceable_target_files(target_dir: Path) -> None:
+def remove_replaceable_target_files(target_dir: Path, payload_root: Path) -> None:
     log("Removing old program files...")
+
+    # Only replace top-level entries that are actually part of the new payload.
+    # Arbitrary folders in the installation directory may contain user data and
+    # must never be treated as disposable application files.
+    payload_entries = {entry.name.lower() for entry in payload_root.iterdir()}
+
     for path in sorted(target_dir.rglob("*"), key=lambda item: len(item.parts), reverse=True):
         if path == target_dir:
             continue
+
         relative = path.relative_to(target_dir)
         if should_preserve(relative):
             continue
+        if not relative.parts or relative.parts[0].lower() not in payload_entries:
+            continue
         if not path.exists():
             continue
+
         if path.is_dir():
             try:
                 path.rmdir()
@@ -219,6 +208,10 @@ def main() -> int:
     args = parse_args()
     zip_path = Path(args.zip).resolve()
     target_dir = Path(args.target).resolve()
+    if target_dir.suffix.lower() == ".exe":
+        log(f"Target points to an executable; using its parent directory: {target_dir.parent}")
+        target_dir = target_dir.parent
+
     restart_path = Path(args.restart).resolve() if args.restart else None
     log_path = Path(args.log).resolve() if args.log else None
     configure_log(log_path)
@@ -238,7 +231,7 @@ def main() -> int:
             safe_extract(zip_path, extract_dir)
             payload_root = find_payload_root(extract_dir)
             log(f"Payload root: {payload_root}")
-            remove_replaceable_target_files(target_dir)
+            remove_replaceable_target_files(target_dir, payload_root)
             copy_payload(payload_root, target_dir)
 
         log("Update finished.")
