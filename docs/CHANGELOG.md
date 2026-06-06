@@ -192,6 +192,13 @@
 
 # Changelog
 
+## 1.3.186
+
+- Fixed leaked database write slots after failed mutating SQL statements.
+- Failed writes now always roll back and release the process-wide write gate.
+- Successful implicit-autocommit statements now release an idle gate immediately.
+- Prevents subsequent Fetch runs from starting with a permanently active queue.
+
 ## 1.3.158 - Importer review table readability
 
 - Changed the text color of green, yellow and red importer candidate rows to black.

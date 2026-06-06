@@ -204,6 +204,11 @@ class DatabaseConnectionMixin:
                         self._release_write_gate()
                     if is_mutating and time.monotonic() - started >= 0.100:
                         self._trace(f"SQL slow operation={operation} duration={time.monotonic() - started:.3f}s in_transaction={self.connection.in_transaction}")
+                    if is_mutating and not self.connection.in_transaction:
+                        # Some mutating statements commit implicitly or do not
+                        # open a transaction. They must not leave the process-wide
+                        # gate owned while SQLite itself is already idle.
+                        self._release_write_gate()
                     return cursor
                 except sqlite3.OperationalError as exc:
                     if not self._is_database_locked_error(exc):
@@ -213,8 +218,19 @@ class DatabaseConnectionMixin:
             return self.connection.execute(sql, params)
         except Exception as exc:
             self._trace(f"SQL failed operation={operation} duration={time.monotonic() - started:.3f}s error={type(exc).__name__}: {exc}")
-            if not self.connection.in_transaction:
-                self._release_write_gate()
+            # A failed mutating statement can leave SQLite inside a transaction.
+            # If the caller catches the exception without rolling back, the
+            # application write gate would otherwise remain owned forever and
+            # every later Fetch would start with active=True. Always unwind the
+            # failed write here; callers that need savepoints must handle them
+            # explicitly above this helper.
+            if is_mutating:
+                try:
+                    if self.connection.in_transaction:
+                        self.connection.rollback()
+                        self._trace(f"SQL failure rollback operation={operation}")
+                finally:
+                    self._release_write_gate()
             raise
 
     def executemany(self, sql: str, rows: Iterable[Iterable[Any]]) -> sqlite3.Cursor:
@@ -237,7 +253,11 @@ class DatabaseConnectionMixin:
         try:
             return self.connection.executemany(sql, materialized_rows)
         except Exception:
-            if not self.connection.in_transaction:
+            try:
+                if self.connection.in_transaction:
+                    self.connection.rollback()
+                    self._trace(f"EXECUTEMANY failure rollback operation={operation}")
+            finally:
                 self._release_write_gate()
             raise
 
@@ -249,7 +269,11 @@ class DatabaseConnectionMixin:
         try:
             return self.connection.executescript(sql_script)
         except Exception:
-            if not self.connection.in_transaction:
+            try:
+                if self.connection.in_transaction:
+                    self.connection.rollback()
+                    self._trace("SCRIPT failure rollback")
+            finally:
                 self._release_write_gate()
             raise
 
