@@ -1,5 +1,6 @@
--Filter for resolution (min / max width and heigth)
-Better documentation which type of API key is necessary
-Better error messages for danbooru-api-errors (what's wrong? + error message from danbooru)
-Tooltips for options
-List View
+- Better documentation for required Danbooru API credentials and permissions
+- More descriptive Danbooru API error messages, including the server response
+- Tooltips and contextual help for advanced options
+- Optional list-oriented library view
+- Additional quality-of-life improvements
+- More LLM provider and payload validation

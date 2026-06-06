@@ -1,5 +1,2 @@
--Window-size sometimes gets buggy and forms are not shown correctly
-
-Sometimes even if a post has childs, it is not shown
- 
-
+- Parent/child information is not shown for every post in some edge cases.
+- Very large databases and unusual network interruptions need broader testing.

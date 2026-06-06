@@ -1,12 +1,12 @@
-# Screenshot Placeholders
+# Screenshots
 
-This folder contains screenshot placeholders referenced by the main `README.md`.
+The images in this directory are used by the public README for release `1.3.189`.
 
-Replace these files with real screenshots for the public `1.3.152` release:
+Expected files:
 
-- `first-run-setup.png` - first-time setup and initial configuration
-- `fetch-tab.png` - Fetch tab with a typical query/preset setup
-- `previewer.png` - Previewer grid/card workflow
-- `viewer.png` - Viewer with image, tags, rating, category and filename preview
+- `first-run-setup.png`
+- `fetch-tab.png`
+- `previewer.png`
+- `viewer.png`
 
-Keep the filenames stable so the README links do not break. Yes, even screenshots deserve basic discipline.
+Update the captures whenever the corresponding workflow changes materially. Screenshots that document an interface from three redesigns ago are technically images, but not especially useful ones.

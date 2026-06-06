@@ -1,39 +1,75 @@
-# Database access coordination
+# Database Access Coordination
 
-The application uses SQLite in WAL mode. WAL permits concurrent readers, but SQLite still allows only one writer at a time. The application therefore uses a process-wide FIFO write coordinator for every database file.
+Danbooru Download Manager `1.3.189` uses SQLite in WAL mode. WAL allows concurrent readers, but SQLite still permits only one writer at a time.
 
-## Behaviour
+The application therefore uses a process-wide FIFO write coordinator for each resolved database file.
 
-- Read-only SQL is executed immediately on each thread-local database connection.
-- The first mutating statement of a transaction requests the central write slot.
-- Additional writers wait in FIFO order.
-- The connection keeps its slot until `commit()`, `rollback()` or `close()`.
-- Previewer reads remain available while Fetch, Importer or Configuration writes are running.
-- Schema creation, maintenance checkpoints and `VACUUM` use the same write gate.
-
-This means a settings save requested during Fetch is queued behind the active Fetch transaction instead of racing it at SQLite level. Once the current transaction commits, the settings write proceeds automatically.
+---
 
 ## Connection model
 
-Each worker still owns its own SQLite connection. Connections must not be shared across Qt threads. Coordination occurs above SQLite and is keyed by the resolved database path, so all `Database` instances inside the application participate automatically.
+- The main GUI and each background worker own separate SQLite connections.
+- Connections are never shared across Qt threads.
+- Read-only SQL executes directly on the owning connection.
+- Mutating transactions enter the shared FIFO coordinator.
+- The write slot is held until commit, rollback or connection close.
+
+This lets Previewer reads continue while Fetch, Importer or Configuration writes are running.
+
+---
+
+## Coordinated writers
+
+The coordinator covers application-owned writes from:
+
+- Fetch,
+- Importer,
+- Configuration saves,
+- Viewer and Tag actions,
+- asynchronous UI-setting persistence,
+- schema and maintenance operations.
+
+Configuration saves run in a dedicated worker thread with their own connection. If Fetch is currently committing a post, the setting waits in the queue without blocking Qt's event loop.
+
+---
+
+## Transaction rules
+
+Transactions must remain short:
+
+- do not perform HTTP requests while holding the write slot,
+- do not process images between a mutating statement and commit,
+- always roll back after failed writes,
+- always release the slot when a connection closes.
+
+Failed `execute()`, `executemany()` and `executescript()` operations trigger rollback and gate cleanup.
+
+Standalone GUI writes are committed immediately unless an explicit transaction was opened. This prevents a forgotten GUI commit from blocking later Fetch runs.
+
+---
+
+## Read-only Previewer behavior
+
+The Previewer is intended to use read-only database operations for loading cards, tags, scores and filters.
+
+Tag identity calculation is explicitly read-only. An earlier implementation wrote an unused identity cache through `executemany()` while opening the Previewer, leaving the write gate occupied and blocking the next Fetch. That side effect has been removed.
+
+---
+
+## Worker lifecycle
+
+Fetch and Import workers open normal worker connections but do not run schema creation or migration. Schema initialization belongs to application startup.
+
+A new Fetch cannot start until the previous worker has:
+
+1. completed its result handling,
+2. closed its database connection,
+3. exited its Qt thread.
+
+---
 
 ## External access
 
-The coordinator only covers this application process. SQLite `busy_timeout` and retry handling remain enabled for external tools, antivirus scanners and other processes that may access the database file.
+The coordinator only manages connections inside this application process. SQLite busy timeouts and retry behavior remain necessary for external tools, antivirus scanners or another program accessing the database file.
 
-## Transaction guidance
-
-Keep transactions short. Do not perform network requests or image processing between a mutating statement and its commit. A queued settings change should wait for a database transaction, not for an entire download batch.
-
-## GUI write requests
-
-GUI actions must not wait synchronously for the write coordinator. Configuration saves are submitted through a dedicated worker thread with its own SQLite connection. The worker may wait in the FIFO writer queue while Fetch is committing posts, but the Qt GUI thread remains free to process progress signals and user input. Runtime configuration is updated only after the queued transaction succeeds.
-
-## GUI-thread write protection
-
-Configuration changes can trigger Preview refreshes. While a Fetch is active,
-those refreshes are deferred until the Fetch finishes. A synchronous mutating SQL
-statement from the Python main thread is also rejected when another writer owns
-the write queue. The rejection is logged with a Python caller stack in
-`logs/database_trace.log` so remaining GUI write paths can be identified without
-stalling the active Fetch.
+Avoid editing the live database with external tools during large imports or maintenance operations.

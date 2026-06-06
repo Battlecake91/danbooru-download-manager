@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
 from app.core.database import Database
@@ -70,7 +68,6 @@ class PostImportService:
             self.progress_callback(progress)
 
     def fetch_and_store(self) -> FetchResult:
-        fetch_started = time.monotonic()
         queries = build_search_queries(self.config, self.api)
         if not queries:
             raise RuntimeError("No search queries available")
@@ -95,13 +92,6 @@ class PostImportService:
 
         total_seen = 0
         fetch_excluded_tags = self.db.fetch_excluded_tag_set()
-        trace_path = Path(self.db.path).expanduser().resolve().parent / "logs" / "database_trace.log"
-        self.emit_log(f"[TRACE] Detailed database trace: {trace_path}")
-        self.emit_log(
-            f"[TRACE] Fetch plan: queries={len(queries)}, page_limit={limit}, "
-            f"max_per_query={max_posts_per_query}, max_total={max_total_posts}"
-        )
-
         self.emit_progress(
             FetchProgress(
                 query_total=len(queries),
@@ -147,16 +137,7 @@ class PostImportService:
                 elif seen_for_query >= max_posts_per_query:
                     break
 
-                page_started = time.monotonic()
-                self.emit_log(
-                    f"[TRACE] API request: query={query_index}/{len(queries)} page={page or 'first'} "
-                    f"seen={total_seen} queue={self.db.write_queue_snapshot()}"
-                )
                 page_data = self.api.get_posts(query, limit=limit, page=page)
-                self.emit_log(
-                    f"[TRACE] API response: posts={len(page_data.posts)} next={page_data.next_page or '-'} "
-                    f"duration={time.monotonic() - page_started:.3f}s"
-                )
                 if not page_data.posts:
                     break
 
@@ -182,19 +163,7 @@ class PostImportService:
                         result.resolution_excluded_posts += 1
                         continue
 
-                    if total_seen == 1 or total_seen % 25 == 0:
-                        self.emit_log(
-                            f"[TRACE] Before store: post={post_id} seen={total_seen} "
-                            f"queue={self.db.write_queue_snapshot()}"
-                        )
-                    store_started = time.monotonic()
                     post_result = self.store_post(post)
-                    store_duration = time.monotonic() - store_started
-                    if store_duration >= 0.250 or total_seen == 1 or total_seen % 25 == 0:
-                        self.emit_log(
-                            f"[TRACE] Stored: post={post_id} result={post_result} "
-                            f"duration={store_duration:.3f}s queue={self.db.write_queue_snapshot()}"
-                        )
                     result.fetched_post_ids.append(post_id)
 
                     if post_result == "inserted":
@@ -207,13 +176,7 @@ class PostImportService:
                     # Do not reload active thumbnails for posts that already have a decision.
                     status = self.get_status(post_id)
                     if status in {"new", "potential", "review", "selected_save"}:
-                        thumbnail_started = time.monotonic()
                         thumbnail_path = self.thumbnail_cache.cache_thumbnail(post)
-                        thumbnail_duration = time.monotonic() - thumbnail_started
-                        if thumbnail_duration >= 2.0:
-                            self.emit_log(
-                                f"[TRACE] Slow thumbnail: post={post_id} duration={thumbnail_duration:.3f}s"
-                            )
                         if thumbnail_path:
                             self.set_thumbnail_path(post_id, thumbnail_path)
                             result.cached_thumbnails += 1
@@ -255,7 +218,6 @@ class PostImportService:
                 phase="done",
             )
         )
-        self.emit_log(f"[TRACE] Fetch storage phase completed in {time.monotonic() - fetch_started:.3f}s")
         return result
 
     @staticmethod

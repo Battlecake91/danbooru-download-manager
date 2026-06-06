@@ -1,8 +1,8 @@
 # First Time Usage
 
-This document explains the first-run setup for Danbooru Download Manager `1.3.152`.
+This document explains the first-run setup for Danbooru Download Manager `1.3.189`.
 
-`1.3.152` is the **first official release**. The first start creates the local application database and prepares the most important defaults. The goal is to make the application usable without hand-editing config files, because raw config files are tools, not initiation rites.
+The first start creates the local application database and prepares the most important defaults. The goal is to make the application usable without hand-editing config files, because raw config files are tools, not initiation rites.
 
 ---
 
@@ -61,7 +61,7 @@ Importing every possible Danbooru tag is usually unnecessary. It is possible in 
 
 ## 🖼️ Default preview sample post
 
-Version `1.3.152` uses Danbooru post `11199825` as the default preview sample post.
+Version `1.3.189` uses Danbooru post `11199825` as the default preview sample post.
 
 When the sample import is enabled, the application fetches this post during first setup and stores it in the local database. This gives the preview card configuration a real example immediately.
 
@@ -69,36 +69,17 @@ When the sample import is enabled, the application fetches this post during firs
 
 ## 📥 Importing an existing collection
 
-If you already have a local Danbooru collection, use the importer instead of downloading everything again.
+Use the importer for existing Danbooru folders, older downloader output or manually sorted collections.
 
-The importer is useful for:
+The current importer does not write to the database immediately. It uses three steps:
 
-- existing Danbooru download folders,
-- older versions of the downloader,
-- manually sorted collections,
-- files that should be registered in the database without being moved immediately.
+1. **Import Source** — choose folder, target category and subfolder handling, then scan.
+2. **Review candidates** — inspect Match, Questionable and Mismatch candidates, compare local and remote thumbnails, and choose which files should be imported.
+3. **Import Process** — select final actions such as renaming, updating known records and fetching thumbnails.
 
-During import, the application can:
+The scanner can recognize post IDs and MD5 hashes in filenames, validate filename tags against Danbooru, compare image dimensions and detect likely ID collisions with other boards.
 
-- scan a selected folder,
-- detect supported image and media files,
-- extract Danbooru post IDs from filenames where possible,
-- store local file paths,
-- assign an initial category based on folder structure,
-- mark files as imported/local,
-- prepare files for later metadata fetching.
-
-After import, files can be managed by local path, post ID, category, status, rating and tags when metadata is available. If a post ID is known, the application can also generate the original Danbooru link.
-
-A good first importer workflow is:
-
-1. Import a small test folder first.
-2. Check detected post IDs and categories.
-3. Fetch missing metadata for imported posts where possible.
-4. Open the imported posts in the Previewer/Viewer.
-5. Only then import larger folders.
-
-This avoids turning one old messy folder into a new database-shaped messy folder. Progress, but not the fake kind.
+Start with a small test folder. Confirm the matches in the review list before importing a large collection. A database remembers confident mistakes just as faithfully as correct decisions, the dedicated little menace.
 
 For full importer details, see [`IMPORTER.md`](IMPORTER.md).
 

@@ -4,11 +4,9 @@ import re
 import sqlite3
 import threading
 import time
-import traceback
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.core.db.trace import trace_logger_for_database
 from app.core.db.write_coordinator import DatabaseWriteCoordinator, coordinator_for_path
 
 
@@ -28,23 +26,7 @@ class DatabaseConnectionMixin:
         self._write_owner = object()
         self._write_gate_held = False
         self._write_ticket: int | None = None
-        self._trace_logger = trace_logger_for_database(path)
-
-
-    def _trace(self, message: str) -> None:
-        thread = __import__("threading").current_thread()
-        connection_name = f"{self.__class__.__name__}@{id(self):x}"
-        self._trace_logger.info(
-            "thread=%s/%s | connection=%s | %s",
-            thread.name,
-            thread.ident,
-            connection_name,
-            message,
-        )
-
     def connect(self) -> None:
-        self._trace(f"CONNECT begin path={self.path}")
-        connect_started = time.monotonic()
         self.connection = sqlite3.connect(self.path, timeout=30.0)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA busy_timeout = 30000")
@@ -67,7 +49,6 @@ class DatabaseConnectionMixin:
                 self._release_write_gate()
 
         self.connection.execute("PRAGMA synchronous = NORMAL")
-        self._trace(f"CONNECT done duration={time.monotonic() - connect_started:.3f}s journal={journal_mode or 'unknown'}")
 
     def close(self) -> None:
         if self.connection is not None:
@@ -130,22 +111,15 @@ class DatabaseConnectionMixin:
         # Background workers remain serialized normally; GUI writes should use
         # the dedicated async writers. Fail fast and leave the Fetch queue free.
         if threading.current_thread() is threading.main_thread() and snapshot.active:
-            stack = "".join(traceback.format_stack(limit=14)).replace("\n", " | ")
-            self._trace(
-                f"MAIN_THREAD_WRITE_REJECTED operation={operation} "
-                f"active={snapshot.active} waiting={snapshot.waiting} stack={stack}"
-            )
             raise RuntimeError(
                 "A database write was requested from the GUI thread while a "
                 "background writer was active. The operation was cancelled to "
-                "protect the running Fetch. See database_trace.log for the caller."
+                "protect the running Fetch."
             )
 
-        self._trace(f"WRITE_GATE wait operation={operation} active={snapshot.active} waiting={snapshot.waiting}")
         ticket, waited = self._write_coordinator.acquire(self._write_owner)
         self._write_ticket = ticket
         self._write_gate_held = True
-        self._trace(f"WRITE_GATE acquired ticket={ticket} waited={waited:.3f}s")
 
     def _release_write_gate(self) -> None:
         if not self._write_gate_held:
@@ -154,11 +128,6 @@ class DatabaseConnectionMixin:
         self._write_gate_held = False
         self._write_ticket = None
         self._write_coordinator.release(self._write_owner)
-        self._trace(f"WRITE_GATE released ticket={ticket}")
-
-    def write_queue_snapshot(self) -> dict[str, int | bool]:
-        snapshot = self._write_coordinator.snapshot()
-        return {"active": snapshot.active, "waiting": snapshot.waiting}
 
     def _is_database_locked_error(self, exc: sqlite3.OperationalError) -> bool:
         text = str(exc).lower()
@@ -179,7 +148,6 @@ class DatabaseConnectionMixin:
             self._acquire_write_gate(operation)
 
         params = tuple(parameters)
-        started = time.monotonic()
         main_thread_autocommit = (
             is_mutating
             and operation != "BEGIN"
@@ -197,13 +165,7 @@ class DatabaseConnectionMixin:
                         # write gate and starve every later Fetch. Commit immediately
                         # unless the caller explicitly opened a transaction first.
                         self.connection.commit()
-                        self._trace(
-                            f"MAIN_THREAD_AUTOCOMMIT operation={operation} "
-                            f"duration={time.monotonic() - started:.3f}s"
-                        )
                         self._release_write_gate()
-                    if is_mutating and time.monotonic() - started >= 0.100:
-                        self._trace(f"SQL slow operation={operation} duration={time.monotonic() - started:.3f}s in_transaction={self.connection.in_transaction}")
                     if is_mutating and not self.connection.in_transaction:
                         # Some mutating statements commit implicitly or do not
                         # open a transaction. They must not leave the process-wide
@@ -213,11 +175,9 @@ class DatabaseConnectionMixin:
                 except sqlite3.OperationalError as exc:
                     if not self._is_database_locked_error(exc):
                         raise
-                    self._trace(f"SQL locked operation={operation} retry_delay={delay:.2f}s error={exc}")
                     time.sleep(delay)
             return self.connection.execute(sql, params)
         except Exception as exc:
-            self._trace(f"SQL failed operation={operation} duration={time.monotonic() - started:.3f}s error={type(exc).__name__}: {exc}")
             # A failed mutating statement can leave SQLite inside a transaction.
             # If the caller catches the exception without rolling back, the
             # application write gate would otherwise remain owned forever and
@@ -228,7 +188,6 @@ class DatabaseConnectionMixin:
                 try:
                     if self.connection.in_transaction:
                         self.connection.rollback()
-                        self._trace(f"SQL failure rollback operation={operation}")
                 finally:
                     self._release_write_gate()
             raise
@@ -249,7 +208,6 @@ class DatabaseConnectionMixin:
             and threading.current_thread() is threading.main_thread()
             and not explicit_transaction_active
         )
-        started = time.monotonic()
 
         try:
             for delay in self._lock_retry_delays():
@@ -257,10 +215,6 @@ class DatabaseConnectionMixin:
                     cursor = self.connection.executemany(sql, materialized_rows)
                     if main_thread_autocommit:
                         self.connection.commit()
-                        self._trace(
-                            f"MAIN_THREAD_AUTOCOMMIT operation={operation} rows={len(materialized_rows)} "
-                            f"duration={time.monotonic() - started:.3f}s"
-                        )
                         self._release_write_gate()
                     elif is_mutating and not self.connection.in_transaction:
                         self._release_write_gate()
@@ -268,30 +222,20 @@ class DatabaseConnectionMixin:
                 except sqlite3.OperationalError as exc:
                     if not self._is_database_locked_error(exc):
                         raise
-                    self._trace(f"SQL locked operation={operation} retry_delay={delay:.2f}s error={exc}")
                     time.sleep(delay)
 
             cursor = self.connection.executemany(sql, materialized_rows)
             if main_thread_autocommit:
                 self.connection.commit()
-                self._trace(
-                    f"MAIN_THREAD_AUTOCOMMIT operation={operation} rows={len(materialized_rows)} "
-                    f"duration={time.monotonic() - started:.3f}s"
-                )
                 self._release_write_gate()
             elif is_mutating and not self.connection.in_transaction:
                 self._release_write_gate()
             return cursor
         except Exception as exc:
-            self._trace(
-                f"SQL failed operation={operation} duration={time.monotonic() - started:.3f}s "
-                f"error={type(exc).__name__}: {exc}"
-            )
             if is_mutating:
                 try:
                     if self.connection.in_transaction:
                         self.connection.rollback()
-                        self._trace(f"EXECUTEMANY failure rollback operation={operation}")
                 finally:
                     self._release_write_gate()
             raise
@@ -307,7 +251,6 @@ class DatabaseConnectionMixin:
             try:
                 if self.connection.in_transaction:
                     self.connection.rollback()
-                    self._trace("SCRIPT failure rollback")
             finally:
                 self._release_write_gate()
             raise
@@ -315,21 +258,16 @@ class DatabaseConnectionMixin:
     def commit(self) -> None:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
-        started = time.monotonic()
-        self._trace(f"COMMIT begin in_transaction={self.connection.in_transaction} ticket={self._write_ticket}")
         try:
             for delay in self._lock_retry_delays():
                 try:
                     self.connection.commit()
-                    self._trace(f"COMMIT done duration={time.monotonic() - started:.3f}s")
                     return
                 except sqlite3.OperationalError as exc:
                     if not self._is_database_locked_error(exc):
                         raise
-                    self._trace(f"COMMIT locked retry_delay={delay:.2f}s error={exc}")
                     time.sleep(delay)
             self.connection.commit()
-            self._trace(f"COMMIT done duration={time.monotonic() - started:.3f}s after_retries")
         except Exception:
             try:
                 self.connection.rollback()

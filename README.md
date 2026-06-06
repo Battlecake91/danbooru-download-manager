@@ -1,71 +1,94 @@
 # Danbooru Download Manager
 
-> **First official release:** `1.3.152`  
-> A local Danbooru download manager for fetching, previewing, rating, importing, categorizing and organizing Danbooru posts without turning your folders into archaeological debris.
+> **Current release:** `1.3.189`  
+> A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
-Danbooru Download Manager is a desktop application for managing a local Danbooru-based image collection. It focuses on **metadata-first review**, **local database-backed organization**, **manual control**, and optional experimental automation through scoring and LLM-assisted preselection.
+Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
 
-The project was created through **vibe-coding**, but not through button-mashing and wishful thinking. The first official release required roughly **150 patches** to reach this state. Every patch was checked against the workflow it touched, because without understanding the code, the data model and the GUI behavior, this would have collapsed into decorative Python confetti.
+The central workflow is deliberately metadata-first:
 
----
-
-## ✨ Highlights
-
-- 🗂️ **Local Danbooru library management**  
-  Track downloaded, imported, saved, rejected and pending posts in a local SQLite database.
-
-- 🔎 **Search later by tag, post ID and original link**  
-  Keep metadata locally so posts can be found again by tags, Danbooru post ID, local status, category and generated original Danbooru link.
-
-- 🧭 **Fetch workflow**  
-  Load metadata and thumbnails first, review later, download originals only when needed.
-
-- 🖼️ **Previewer and Viewer workflow**  
-  Triage posts quickly in the Previewer, then rate, categorize, reject or save in the Viewer.
-
-- 📥 **Importer for existing collections**  
-  Register already downloaded files, detect post IDs from filenames where possible, keep local paths and bring older collections into the database-backed workflow.
-
-- ⭐ **Rating system with learning structure**  
-  Use local ratings, saved/rejected decisions, tag scores and manual score adjustments to improve preselection over time.
-
-- 🧩 **Categories with auto-assignment**  
-  Define categories with output folders, priorities and manual rules. Use grouped include/exclude logic for automatic assignment.
-
-- 🏷️ **Tag tools**  
-  Manage aliases, manual scores, filename exclusions, typed tags and local tag catalog data.
-
-- 🤖 **Experimental LLM integration**  
-  Build compact tag payloads for LLM-assisted preselection and category suggestions. Treat it as an assistant, not as a tiny digital judge in a robe.
-
-- 🔄 **Portable updater foundation**  
-  Release builds can check GitHub releases and update from official release assets while preserving local data.
+1. Fetch post metadata and thumbnails.
+2. Review candidates in the Previewer.
+3. Inspect and rate posts in the Viewer.
+4. Download or save only the files worth keeping.
+5. Import existing collections through a separate scan-and-review workflow.
 
 ---
 
-## 📸 Screenshots
+## Highlights
 
-The screenshots below are placeholders stored under `docs/screenshots/`. Replace the image files with real captures before preparing the public release page.
+- **Database-backed local library**  
+  Track pending, saved, rejected, imported and downloaded posts, including tags, ratings, categories, parent/child information and local file paths.
 
-### 🧭 First-time setup
+- **Fetch presets and saved searches**  
+  Use manual Danbooru queries, reusable presets or authenticated saved searches with per-preset limits, rating selection, optional LLM processing and original-resolution limits.
+
+- **Fetch exclusion blacklist**  
+  Exclude unwanted tags before posts enter the database or thumbnail cache. Tags can be added through the Viewer or managed in the Tag tab.
+
+- **Previewer and Viewer workflow**  
+  Filter, sort and search fetched posts, then rate, categorize, reject, save or inspect them in detail.
+
+- **Three-step importer**  
+  Scan a folder, review likely matches, compare local and remote images, then choose the final import actions such as renaming and thumbnail fetching.
+
+- **Importer identity checks**  
+  Resolve files through Danbooru MD5 hashes or post IDs, validate recognized filename tags, detect likely foreign-board ID collisions and compare local versus remote resolution.
+
+- **Side-by-side import comparison**  
+  Compare local and Danbooru images directly, navigate with buttons or arrow keys, and manually mark candidates as Match or Mismatch.
+
+- **Resolution-aware workflows**  
+  Prevent unsuitable posts from entering Fetch results and replace lower-resolution imported files with Danbooru's best available version.
+
+- **Categories and rule groups**  
+  Automatically suggest categories through grouped include/exclude rules while preserving manual control in the Viewer.
+
+- **Tag tools and scoring**  
+  Manage aliases, manual scores, filename exclusions, fetch exclusions and typed tag groups. Parent/child alternatives are isolated from preference learning after one family member is saved.
+
+- **Concurrent database access**  
+  A process-wide FIFO write coordinator serializes Fetch, Importer and Configuration writes while read-only Previewer queries remain available through SQLite WAL mode.
+
+- **Optional experimental LLM support**  
+  Build compact tag-based payloads for assisted preselection and category suggestions. Manual decisions remain authoritative, because outsourcing taste entirely to a probability engine would be a rather bleak hobby.
+
+- **Portable Windows release and updater foundation**  
+  Release builds can check GitHub releases and update while preserving local application data.
+
+---
+
+## Screenshots
+
+### First-time setup
 
 ![First-time setup](docs/screenshots/first-run-setup.png)
 
-### 🔎 Fetch tab example
+### Fetch tab
 
 ![Fetch tab](docs/screenshots/fetch-tab.png)
 
-### 🖼️ Previewer
+### Previewer
 
 ![Previewer](docs/screenshots/previewer.png)
 
-### 👁️ Viewer
+### Viewer
 
 ![Viewer](docs/screenshots/viewer.png)
 
 ---
 
-## 🚀 Quick start
+## Quick start
+
+### Release build
+
+Download the Windows ZIP from the GitHub release, extract it completely, then run:
+
+```text
+DanbooruManager.exe
+```
+
+Do not start the executable from inside the ZIP. Windows already invents enough filesystem folklore without assistance.
 
 ### From source
 
@@ -73,152 +96,156 @@ The screenshots below are placeholders stored under `docs/screenshots/`. Replace
 python main.py
 ```
 
-### From release build
+Install dependencies first:
 
-Download the Windows ZIP from the GitHub release, extract it, and start:
-
-```text
-DanbooruManager.exe
+```bash
+pip install -r requirements.txt
 ```
 
-Do not run the application directly from inside the ZIP. Extract it first. Windows already has enough bad habits.
+---
+
+## First-time setup
+
+On first start, the application creates its local data directory and SQLite database. The setup can configure:
+
+- Danbooru username and API key,
+- Danbooru base URL,
+- initial import of popular Danbooru tags,
+- the default sample post,
+- initial access to the existing-file importer.
+
+Authenticated access is recommended for saved searches and account-specific API features. The default sample post is Danbooru post `11199825`.
+
+See [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md).
 
 ---
 
-## 🧭 Documentation
+## Fetch workflow
 
-The README gives the overview. Detailed usage is split into focused documents so this file does not become a scroll of doom.
+The Fetch tab discovers posts and stores metadata and thumbnails before original files are downloaded.
 
-| Document | Purpose |
-|---|---|
-| [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md) | First start, Danbooru credentials, popular tag import, sample post and importer basics |
-| [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Database-backed configuration, folders, categories, filename patterns, LLM settings |
-| [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md) | Fetch tab usage, queries, presets, saved searches, limits and Previewer flow |
-| [`docs/IMPORTER.md`](docs/IMPORTER.md) | Detailed importer behavior for existing local files and older collections |
-| [`docs/TESTING.md`](docs/TESTING.md) | How the first official release was tested through patch-based validation |
-| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone changelog generated from the patch history |
+A fetch preset can contain:
 
----
+- a manual tag query or saved-search selection,
+- General, Sensitive, Questionable and Explicit rating choices,
+- maximum posts per query and total posts,
+- minimum unknown posts per query,
+- LLM enable state,
+- minimum and maximum width and height.
 
-## 🛠️ First-time setup overview
+Empty resolution fields or `0` mean unrestricted. Posts outside active limits are rejected before database insertion and thumbnail download.
 
-On first start, the application creates its local data folder and database. The setup can optionally configure:
-
-- 🔐 Danbooru username and API key
-- 🌐 Danbooru base URL
-- 🏷️ initial import of the most popular Danbooru tags
-- 🖼️ default preview sample post
-- 📥 importer workflow for existing local collections
-
-A Danbooru API key is optional, but recommended if you want saved searches or more reliable authenticated API access.
-
-For the popular tag import, **10,000 to 20,000 tags** is a sensible first setup range. Use `5,000` for quick tests and `50,000+` only if you actually plan to maintain a large local tag catalog. Bigger is not automatically smarter. Sometimes it is just slower with confidence.
-
-See [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md) for the full setup flow.
-
----
-
-## 📥 Importing existing files
-
-The importer is meant for existing Danbooru folders, older downloader output or manually sorted collections.
-
-It can:
-
-- scan local folders into a review table before changing the database,
-- filter candidates by high confidence, questionable evidence or definite mismatch,
-- compare local image dimensions with the Danbooru original,
-- register only selected files in the database,
-- detect Danbooru post IDs or MD5 hashes from filenames,
-- reject foreign-board ID collisions by requiring every recognized filename tag to exist on the fetched Danbooru post,
-- preserve local file paths,
-- assign initial categories from folder structure,
-- optionally fetch and cache thumbnails during import,
-- rename either the latest import only or all saved files of a category,
-- make imported posts searchable by local path, post ID, status, rating and tags when available.
-
-This allows the manager to adopt an existing collection instead of pretending years of local files never happened, which would be rude even by software standards.
-
-Detailed importer notes are in [`docs/IMPORTER.md`](docs/IMPORTER.md), with first-run guidance in [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md).
-
----
-
-## 🔎 Fetch workflow overview
-
-The Fetch tab brings posts into the local database. It usually fetches metadata and thumbnails first, not full original files.
-
-Supported workflows include:
-
-- manual Danbooru tag queries,
-- reusable presets,
-- authenticated saved searches,
-- rating filters,
-- limits for posts per query and total posts,
-- known/unknown post handling,
-- thumbnail loading,
-- fetch summaries.
-
-After fetching, posts are reviewed in the Previewer and Viewer. Originals are downloaded or saved when you decide they are worth keeping.
+The persistent **Fetch exclude** list acts as a tag blacklist. Any post containing an excluded tag is skipped before it enters the local review workflow.
 
 See [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md).
 
 ---
 
-## 🧩 Categories and rules
+## Previewer and Viewer
 
-Categories can automatically assign posts based on tag rules and can write final files into separate folders.
+The Previewer is the main triage view. It supports status filters, text search, sorting, configurable card information, structured tag display and category/recommendation information.
 
-Rule groups use a readable include/exclude model:
+The Viewer provides the detailed decision workflow:
+
+- inspect the image and typed tags,
+- assign a personal rating,
+- set status,
+- choose or override a category,
+- inspect category reasoning,
+- edit tag aliases and scores,
+- exclude tags from filenames or future fetches,
+- save the final original file.
+
+Window and toolbar layouts are recalculated after startup and tab changes to avoid controls being pushed outside the visible area.
+
+---
+
+## Importing existing collections
+
+The importer uses a three-step workflow:
+
+1. **Import Source**  
+   Select folder, category and subfolder handling, then scan.
+2. **Review**  
+   Filter Match, Questionable and Mismatch candidates; inspect thumbnails; compare images; select rows and import checkboxes.
+3. **Import Process**  
+   Choose final actions such as renaming, updating existing records and fetching thumbnails.
+
+The scanner can:
+
+- recognize Danbooru MD5 hashes and post IDs in filenames,
+- compare every recognized filename tag with the fetched Danbooru post,
+- preserve hyphenated tags such as `one-piece_swimsuit` and `chain-link`,
+- detect probable Konachan or other foreign-board ID collisions,
+- compare local and remote image dimensions,
+- show local and remote thumbnails,
+- open either file externally,
+- compare both images side by side,
+- replace a lower-resolution local file with Danbooru's best version,
+- rename only the latest import instead of an entire category,
+- optionally fetch thumbnails during import.
+
+See [`docs/IMPORTER.md`](docs/IMPORTER.md).
+
+---
+
+## Categories and rules
+
+Category rules are organized as OR-connected groups. Terms inside a group are AND-connected, with `-tag` used for exclusions.
 
 ```text
 Group A: tag1 tag2 -tag3
 Group B: tag4 tag5
 ```
 
-Meaning:
+This means:
 
 ```text
 (tag1 AND tag2 AND NOT tag3) OR (tag4 AND tag5)
 ```
 
-Category decisions can be manually overridden in the Viewer, because full automation is how collections become haunted.
+The first matching category follows category priority, but the Viewer can override the result manually.
 
 ---
 
-## 🤖 Experimental LLM support
+## Database behavior
 
-LLM integration is experimental in `1.3.152`.
+SQLite runs in WAL mode. Each worker owns its own connection, while a central FIFO coordinator serializes writes from Fetch, Importer, Configuration and other mutating workflows.
 
-The application can prepare payloads based on tags, aliases, local scores and category context. The goal is to support preselection and category suggestions, not to replace review.
+Read-only Previewer requests remain concurrent. GUI settings are written through background workers where necessary, and the Preview tag identity path is intentionally read-only to prevent stale write slots between repeated Fetch runs.
 
-Use LLM output as a suggestion. Local ratings and manual decisions remain the main source of truth.
-
----
-
-## 🧪 Testing and release confidence
-
-`1.3.152` is the **first official release**.
-
-The release was built through roughly **150 patches**. Each patch was tested against the functionality it changed before continuing with the next patch. This included the major GUI flows, database-backed configuration, Fetch, Previewer, Viewer, importer, category rules, tag tools, packaging and release behavior.
-
-This was practical patch-level functional testing, not a full automated test suite. The application should be treated as a usable first official release with some rough edges still expected. The changelog and patch notes provide traceability for the development history.
-
-See [`docs/TESTING.md`](docs/TESTING.md).
+See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 
 ---
 
-## 🗺️ Planned improvements
+## Documentation
 
-Planned follow-up work includes:
-
-- 📚 better user documentation,
-- ❔ a Help tab with useful tips and explanations,
-- ✨ quality-of-life improvements,
-- 🤖 more LLM tests and validation.
+| Document | Purpose |
+|---|---|
+| [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md) | First start and initial setup |
+| [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Database-backed application settings |
+| [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md) | Queries, presets, limits, ratings, exclusions and resolution filtering |
+| [`docs/IMPORTER.md`](docs/IMPORTER.md) | Existing-file scan, review, comparison and import workflow |
+| [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md) | SQLite connection and write-coordination model |
+| [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
+| [`docs/RELEASE_NOTES_1.3.189.md`](docs/RELEASE_NOTES_1.3.189.md) | Changes included in this release |
 
 ---
 
-## ⚠️ Notes
+## Planned improvements
 
-- Keep backups of important local collections.
-- Do not publish databases that contain API credentials.
-- Treat LLM suggestions as suggestions.
+- more task-oriented user documentation,
+- broader Help-tab coverage and tooltips,
+- additional quality-of-life improvements,
+- more LLM validation and provider testing,
+- optional list-oriented library views.
+
+---
+
+## Notes
+
+- Keep backups of important local collections and the application database.
+- Do not publish a database containing credentials.
+- Treat LLM output as a suggestion.
+- The application is primarily tested on Windows.

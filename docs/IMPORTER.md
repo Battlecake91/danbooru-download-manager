@@ -1,71 +1,200 @@
 # Importer
 
-The importer allows Danbooru Download Manager `1.3.169` to take existing local image collections and register them inside the local database.
+This document describes the existing-file importer in Danbooru Download Manager `1.3.189`.
 
-This is useful when images were downloaded before using the manager, when files were sorted manually, or when an older downloader setup should be migrated into the new workflow without losing the existing collection structure.
-
-The importer does not blindly move everything into the application. It scans local folders, extracts useful information from filenames and paths, matches known Danbooru post IDs where possible, and stores the results in the local database for later review, search, rating, categorization and sorting.
+The importer brings an existing local collection into the database-backed workflow without blindly moving, renaming or accepting every file. It first scans and evaluates candidates, then lets the user review the evidence before any final import action is selected.
 
 ---
 
-## 🧭 Three-step workflow
+## Three-step workflow
 
-The importer is split into three deliberate steps:
+### 1. Import Source
 
-1. **Import Source**: select the folder, target category and whether subfolders should be scanned. Start the scan here; the large status area uses the remaining page height, while the completed statistics stay in one compact line.
-2. **Review candidates**: open the candidate list, filter confidence levels, compare local and remote images, and choose which rows should be imported. The scan progress/log area is hidden in this step.
-3. **Import Process**: decide what should happen during import, including renaming, updating already-known posts and fetching thumbnails, then start the selected import.
+The first page contains only source-related settings:
 
-The source page no longer mixes scanning with actions that only matter after candidate review. Scan completion reports the number of scanned, matched, questionable, mismatched, already-known and resolution-mismatched candidates before the review list is opened.
+- source folder,
+- target category,
+- include subfolders,
+- scan action.
 
----
+During the scan, the status area uses most of the page. When the scan finishes, a compact summary reports values such as:
 
-## 🎯 Purpose
+- scanned files,
+- Match,
+- Questionable,
+- Mismatch,
+- already known,
+- resolution mismatch among confirmed matches.
 
-The importer is designed for three main use cases:
+**Review scan results** opens the next step.
 
-- 📁 importing an existing Danbooru download folder,
-- 🔄 migrating files from an older downloader version,
-- 🧹 registering manually sorted images inside the local database.
+### 2. Review candidates
 
-After import, files can be searched and managed by:
+The Review page contains the candidate table, confidence filters, thumbnails and comparison actions.
 
-- post ID,
-- local file path,
-- category,
-- status,
-- rating,
-- tags, if known or fetched later,
-- original Danbooru link, if a post ID is available.
+The status log from the Source page is not shown here, leaving the available space for the actual review work.
 
-The importer is especially useful when a collection already exists and should not be downloaded again just because the database does not know about it yet. Software pretending your files do not exist is rude; the importer tries not to be.
+### 3. Import Process
 
----
+After selecting import candidates, the large **Import process** button opens the final page.
 
-## ⚙️ What the importer does
+This page controls what happens during import:
 
-During an import run, the application scans the selected source folder and tries to identify supported image and media files.
+- rename imported files,
+- limit renaming to the latest import or use category-wide handling,
+- update already-known database records,
+- fetch and cache thumbnails.
 
-Depending on the available information, the importer can:
-
-- detect existing files,
-- extract Danbooru post IDs from filenames,
-- recognize Danbooru MD5 hashes in filenames when no post ID is available,
-- assign an initial category based on the folder structure,
-- register the local file path in the database,
-- mark imported files with an import/local status,
-- avoid importing the same file multiple times,
-- preserve the existing directory structure unless explicitly changed later,
-- optionally fetch and cache thumbnails immediately,
-- rename only files from the latest import run or all saved files of a category.
-
-The importer requires either a Danbooru post ID or a 32-character MD5 hash in the filename. Files without either identifier are skipped.
+No import action is started merely by marking rows or checking import boxes.
 
 ---
 
-## 🖼️ Supported files
+## Candidate identification
 
-The importer is intended for common image and media files used by Danbooru posts.
+The importer requires either:
+
+- a Danbooru post ID in the filename, or
+- a 32-character MD5 hash in the filename.
+
+Examples:
+
+```text
+1234567.png
+1234567_artist_character.png
+danbooru_1234567.jpg
+9f86d081884c7d659a2feaa0c55ad015.jpg
+artist_character_9f86d081884c7d659a2feaa0c55ad015.png
+```
+
+MD5 matches are treated as the strongest evidence because they identify the file itself rather than merely reusing a numeric ID.
+
+---
+
+## Foreign-board ID collisions
+
+Other booru sites can use numeric post IDs that overlap with Danbooru. Konachan filenames often contain `Konachan.com -`, but that prefix is not guaranteed.
+
+For numeric-ID candidates, the importer therefore extracts recognizable Danbooru tags from the filename and verifies that **every recognized tag** exists on the fetched Danbooru post.
+
+For example, a filename containing:
+
+```text
+smile_1girl_blue_hair
+```
+
+is rejected as a mismatch if even one of those recognized tags is absent from the candidate post. A single generic match such as `smile` is not enough to bless the entire ID with false confidence.
+
+Internal hyphens are preserved in real tags:
+
+```text
+one-piece_swimsuit
+chain-link
+```
+
+They are not converted into phantom tags such as `one_piece` or `link`. Spaced dashes used as filename separators remain ignored.
+
+---
+
+## Confidence classes
+
+Candidates are classified as:
+
+- **Match** — strong positive evidence such as exact MD5, matching dimensions with valid tags, or multiple filename tags that all match.
+- **Questionable** — insufficient evidence, only one reliable tag, unknown details or a dimension difference that needs review.
+- **Mismatch** — missing Danbooru post, foreign-board marker or at least one recognized filename tag absent from the fetched post.
+
+Rows are color-coded and use black text on colored backgrounds for readability.
+
+The three confidence classes are controlled with independent checkboxes, so any combination can be shown.
+
+---
+
+## Candidate table
+
+The important columns are kept together:
+
+```text
+Import | Confidence | Post ID | Resolution | Local | Remote | Filename | Reason | Path
+```
+
+The table provides:
+
+- local thumbnail,
+- remote Danbooru thumbnail,
+- local and remote resolution,
+- filename and local path,
+- classification reason,
+- import checkbox.
+
+Candidate text is read-only. Recognized and missing filename-tag evidence is available through tooltips instead of occupying a permanently wide tag column.
+
+Double-clicking the local thumbnail, filename or path opens the local file. Double-clicking the remote thumbnail opens the Danbooru candidate.
+
+---
+
+## Resolution comparison
+
+Resolution indicators distinguish:
+
+- matching dimensions,
+- a larger remote original,
+- another dimension mismatch,
+- unknown dimensions.
+
+The scan summary counts resolution mismatch only for candidates already classified as Match. A mismatched ID does not provide meaningful evidence about whether the local file merely needs a larger version.
+
+### Download best version
+
+When Danbooru provides a larger original, **Download best version** can replace the local file.
+
+The replacement is:
+
+1. downloaded to a temporary `.part` file,
+2. validated before replacement,
+3. moved into place atomically,
+4. renamed if the original uses a different extension,
+5. re-evaluated in the candidate list.
+
+A local file is not replaced when the remote candidate is not actually larger.
+
+---
+
+## Side-by-side comparison viewer
+
+**Compare images** opens a dedicated viewer with:
+
+- local image on the left,
+- Danbooru candidate on the right,
+- large Local File and Danbooru Candidate headings,
+- Match, Questionable or Mismatch status between them,
+- both resolutions,
+- fit-to-window and 100% display modes.
+
+Navigation is available through:
+
+- large left and right arrow buttons,
+- Previous and Next controls,
+- keyboard Left and Right arrows.
+
+The central **Mark match** and **Mark mismatch** buttons update the candidate immediately and advance to the next visible candidate. The full table is refreshed only when the viewer closes, avoiding a complete thumbnail rebuild after every decision.
+
+The viewer follows the active confidence filters. Import checkboxes do not prevent filtered Mismatch candidates from being reviewed.
+
+---
+
+## Selection actions
+
+The Review page distinguishes row selection from import selection:
+
+- **Mark all** selects every visible table row, equivalent to Ctrl+A for the filtered list.
+- **Import all** checks the import boxes for every visible candidate.
+- Neither action starts the import.
+
+The final **Import selected** action remains separate.
+
+---
+
+## Supported files
 
 Typical supported formats include:
 
@@ -77,135 +206,35 @@ Typical supported formats include:
 - `.mp4`
 - `.webm`
 
-The exact supported formats may depend on the current application configuration and viewer support.
+Exact support depends on the application and viewer capabilities.
 
 ---
 
-## 🔢 Post ID detection
+## Recommended workflow
 
-The importer tries to detect Danbooru post IDs from filenames. If no post ID is available, filenames containing a Danbooru-style MD5 hash can also be useful for matching or later metadata repair. Tiny mercy from the hash gremlins.
-
-Examples of useful filenames:
-
-```text
-1234567.png
-1234567_artist_character.png
-danbooru_1234567.jpg
-post_1234567.webp
-9f86d081884c7d659a2feaa0c55ad015.jpg
-artist_character_9f86d081884c7d659a2feaa0c55ad015.png
-```
-
-If a post ID is detected, the importer fetches the matching Danbooru post. Because other booru sites can reuse the same numeric IDs, the importer checks recognizable filename tags against the fetched Danbooru tags. Files prefixed with `Konachan.com -` or files whose meaningful filename tags do not match are skipped.
-
-MD5 matches are treated as authoritative because the hash identifies the actual file rather than merely reusing a numeric ID.
+1. Back up important local files.
+2. Scan a small representative folder.
+3. Review Mismatch candidates first.
+4. Compare Questionable candidates visually.
+5. Check resolution upgrades for confirmed matches.
+6. Select the candidates to import.
+7. Open Import Process and choose rename/update/thumbnail actions.
+8. Import a larger collection only after the small run behaves correctly.
 
 ---
 
-## 🧩 Category handling
+## Safety notes
 
-The importer can use folder structure as a hint for categories. For example, importing from a folder named after a category can help assign an initial category or local label.
-
-This is intentionally a starting point, not a final verdict. Categories can still be changed in the Viewer, and automatic category rules can later refine the result.
-
----
-
-## ✅ Recommended workflow
-
-Use the importer carefully the first time:
-
-1. Start with a small folder.
-2. Check how many files were detected.
-3. Check whether post IDs were detected correctly.
-4. Verify local paths and category hints.
-5. Enable thumbnail fetching during import when the preview should be ready immediately.
-6. Review the imported posts in the Previewer and Viewer.
-7. Use “rename latest import only” before considering a category-wide rename.
-8. Import larger folders only after the small test behaves correctly.
-
-This avoids large-scale cleanup after a wrong assumption. Databases are very good at remembering mistakes, the little goblins.
+- Do not import from removable paths that will later disappear unless that is intentional.
+- Moving files manually after import can invalidate stored local paths.
+- A numeric post ID is not proof of identity by itself.
+- MD5 is the safest automatic match when present.
+- Category-wide rename remains available, but latest-import-only scope avoids renaming thousands of unrelated existing files.
 
 ---
 
-## ⚠️ Safety notes
+## Related documentation
 
-- Keep a backup of important local collections before large imports.
-- Do not import directly from unstable removable drives unless you know the paths will remain valid.
-- Avoid moving imported files manually after import unless you also update or repair their paths in the application.
-- Files are registered in the database; they are not automatically re-downloaded just because they were imported.
-- A valid post ID improves metadata quality, original link generation and tag-based search.
-- A Danbooru MD5 hash in the filename provides the safest match.
-- Numeric post IDs are checked against filename tags to reduce collisions with Konachan and other boards.
-- Category-wide renaming remains available, but the latest-import-only scope avoids needlessly renaming thousands of older files.
-
----
-
-## 🔗 Related docs
-
-- [`FIRST_TIME_USAGE.md`](FIRST_TIME_USAGE.md) for the first-run importer overview.
-- [`CONFIGURATION.md`](CONFIGURATION.md) for folders and output settings.
-- [`FETCH_WORKFLOW.md`](FETCH_WORKFLOW.md) for fetching metadata and thumbnails after import.
-
-## Scan and review before importing
-
-The importer now scans a selected folder before it changes the database. Each local file is resolved through its MD5 hash or detected post ID and shown in a review table.
-
-Confidence is classified as follows:
-
-- **High confidence (green):** an exact MD5 match, a matching resolution plus recognized matching filename tags, or multiple recognized filename tags that all exist on the Danbooru post. Unknown filename fragments alone no longer downgrade an otherwise strong match.
-- **Questionable (yellow):** only one reliable filename tag was recognized, the evidence is otherwise sparse, or a resolution difference remains as a caution signal.
-- **Mismatch (red):** the Danbooru post does not exist, the filename identifies another board, or at least one recognized filename tag is absent from the fetched post.
-
-Filename validation is intentionally strict. For a filename containing `smile_1girl_blue_hair`, all three recognized tags must be present on the fetched Danbooru post. One matching generic tag is not sufficient.
-
-Hyphens inside real Danbooru tags are preserved during this check. For example, `one-piece_swimsuit` and `chain-link` remain intact instead of being misread as unrelated tags such as `one_piece` or `link`. Spaced dashes used only as filename separators are still ignored.
-
-The resolution column displays the local and Danbooru dimensions with `✓`, `✗`, or `?`. Independent checkboxes above the table can freely combine green, yellow and red candidates. Red candidates are excluded from import by default.
-
-## Inspecting scan candidates
-
-Select a candidate and use **Open local file** or **Open remote image** to compare both images with the system viewer or browser. Double-clicking the local filename/path opens the local file; double-clicking another candidate column opens the remote image. Candidate text cells are read-only; only the import checkbox can be changed.
-
-
-## Replacing lower-resolution files
-
-Resolution mismatches are highlighted in orange in the review table. Select a candidate marked with an upward arrow and use **Download best version** to replace the local file with Danbooru's original file when available. The replacement is downloaded to a temporary file first, then swapped in atomically. If the remote file uses a different extension, the local filename is updated accordingly and the candidate is re-evaluated before import.
-
-## Thumbnail comparison in the candidate list
-
-The review table places the resolution directly beside the post ID and shows a local and remote thumbnail for every candidate when available. This makes visual identity checks possible without opening every file. Double-click the local thumbnail or filename to open the local file; double-click the remote thumbnail to open the Danbooru image.
-
-Filename tags are no longer shown as a permanently wide table column. The recognized and missing tag evidence remains available as a tooltip on the **Filename** and **Reason** cells.
-
-## Side-by-side comparison viewer
-
-After scanning a folder, select a candidate and choose **Compare images**. The comparison window shows the local file and the suspected Danbooru image next to each other, including their resolutions and the current classification reason.
-
-Use **Previous** and **Next** to review the candidate list. **Mark match** selects the file for import and changes its confidence to high. **Mark mismatch** deselects the file and classifies it as a mismatch. The viewer advances automatically after either decision.
-
-The **Fit images** toggle switches between fitting both images into their panes and showing them at their actual pixel size. The remote image can also be opened in the system browser.
-### Comparison viewer performance
-
-The comparison viewer can be maximized or minimized with the normal window controls. Manual **Match** and **Mismatch** decisions update the in-memory candidate immediately and advance without rebuilding the complete importer table. The table is refreshed once when the comparison viewer is closed.
-
-
-
-### Filtered review and bulk actions
-
-The comparison viewer now follows every candidate visible under the active confidence filters. Import checkboxes do not restrict comparison navigation, so a filtered **Wrong ID / mismatch** review works even when those rows were initially unchecked.
-
-Use **Mark all** to select every visible table row, equivalent to selecting the rows with Ctrl+A. This does not change any import checkbox. Use **Import all** to check the import boxes for every candidate in the current filtered view. Neither button starts the import; importing still requires the separate **Import selected** action.
-
-In the comparison viewer, the large arrow buttons beside the images and the Left/Right arrow keys navigate through the filtered candidates. The Match and Mismatch buttons are positioned directly between the local and Danbooru images for faster review.
-
-## Source-page scan summary
-
-After a folder scan, the Source step uses the available page area for a larger, line-by-line summary. The **Review scan results** button appears directly below that summary and opens the candidate list. It stays hidden until a scan has returned candidates.
-
-The resolution-mismatch statistic only counts candidates already classified as **Match**. Questionable and mismatched IDs are excluded because their resolution comparison is not useful as an import-quality metric.
-
-
-
-## Continuing from review to import
-
-The Review step ends with a dedicated full-width next-step panel below the candidate table. It shows the current number of candidates checked for import and provides a large **Import process** button. The button remains disabled until at least one candidate is checked, then opens the final page containing rename, existing-post and thumbnail options.
+- [`FIRST_TIME_USAGE.md`](FIRST_TIME_USAGE.md)
+- [`CONFIGURATION.md`](CONFIGURATION.md)
+- [`FETCH_WORKFLOW.md`](FETCH_WORKFLOW.md)

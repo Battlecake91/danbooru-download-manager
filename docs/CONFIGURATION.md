@@ -1,82 +1,82 @@
-# Configuration Setup
+# Configuration
 
-Danbooru Download Manager `1.3.152` stores runtime configuration in the local database. YAML files are no longer the main configuration source for normal use.
-
-The application is designed around GUI-managed settings, because repeatedly hand-editing config files is how projects slowly become rituals.
+Danbooru Download Manager `1.3.189` stores normal runtime configuration in the local SQLite database. YAML is not the leading configuration source for everyday use.
 
 ---
 
-## ⚙️ Main configuration areas
+## Main areas
 
-Important configuration areas include:
+Configuration covers:
 
-- 🔐 Danbooru credentials and base URL
-- 📁 output folders and local runtime data paths
-- 🖼️ thumbnail and preview behavior
-- 📝 filename pattern and tag priority
-- 🧩 categories, category priority and output folders
-- 🏷️ tag aliases, scores and filename exclusions
-- 📥 importer behavior and local file handling
-- 🤖 optional LLM provider settings
-- 🌐 UI language and translated labels
-- 🔄 update/release behavior for packaged builds
+- Danbooru connection and credentials,
+- Fetch transport settings,
+- Previewer and Viewer display,
+- thumbnails and caches,
+- filename generation,
+- categories and output folders,
+- scoring and optional LLM integration,
+- language and update behavior,
+- database maintenance.
+
+Tag aliases, manual scores, filename exclusions and Fetch exclusions are primarily managed through the Tag tab and Viewer context menus.
 
 ---
 
-## 🔐 Credentials
+## Credentials
 
-Danbooru credentials are optional.
+Danbooru credentials are optional but recommended for authenticated features such as saved searches.
 
-Store them only if you want to use authenticated Danbooru API features such as saved searches or account-specific access.
-
-The application may store:
+The application can store:
 
 - username,
 - API key,
 - base URL.
 
-Do not commit or publish a database that contains credentials.
+Do not publish or commit a database containing credentials.
 
 ---
 
-## 📁 Local data and output folders
+## Fetch settings
 
-The application tracks local posts, thumbnails, tags and configuration in a local SQLite database.
+Configuration → Fetch contains global transport defaults such as the Danbooru API page limit.
 
-Typical runtime data includes:
+Run-specific values belong to Fetch presets instead:
 
-- database file,
-- thumbnail cache,
-- local post metadata,
-- saved/rejected state,
-- category decisions,
-- user ratings,
-- imported file references,
-- update downloads.
+- Max posts per query,
+- Max total posts,
+- Minimum unknown posts per query,
+- rating selection,
+- resolution limits,
+- LLM enable state.
 
-Final saved files can be written into category-specific folders. This allows each category to behave like its own managed local collection.
+This avoids having two different fields pretending to control the same run, a traditional source of software folklore.
 
----
+### Saved-search extra tags
 
-## 📥 Importer configuration
-
-The importer can register existing local files in the database. Import-related behavior may depend on configured paths, supported file extensions and category/folder mapping.
-
-Importer-related decisions include:
-
-- which folder should be scanned,
-- whether folder names should be used as category hints,
-- whether detected Danbooru post IDs should be used for metadata fetching,
-- how existing local paths should be preserved,
-- how imported posts should be labeled or reviewed later.
-
-See [`IMPORTER.md`](IMPORTER.md) for detailed importer behavior.
+`saved_search_extra_tags` is appended to selected saved-search queries. In the GUI workflow, rating controls normally build the effective additional tags for the active run and preset.
 
 ---
 
-## 📝 Filename patterns
+## Previewer display
 
-Filename generation can use patterns with placeholders.
+Preview cards can be configured to show selected metadata:
+
+- post ID,
+- Danbooru rating and score,
+- parent state,
+- local status,
+- category,
+- artist, character, copyright, general and meta tags.
+
+Tags can be shown as raw Danbooru text or grouped into typed, formatted sections.
+
+The Previewer toolbar and nested layouts are recalculated after startup and tab changes so controls remain visible at different window sizes.
+
+---
+
+## Filename generation
+
+Filename patterns can use typed tag placeholders and the Danbooru post ID.
 
 Example:
 
@@ -84,90 +84,99 @@ Example:
 %artist%_%characters%_%general%_%postid%
 ```
 
-Useful placeholders include typed tag groups and the Danbooru post ID. The exact available placeholders depend on the current application version and configuration UI.
+Filename behavior also considers:
 
-Filename-related options include:
-
-- typed tag priority,
-- excluded filename tags,
 - maximum filename length,
-- replacement of unsafe filesystem characters,
+- typed tag priority,
+- filesystem-safe character replacement,
+- tags marked as filename exclusions,
 - final filename preview in the Viewer.
 
 ---
 
-## 🧩 Categories and rules
+## Categories
 
-Categories define where saved files go and how posts are automatically assigned.
+Categories define output folders and automatic assignment rules.
 
-A category can contain rule groups. The intended rule model is:
+Rule groups use AND within a group and OR between groups:
 
 ```text
 Group A: tag1 tag2 -tag3
 Group B: tag4 tag5
 ```
 
-This means:
+Meaning:
 
 ```text
 (tag1 AND tag2 AND NOT tag3) OR (tag4 AND tag5)
 ```
 
-Category behavior includes:
-
-- automatic assignment,
-- manual override in the Viewer,
-- custom output folder per category,
-- category priority,
-- rule reasoning dialog,
-- include and exclude terms.
+Category priority determines which automatic result wins first. The Viewer can override it manually and show the reason behind an automatic decision.
 
 ---
 
-## 🖼️ Preview and Viewer display
+## Tag options
 
-Preview cards can be configured to show selected information, such as:
+The Tag tab manages:
 
-- post ID,
-- Danbooru rating,
-- Danbooru score,
-- parent state,
-- local status,
-- category,
-- artist tags,
-- character tags,
-- copyright tags,
-- general tags,
-- meta tags.
+- aliases and canonical names,
+- manual tag scores,
+- filename exclusions,
+- Fetch exclusions,
+- tag type and frequency information.
 
-Tags can be displayed as raw Danbooru text or as structured tag groups.
+**Filename exclude** prevents a tag from appearing in generated filenames.
+
+**Fetch exclude** is stronger: any fetched post containing that tag is rejected before local storage and thumbnail caching.
 
 ---
 
-### Fetch configuration ownership
+## Scoring and parent/child isolation
 
-The global **API page limit** is configured under **Configuration → Fetch**. Per-run limits such as **Max posts per query** and **Max total posts** belong only to the Fetch tab and its presets; they are intentionally not duplicated as global configuration fields.
+Ratings, saved/rejected decisions, manual tag scores and aliases contribute to local recommendation behavior.
 
-## 🤖 LLM settings
+When one post in a parent/child family is saved, the remaining alternatives in that family are ignored as negative preference examples. Choosing one preferred variant should not teach the system that every nearly identical sibling contains undesirable tags.
 
-LLM integration is experimental. Provider settings and payload behavior remain under **Configuration → Scoring**. The actual **Enable LLM integration** switch is in the Fetch tab and is stored per fetch preset/run.
+The saved post remains a positive example.
 
-The configuration can control provider settings and payload behavior. Depending on the setup, payloads may use:
+---
 
-- raw tags,
+## LLM settings
+
+LLM integration is experimental.
+
+Configuration → Scoring contains provider and payload settings. The shared **Enable LLM integration** switch is also shown in the Fetch tab, where its state can be stored per preset.
+
+Payload behavior may use:
+
+- raw or normalized tags,
 - aliases,
-- normalized tags,
-- compacted payloads,
-- privacy-oriented transformed tag data.
+- local recommendation scores,
+- available category names,
+- compact or privacy-oriented tag representations.
 
-LLM output should be treated as a suggestion, not as a final decision. Tiny machine oracle, tiny trust budget.
+Manual decisions remain the source of truth.
 
-## Saved-search extra tags
+---
 
-`saved_search_extra_tags` is appended to every selected Danbooru saved-search query. It was originally intended for global additions such as a rating filter. In the current GUI workflow, the Fetch tab builds this value from the selected rating checkboxes for each run and preset, so the global default is normally overwritten.
+## Importer settings
 
-The **Enable LLM integration** master switch is shown both in Configuration → Scoring and in the Fetch tab. Both controls write the same `llm.enabled` setting; the Fetch-tab value is additionally stored with the selected fetch preset.
+The importer is intentionally split into three pages rather than exposing every action before the scan:
 
-## Parent/child preference isolation
+1. Source selection,
+2. candidate review,
+3. final import process.
 
-When one post from a Danbooru parent/child family is saved, the remaining posts in that family no longer count as rejected or separately rated preference examples. This prevents near-duplicate alternatives from creating false negative tag signals merely because one preferred variant was chosen. The saved post itself remains a positive signal.
+Rename behavior, existing-record updates and thumbnail fetching are chosen only in the final step. See [`IMPORTER.md`](IMPORTER.md).
+
+---
+
+## Database and maintenance
+
+SQLite uses WAL mode. Writers are serialized through a FIFO coordinator while read-only Previewer queries remain concurrent.
+
+Configuration saves use a dedicated worker connection so waiting for a Fetch transaction does not freeze the GUI.
+
+Schema migration occurs at application startup. Worker connections do not rerun migrations whenever Fetch or Importer starts.
+
+See [`DATABASE_ACCESS.md`](DATABASE_ACCESS.md).

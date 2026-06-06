@@ -1,164 +1,82 @@
-# Testing Notes for Release 1.3.152
+# Testing Notes for Release 1.3.189
 
-Danbooru Download Manager `1.3.152` is the **first official release**.
+Danbooru Download Manager `1.3.189` was developed through incremental patches and manual functional validation of the affected workflows.
 
-The release was developed and tested through patch-based iteration. The first official release required roughly **150 patches**. Each patch was tested for the feature, fix or refactor it introduced before the next patch was added.
-
-This does not mean the software is perfect. It means the release was built through repeated functional validation instead of one giant unverified rewrite, which is usually how applications become bug terrariums.
+This is not a claim of mathematical perfection. It means the important paths were repeatedly exercised instead of being assembled in one majestic, untested rewrite.
 
 ---
 
-## ✅ Patch-based testing approach
+## Tested areas
 
-The development process followed this pattern:
+### Startup and layout
 
-1. Implement a small feature, fix or UI change.
-2. Run the affected workflow manually.
-3. Verify that the new behavior works.
-4. Check that the surrounding workflow still behaves correctly.
-5. Document the patch in `docs/patches/` or the changelog.
-6. Continue with the next patch.
+- source and packaged startup paths,
+- first-run database initialization,
+- nested tab and toolbar resizing,
+- repeated tab changes and maximized-window layout.
 
-This produced a long patch history and a generated milestone changelog.
+### Fetch
 
----
+- manual queries, presets and saved searches,
+- rating selection,
+- API page size and per-preset limits,
+- Fetch-exclude tags,
+- resolution filters,
+- known-post updates and thumbnail loading,
+- repeated Fetch runs,
+- Fetch followed by Previewer opening and another Fetch.
 
-## 🧪 Tested functional areas
+### Previewer and Viewer
 
-Testing focused on the workflows most likely to break during active development.
+- status filters, search and sorting,
+- structured tags and configurable card data,
+- image loading and navigation,
+- ratings, statuses and category decisions,
+- tag aliases, scores, filename exclusions and Fetch exclusions.
 
-### Startup and setup
+### Importer
 
-- GUI startup from source
-- first-run setup behavior
-- database initialization
-- default configuration creation
-- default preview sample post handling
-- packaged executable startup behavior
+- Source → Review → Import Process navigation,
+- MD5 and post-ID detection,
+- filename-tag validation,
+- hyphenated tags,
+- confidence filters,
+- local and remote thumbnails,
+- side-by-side comparison,
+- Match/Mismatch decisions,
+- resolution upgrades,
+- selected-only import actions,
+- latest-import rename scope,
+- thumbnail fetching.
 
-### Database and configuration
+### Database concurrency
 
-- SQLite-backed configuration
-- migration-related behavior
-- DB-only configuration handling
-- raw settings view
-- credential storage paths
-- runtime path behavior in packaged builds
+- Fetch writes while saving Configuration,
+- queued settings writes,
+- concurrent Previewer reads under WAL,
+- repeated workers with separate connections,
+- failed write rollback and gate cleanup,
+- `executemany()` cleanup,
+- worker close and thread termination before restart.
 
-### Fetch tab
+### Packaging and updates
 
-- manual tag queries
-- presets
-- saved-search based fetching
-- rating filters
-- query limits
-- fetch summaries
-- known/unknown post handling
-- thumbnail loading
-- UI responsiveness during fetch operations
-
-### Previewer
-
-- thumbnail card loading
-- preview card display options
-- structured tag display
-- tag color grouping
-- status filters
-- All/status checkbox behavior
-- sorting
-- search/autocomplete behavior
-- recommendation indicators
-- category details display
-- repaint and reload behavior
-
-### Viewer
-
-- image loading
-- navigation
-- rating assignment
-- status updates
-- category assignment and override
-- category reasoning dialog
-- final filename preview
-- save flow
-- tag selection and tag actions
-- alias and manual score editing from tag context menus
-- filename exclusion behavior
-- cache/performance behavior
-
-### Categories and rules
-
-- include and exclude rule terms
-- grouped category rules
-- category priority
-- automatic category assignment
-- manual category override
-- category explanation dialogs
-- category tab UI behavior
-
-### Tags and scoring
-
-- local tag catalog import
-- tag autocomplete
-- aliases
-- tag scores
-- filename exclusions
-- bulk tag actions
-- saved/rejected scoring influence
-- structured tag categories such as artist, character, copyright, general and meta
-
-### Import and local files
-
-- existing file importer
-- Danbooru MD5 lookup where possible
-- local file labels
-- repair/update behavior
-- safeguards against accidental overwrite or duplicate save paths
-- post ID detection from filenames
-
-### LLM workflow
-
-- payload creation
-- payload compaction
-- batch preselection payloads
-- provider configuration UI
-- debug payload viewer
-- category suggestion payload behavior
-
-The LLM functionality remains experimental and was tested as an assistance workflow, not as a fully trusted automatic decision system.
-
-### Packaging, update and release behavior
-
-- PyInstaller path handling
-- packaged Windows runtime behavior
-- local data paths in packaged builds
-- tag catalog behavior after packaging
-- release ZIP creation outside the Git repository
-- portable updater packaging
-- GitHub release asset workflow
-- official release visibility for update checks
+- PyInstaller runtime paths,
+- release ZIP structure,
+- persistent local data paths,
+- updater asset workflow.
 
 ---
 
-## ⚠️ Known testing limits
+## Known limits
 
-The release was tested through practical GUI workflows and patch-level validation. It was not tested with a full automated test suite.
+Testing remains primarily manual and Windows-focused. More validation is still useful for:
 
-Areas that may still need more validation:
-
-- very large local databases,
-- unusual Danbooru API responses,
-- network interruptions during long fetches,
-- extremely large tag catalogs,
-- unusual filename pattern combinations,
+- very large databases and collections,
+- interrupted or unstable network connections,
+- unusual Danbooru API errors,
 - non-Windows packaged builds,
-- all possible LLM provider configurations,
-- updater behavior across unusual installation folders.
+- every possible LLM provider configuration,
+- updater behavior in unusual installation locations.
 
----
-
-## 📌 Release confidence
-
-`1.3.152` should be treated as a functional first official release, not as a final polished enterprise product. The core workflows were repeatedly tested during development, and the patch documentation provides a traceable development history.
-
-Use the application with a normal amount of caution: keep backups of important local collections, avoid publishing credential-containing databases, and do not treat experimental LLM suggestions as final truth.
+Keep backups of important files and the SQLite database before large imports or maintenance operations.
