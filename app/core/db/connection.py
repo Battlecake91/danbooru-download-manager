@@ -236,29 +236,64 @@ class DatabaseConnectionMixin:
     def executemany(self, sql: str, rows: Iterable[Iterable[Any]]) -> sqlite3.Cursor:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
-        if self._sql_is_mutating(sql):
-            operation = str(sql or "").lstrip().split(None, 1)[0].upper() if str(sql or "").strip() else "EXECUTEMANY"
+
+        is_mutating = self._sql_is_mutating(sql)
+        operation = str(sql or "").lstrip().split(None, 1)[0].upper() if str(sql or "").strip() else "EXECUTEMANY"
+        explicit_transaction_active = self.connection.in_transaction
+        if is_mutating:
             self._acquire_write_gate(operation)
 
         materialized_rows = [tuple(row) for row in rows]
-        for delay in self._lock_retry_delays():
-            try:
-                return self.connection.executemany(sql, materialized_rows)
-            except sqlite3.OperationalError as exc:
-                if not self._is_database_locked_error(exc):
-                    if not self.connection.in_transaction:
-                        self._release_write_gate()
-                    raise
-                time.sleep(delay)
+        main_thread_autocommit = (
+            is_mutating
+            and threading.current_thread() is threading.main_thread()
+            and not explicit_transaction_active
+        )
+        started = time.monotonic()
+
         try:
-            return self.connection.executemany(sql, materialized_rows)
-        except Exception:
-            try:
-                if self.connection.in_transaction:
-                    self.connection.rollback()
-                    self._trace(f"EXECUTEMANY failure rollback operation={operation}")
-            finally:
+            for delay in self._lock_retry_delays():
+                try:
+                    cursor = self.connection.executemany(sql, materialized_rows)
+                    if main_thread_autocommit:
+                        self.connection.commit()
+                        self._trace(
+                            f"MAIN_THREAD_AUTOCOMMIT operation={operation} rows={len(materialized_rows)} "
+                            f"duration={time.monotonic() - started:.3f}s"
+                        )
+                        self._release_write_gate()
+                    elif is_mutating and not self.connection.in_transaction:
+                        self._release_write_gate()
+                    return cursor
+                except sqlite3.OperationalError as exc:
+                    if not self._is_database_locked_error(exc):
+                        raise
+                    self._trace(f"SQL locked operation={operation} retry_delay={delay:.2f}s error={exc}")
+                    time.sleep(delay)
+
+            cursor = self.connection.executemany(sql, materialized_rows)
+            if main_thread_autocommit:
+                self.connection.commit()
+                self._trace(
+                    f"MAIN_THREAD_AUTOCOMMIT operation={operation} rows={len(materialized_rows)} "
+                    f"duration={time.monotonic() - started:.3f}s"
+                )
                 self._release_write_gate()
+            elif is_mutating and not self.connection.in_transaction:
+                self._release_write_gate()
+            return cursor
+        except Exception as exc:
+            self._trace(
+                f"SQL failed operation={operation} duration={time.monotonic() - started:.3f}s "
+                f"error={type(exc).__name__}: {exc}"
+            )
+            if is_mutating:
+                try:
+                    if self.connection.in_transaction:
+                        self.connection.rollback()
+                        self._trace(f"EXECUTEMANY failure rollback operation={operation}")
+                finally:
+                    self._release_write_gate()
             raise
 
     def executescript(self, sql_script: str) -> sqlite3.Cursor:

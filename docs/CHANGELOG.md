@@ -1,3 +1,10 @@
+## 1.3.187
+
+- Fixed a deadlock caused by Preview tag scoring writing `tag_identity_cache` from the Qt main thread.
+- Made tag identity calculation read-only; the cache table was not read anywhere in the application.
+- Added safe main-thread autocommit and gate release for `executemany()` as a defensive fallback.
+- Prevented a completed Fetch followed by Preview opening from blocking the next Fetch.
+
 ## 1.3.182
 
 

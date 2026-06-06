@@ -102,8 +102,6 @@ class DatabaseLlmMixin:
         settings = self.get_llm_tag_export_settings()
         clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
         result: dict[str, dict[str, str]] = {}
-        cache_rows: list[tuple[str, str, str]] = []
-
         for tag in clean_tags:
             identity = build_tag_identity(
                 tag,
@@ -117,20 +115,7 @@ class DatabaseLlmMixin:
                 "canonical_tag": identity.canonical_tag,
                 "llm_token": identity.llm_token,
             }
-            cache_rows.append((identity.original_tag, identity.canonical_tag, identity.llm_token))
 
-        if cache_rows:
-            self.executemany(
-                """
-                INSERT INTO tag_identity_cache (original_tag, canonical_tag, llm_token, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(original_tag) DO UPDATE SET
-                    canonical_tag = excluded.canonical_tag,
-                    llm_token = excluded.llm_token,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                cache_rows,
-            )
         return result
 
     def canonical_tag_for_tag(self, tag: str) -> str:
