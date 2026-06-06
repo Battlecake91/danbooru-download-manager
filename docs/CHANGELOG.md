@@ -1,3 +1,11 @@
+## 1.3.180 - Diagnostic Fetch and database tracing
+
+- Add detailed timestamped database write traces with thread, connection, queue ticket and wait duration.
+- Record write-slot acquisition and release, transaction commits, SQLite lock retries and slow mutating statements.
+- Store rotating diagnostic logs beside the database in `logs/database_trace.log`.
+- Add Fetch-tab trace messages for API page requests, responses, periodic database queue state, slow post storage and slow thumbnail downloads.
+- Print the exact diagnostic log path at the beginning of every Fetch.
+
 ## 1.3.179 - Prevent queued Config saves from stalling Fetch
 
 - Stop re-applying `PRAGMA journal_mode=WAL` whenever a worker opens a database connection.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Hashable
@@ -29,13 +30,14 @@ class DatabaseWriteCoordinator:
         self._owner_depth = 0
         self._waiting = 0
 
-    def acquire(self, owner: Hashable) -> None:
+    def acquire(self, owner: Hashable) -> tuple[int, float]:
         with self._condition:
             if self._owner == owner:
                 self._owner_depth += 1
-                return
+                return (-1, 0.0)
 
             ticket = self._next_ticket
+            wait_started = time.monotonic()
             self._next_ticket += 1
             self._waiting += 1
             try:
@@ -44,6 +46,7 @@ class DatabaseWriteCoordinator:
                 )
                 self._owner = owner
                 self._owner_depth = 1
+                return (ticket, time.monotonic() - wait_started)
             finally:
                 self._waiting -= 1
 

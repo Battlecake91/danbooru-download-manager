@@ -70,7 +70,12 @@ class FetchWorker(QObject):
             worker_db.connect()
             worker_db.initialize_schema()
 
-            service = PostImportService(self.config, worker_db, progress_callback=self.progress.emit)
+            service = PostImportService(
+                self.config,
+                worker_db,
+                progress_callback=self.progress.emit,
+                log_callback=self.log.emit,
+            )
             result = service.fetch_and_store()
 
             llm_ids = list(getattr(result, "inserted_post_ids", []) or [])

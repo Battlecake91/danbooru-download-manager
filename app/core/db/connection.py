@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
+from app.core.db.trace import trace_logger_for_database
 from app.core.db.write_coordinator import DatabaseWriteCoordinator, coordinator_for_path
 
 
@@ -24,8 +25,24 @@ class DatabaseConnectionMixin:
         self._write_coordinator: DatabaseWriteCoordinator = coordinator_for_path(path)
         self._write_owner = object()
         self._write_gate_held = False
+        self._write_ticket: int | None = None
+        self._trace_logger = trace_logger_for_database(path)
+
+
+    def _trace(self, message: str) -> None:
+        thread = __import__("threading").current_thread()
+        connection_name = f"{self.__class__.__name__}@{id(self):x}"
+        self._trace_logger.info(
+            "thread=%s/%s | connection=%s | %s",
+            thread.name,
+            thread.ident,
+            connection_name,
+            message,
+        )
 
     def connect(self) -> None:
+        self._trace(f"CONNECT begin path={self.path}")
+        connect_started = time.monotonic()
         self.connection = sqlite3.connect(self.path, timeout=30.0)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA busy_timeout = 30000")
@@ -48,6 +65,7 @@ class DatabaseConnectionMixin:
                 self._release_write_gate()
 
         self.connection.execute("PRAGMA synchronous = NORMAL")
+        self._trace(f"CONNECT done duration={time.monotonic() - connect_started:.3f}s journal={journal_mode or 'unknown'}")
 
     def close(self) -> None:
         if self.connection is not None:
@@ -102,14 +120,21 @@ class DatabaseConnectionMixin:
     def _acquire_write_gate(self) -> None:
         if self._write_gate_held:
             return
-        self._write_coordinator.acquire(self._write_owner)
+        snapshot = self._write_coordinator.snapshot()
+        self._trace(f"WRITE_GATE wait active={snapshot.active} waiting={snapshot.waiting}")
+        ticket, waited = self._write_coordinator.acquire(self._write_owner)
+        self._write_ticket = ticket
         self._write_gate_held = True
+        self._trace(f"WRITE_GATE acquired ticket={ticket} waited={waited:.3f}s")
 
     def _release_write_gate(self) -> None:
         if not self._write_gate_held:
             return
+        ticket = self._write_ticket
         self._write_gate_held = False
+        self._write_ticket = None
         self._write_coordinator.release(self._write_owner)
+        self._trace(f"WRITE_GATE released ticket={ticket}")
 
     def write_queue_snapshot(self) -> dict[str, int | bool]:
         snapshot = self._write_coordinator.snapshot()
@@ -128,22 +153,28 @@ class DatabaseConnectionMixin:
     def execute(self, sql: str, parameters: Iterable[Any] = ()) -> sqlite3.Cursor:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
-        if self._sql_is_mutating(sql):
+        is_mutating = self._sql_is_mutating(sql)
+        if is_mutating:
             self._acquire_write_gate()
 
         params = tuple(parameters)
-        for delay in self._lock_retry_delays():
-            try:
-                return self.connection.execute(sql, params)
-            except sqlite3.OperationalError as exc:
-                if not self._is_database_locked_error(exc):
-                    if not self.connection.in_transaction:
-                        self._release_write_gate()
-                    raise
-                time.sleep(delay)
+        operation = str(sql or "").lstrip().split(None, 1)[0].upper() if str(sql or "").strip() else "EMPTY"
+        started = time.monotonic()
         try:
+            for delay in self._lock_retry_delays():
+                try:
+                    cursor = self.connection.execute(sql, params)
+                    if is_mutating and time.monotonic() - started >= 0.100:
+                        self._trace(f"SQL slow operation={operation} duration={time.monotonic() - started:.3f}s in_transaction={self.connection.in_transaction}")
+                    return cursor
+                except sqlite3.OperationalError as exc:
+                    if not self._is_database_locked_error(exc):
+                        raise
+                    self._trace(f"SQL locked operation={operation} retry_delay={delay:.2f}s error={exc}")
+                    time.sleep(delay)
             return self.connection.execute(sql, params)
-        except Exception:
+        except Exception as exc:
+            self._trace(f"SQL failed operation={operation} duration={time.monotonic() - started:.3f}s error={type(exc).__name__}: {exc}")
             if not self.connection.in_transaction:
                 self._release_write_gate()
             raise
@@ -186,16 +217,21 @@ class DatabaseConnectionMixin:
     def commit(self) -> None:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
+        started = time.monotonic()
+        self._trace(f"COMMIT begin in_transaction={self.connection.in_transaction} ticket={self._write_ticket}")
         try:
             for delay in self._lock_retry_delays():
                 try:
                     self.connection.commit()
+                    self._trace(f"COMMIT done duration={time.monotonic() - started:.3f}s")
                     return
                 except sqlite3.OperationalError as exc:
                     if not self._is_database_locked_error(exc):
                         raise
+                    self._trace(f"COMMIT locked retry_delay={delay:.2f}s error={exc}")
                     time.sleep(delay)
             self.connection.commit()
+            self._trace(f"COMMIT done duration={time.monotonic() - started:.3f}s after_retries")
         except Exception:
             try:
                 self.connection.rollback()
