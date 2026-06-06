@@ -1,3 +1,10 @@
+## 1.3.160 - Importer confidence filtering and classification
+
+- Replaced the single confidence dropdown with independent checkboxes for high-confidence, questionable and mismatch candidates.
+- Allowed any combination of the three confidence classes to be displayed.
+- Relaxed high-confidence classification when all recognized filename tags match and there is sufficient positive evidence.
+- Kept missing filename tags as a definite mismatch and resolution differences as a caution signal rather than automatic rejection.
+
 ## 1.3.159 - Importer candidate inspection
 
 - Added buttons to open the selected local file and the matched remote Danbooru image.

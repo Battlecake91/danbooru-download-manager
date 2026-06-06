@@ -223,13 +223,23 @@ class ImportTab(QWidget):
 
         review_row = QHBoxLayout()
         review_row.addWidget(QLabel(tr("import.label.confidence_filter", "Show", config=self.config)))
-        self.confidence_filter = QComboBox()
-        self.confidence_filter.addItem(tr("import.filter.all", "All", config=self.config), "all")
-        self.confidence_filter.addItem(tr("import.filter.high", "High confidence", config=self.config), "high")
-        self.confidence_filter.addItem(tr("import.filter.questionable", "Questionable", config=self.config), "questionable")
-        self.confidence_filter.addItem(tr("import.filter.mismatch", "Wrong ID / mismatch", config=self.config), "mismatch")
-        self.confidence_filter.currentIndexChanged.connect(self.apply_candidate_filter)
-        review_row.addWidget(self.confidence_filter)
+        self.confidence_high_checkbox = QCheckBox(
+            tr("import.filter.high", "High confidence", config=self.config)
+        )
+        self.confidence_questionable_checkbox = QCheckBox(
+            tr("import.filter.questionable", "Questionable", config=self.config)
+        )
+        self.confidence_mismatch_checkbox = QCheckBox(
+            tr("import.filter.mismatch", "Wrong ID / mismatch", config=self.config)
+        )
+        for checkbox in (
+            self.confidence_high_checkbox,
+            self.confidence_questionable_checkbox,
+            self.confidence_mismatch_checkbox,
+        ):
+            checkbox.setChecked(True)
+            checkbox.stateChanged.connect(self.apply_candidate_filter)
+            review_row.addWidget(checkbox)
         review_row.addStretch(1)
         self.open_local_button = QPushButton(tr("import.button.open_local", "Open local file", config=self.config))
         self.open_local_button.clicked.connect(self.open_selected_local_file)
@@ -347,7 +357,9 @@ class ImportTab(QWidget):
         self.repair_button.setEnabled(enabled)
         self.scan_button.setEnabled(enabled)
         self.import_button.setEnabled(enabled and bool(self.scan_candidates))
-        self.confidence_filter.setEnabled(enabled)
+        self.confidence_high_checkbox.setEnabled(enabled)
+        self.confidence_questionable_checkbox.setEnabled(enabled)
+        self.confidence_mismatch_checkbox.setEnabled(enabled)
         self.candidate_table.setEnabled(enabled)
         self.update_candidate_open_buttons()
         self.rename_category_button.setEnabled(enabled)
@@ -684,11 +696,18 @@ class ImportTab(QWidget):
             self.open_selected_remote_image()
 
     def apply_candidate_filter(self) -> None:
-        wanted = self.confidence_filter.currentData() if hasattr(self, "confidence_filter") else "all"
+        visible_confidences: set[str] = set()
+        if self.confidence_high_checkbox.isChecked():
+            visible_confidences.add("high")
+        if self.confidence_questionable_checkbox.isChecked():
+            visible_confidences.add("questionable")
+        if self.confidence_mismatch_checkbox.isChecked():
+            visible_confidences.add("mismatch")
+
         for row in range(self.candidate_table.rowCount()):
             item = self.candidate_table.item(row, 1)
-            confidence = item.data(Qt.UserRole) if item else ""
-            self.candidate_table.setRowHidden(row, wanted != "all" and confidence != wanted)
+            confidence = str(item.data(Qt.UserRole) or "") if item else ""
+            self.candidate_table.setRowHidden(row, confidence not in visible_confidences)
 
     def on_failed(self, traceback_text: str) -> None:
         self.set_controls_enabled(True)

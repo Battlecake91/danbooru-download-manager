@@ -140,13 +140,13 @@ The importer now scans a selected folder before it changes the database. Each lo
 
 Confidence is classified as follows:
 
-- **High confidence (green):** an exact MD5 match, or multiple recognized filename tags all match and the local resolution equals the Danbooru resolution.
-- **Questionable (yellow):** the available evidence is incomplete, the filename contains too few reliable tags, or the resolution differs or cannot be read.
+- **High confidence (green):** an exact MD5 match, a matching resolution plus recognized matching filename tags, or multiple recognized filename tags that all exist on the Danbooru post. Unknown filename fragments alone no longer downgrade an otherwise strong match.
+- **Questionable (yellow):** only one reliable filename tag was recognized, the evidence is otherwise sparse, or a resolution difference remains as a caution signal.
 - **Mismatch (red):** the Danbooru post does not exist, the filename identifies another board, or at least one recognized filename tag is absent from the fetched post.
 
 Filename validation is intentionally strict. For a filename containing `smile_1girl_blue_hair`, all three recognized tags must be present on the fetched Danbooru post. One matching generic tag is not sufficient.
 
-The resolution column displays the local and Danbooru dimensions with `✓`, `✗`, or `?`. Filters above the table can show only green, yellow, or red candidates. Red candidates are excluded from import by default.
+The resolution column displays the local and Danbooru dimensions with `✓`, `✗`, or `?`. Independent checkboxes above the table can freely combine green, yellow and red candidates. Red candidates are excluded from import by default.
 
 ## Inspecting scan candidates
 

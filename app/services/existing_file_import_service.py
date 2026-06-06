@@ -464,15 +464,21 @@ class ExistingFileImportService:
         elif identifier_kind == "md5":
             confidence = "high"
             reason = "Exact MD5 match"
-        elif len(filename_tags) >= 2 and not unknown_parts and resolution_status == "match":
+        elif resolution_status == "match" and filename_tags:
             confidence = "high"
-            reason = "All filename tags and resolution match"
-        elif len(filename_tags) >= 2 and not unknown_parts:
+            reason = "All recognized filename tags and resolution match"
+        elif len(filename_tags) >= 2 and resolution_status != "mismatch":
+            confidence = "high"
+            reason = "Multiple recognized filename tags match"
+        elif len(filename_tags) >= 3:
+            confidence = "high"
+            reason = "Multiple recognized filename tags match; local resolution differs"
+        elif len(filename_tags) >= 2:
             confidence = "questionable"
-            reason = "All filename tags match; resolution differs or is unknown"
+            reason = "Filename tags match, but local resolution differs"
         elif filename_tags:
             confidence = "questionable"
-            reason = "Only limited filename-tag evidence"
+            reason = "Only one reliable filename tag was recognized"
         else:
             confidence = "questionable"
             reason = "No reliable filename tags found"
