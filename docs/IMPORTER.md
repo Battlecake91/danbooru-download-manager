@@ -151,3 +151,8 @@ The resolution column displays the local and Danbooru dimensions with `âœ“`, `âœ
 ## Inspecting scan candidates
 
 Select a candidate and use **Open local file** or **Open remote image** to compare both images with the system viewer or browser. Double-clicking the local filename/path opens the local file; double-clicking another candidate column opens the remote image. Candidate text cells are read-only; only the import checkbox can be changed.
+
+
+## Replacing lower-resolution files
+
+Resolution mismatches are highlighted in orange in the review table. Select a candidate marked with an upward arrow and use **Download best version** to replace the local file with Danbooru's original file when available. The replacement is downloaded to a temporary file first, then swapped in atomically. If the remote file uses a different extension, the local filename is updated accordingly and the candidate is re-evaluated before import.

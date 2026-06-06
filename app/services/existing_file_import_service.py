@@ -7,6 +7,7 @@ from PySide6.QtGui import QImageReader
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
@@ -107,6 +108,7 @@ class ExistingFileImportCandidate:
     remote_width: int | None = None
     remote_height: int | None = None
     resolution_status: str = "unknown"
+    remote_is_better: bool = False
     remote_image_url: str = ""
     remote_post_url: str = ""
     importable: bool = True
@@ -115,6 +117,13 @@ class ExistingFileImportCandidate:
 @dataclass
 class ExistingFileScanResult:
     candidates: list[ExistingFileImportCandidate] = field(default_factory=list)
+
+
+@dataclass
+class ExistingFileReplacementResult:
+    old_path: str
+    new_path: str
+    candidate: ExistingFileImportCandidate
 
 
 @dataclass
@@ -449,8 +458,10 @@ class ExistingFileImportService:
         local_width, local_height = local_image_size(path)
         remote_width = int(post.get("image_width")) if post.get("image_width") else None
         remote_height = int(post.get("image_height")) if post.get("image_height") else None
+        remote_is_better = False
         if local_width and local_height and remote_width and remote_height:
             resolution_status = "match" if (local_width, local_height) == (remote_width, remote_height) else "mismatch"
+            remote_is_better = (remote_width * remote_height) > (local_width * local_height)
         else:
             resolution_status = "unknown"
 
@@ -499,9 +510,72 @@ class ExistingFileImportService:
             remote_width=remote_width,
             remote_height=remote_height,
             resolution_status=resolution_status,
+            remote_is_better=remote_is_better,
             remote_image_url=str(post.get("large_file_url") or post.get("file_url") or post.get("preview_file_url") or ""),
             remote_post_url=f"{str(self.config.get('base_url') or 'https://danbooru.donmai.us').rstrip('/')}/posts/{int(post['id'])}",
             importable=confidence != "mismatch",
+        )
+
+
+    def replace_candidate_with_best_remote(
+        self,
+        path: str | Path,
+        post_id: int,
+    ) -> ExistingFileReplacementResult:
+        source_path = Path(path).expanduser()
+        if not source_path.is_file():
+            raise RuntimeError(f"Local file does not exist: {source_path}")
+
+        post = self.get_post_by_id_or_none(int(post_id))
+        if post is None:
+            raise RuntimeError(f"Danbooru post {post_id} was not found")
+
+        url = str(post.get("file_url") or post.get("large_file_url") or "").strip()
+        if not url:
+            raise RuntimeError(f"Post {post_id} has no downloadable original or large file")
+
+        remote_suffix = Path(urlparse(url).path).suffix
+        if not remote_suffix:
+            file_ext = str(post.get("file_ext") or "").strip(".")
+            remote_suffix = f".{file_ext}" if file_ext else source_path.suffix
+
+        target_path = source_path.with_suffix(remote_suffix.lower())
+        part_path = target_path.with_name(target_path.name + ".part")
+        if target_path != source_path and target_path.exists():
+            raise RuntimeError(f"Replacement target already exists: {target_path}")
+
+        timeout = int(self.config.get("request_timeout_seconds", 30))
+        session = requests.Session()
+        session.headers.update({"User-Agent": str(self.config.get("user_agent", "DanbooruManager/0.1"))})
+        username = self.config.get("username")
+        api_key = self.config.get("api_key")
+        if username and api_key:
+            session.auth = (username, api_key)
+
+        try:
+            with session.get(url, stream=True, timeout=timeout) as response:
+                response.raise_for_status()
+                with part_path.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 256):
+                        if chunk:
+                            handle.write(chunk)
+            if part_path.stat().st_size <= 0:
+                raise RuntimeError("Downloaded file is empty")
+            part_path.replace(target_path)
+            if target_path != source_path:
+                source_path.unlink()
+        except Exception:
+            part_path.unlink(missing_ok=True)
+            raise
+        finally:
+            session.close()
+
+        candidate = self.evaluate_candidate(target_path, post, identifier_kind="post_id")
+        candidate.identifier_value = str(post_id)
+        return ExistingFileReplacementResult(
+            old_path=str(source_path),
+            new_path=str(target_path),
+            candidate=candidate,
         )
 
     def scan_folder(self, folder: str | Path, *, recursive: bool = True) -> ExistingFileScanResult:

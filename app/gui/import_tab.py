@@ -33,6 +33,7 @@ from app.services.existing_file_import_service import (
     ExistingFileImportCandidate,
     ExistingFileImportProgress,
     ExistingFileImportService,
+    ExistingFileReplacementResult,
     ExistingFileScanResult,
 )
 
@@ -56,6 +57,8 @@ class ExistingFileImportWorker(QObject):
         fetch_thumbnails: bool = False,
         post_ids: list[int] | None = None,
         candidate_paths: list[str] | None = None,
+        replacement_path: str | None = None,
+        replacement_post_id: int | None = None,
     ) -> None:
         super().__init__()
         self.config = config
@@ -69,6 +72,8 @@ class ExistingFileImportWorker(QObject):
         self.fetch_thumbnails = bool(fetch_thumbnails)
         self.post_ids = list(post_ids or [])
         self.candidate_paths = list(candidate_paths or [])
+        self.replacement_path = replacement_path
+        self.replacement_post_id = replacement_post_id
 
     @Slot()
     def run(self) -> None:
@@ -92,6 +97,12 @@ class ExistingFileImportWorker(QObject):
                     update_existing=self.update_existing,
                     fetch_thumbnails=self.fetch_thumbnails,
                     candidate_paths=self.candidate_paths or None,
+                )
+            elif self.mode == "replace":
+                if not self.replacement_path or self.replacement_post_id is None:
+                    raise RuntimeError("Replacement path or post ID is missing")
+                result = service.replace_candidate_with_best_remote(
+                    self.replacement_path, self.replacement_post_id
                 )
             elif self.mode == "repair":
                 if self.old_category_id is None:
@@ -249,6 +260,12 @@ class ImportTab(QWidget):
         self.open_remote_button.clicked.connect(self.open_selected_remote_image)
         self.open_remote_button.setEnabled(False)
         review_row.addWidget(self.open_remote_button)
+        self.replace_remote_button = QPushButton(
+            tr("import.button.replace_with_best", "Download best version", config=self.config)
+        )
+        self.replace_remote_button.clicked.connect(self.replace_selected_with_best_remote)
+        self.replace_remote_button.setEnabled(False)
+        review_row.addWidget(self.replace_remote_button)
         self.main_layout.addLayout(review_row)
 
         self.candidate_table = QTableWidget(0, 8)
@@ -406,6 +423,42 @@ class ImportTab(QWidget):
             update_existing=self.update_existing_checkbox.isChecked(),
             fetch_thumbnails=self.fetch_thumbnails_checkbox.isChecked(),
             candidate_paths=candidate_paths,
+            replacement_path=replacement_path,
+            replacement_post_id=replacement_post_id,
+        )
+
+    def replace_selected_with_best_remote(self) -> None:
+        item = self.selected_candidate_path_item()
+        if item is None:
+            return
+        row = item.row()
+        post_item = self.candidate_table.item(row, 2)
+        resolution_item = self.candidate_table.item(row, 5)
+        path = str(item.data(Qt.UserRole) or item.text())
+        try:
+            post_id = int(post_item.text()) if post_item else 0
+        except ValueError:
+            post_id = 0
+        if not post_id or not Path(path).is_file():
+            QMessageBox.warning(
+                self, tr("import.title", config=self.config),
+                tr("import.warning.no_replace_target", "No valid local file and remote post are selected.", config=self.config),
+            )
+            return
+        resolution_text = resolution_item.text() if resolution_item else ""
+        if QMessageBox.question(
+            self,
+            tr("import.confirm_replace.title", "Download best version", config=self.config),
+            tr(
+                "import.confirm_replace.message",
+                "Replace the local file with Danbooru's best available version?\n\n{resolution}\n{path}",
+                config=self.config, resolution=resolution_text, path=path,
+            ),
+        ) != QMessageBox.Yes:
+            return
+        self.start_worker(
+            mode="replace", folder="", category_id=0, recursive=False,
+            rename_after_import=False, replacement_path=path, replacement_post_id=post_id,
         )
 
     def start_repair_category(self) -> None:
@@ -487,6 +540,8 @@ class ImportTab(QWidget):
         fetch_thumbnails: bool = False,
         post_ids: list[int] | None = None,
         candidate_paths: list[str] | None = None,
+        replacement_path: str | None = None,
+        replacement_post_id: int | None = None,
     ) -> None:
         if self.thread is not None:
             QMessageBox.information(self, tr("import.importer_title", config=self.config), tr("import.info.already_running", config=self.config))
@@ -513,6 +568,8 @@ class ImportTab(QWidget):
             fetch_thumbnails=fetch_thumbnails,
             post_ids=post_ids,
             candidate_paths=candidate_paths,
+            replacement_path=replacement_path,
+            replacement_post_id=replacement_post_id,
         )
         self.worker.moveToThread(self.thread)
 
@@ -562,6 +619,24 @@ class ImportTab(QWidget):
 
     def on_finished(self, result: object) -> None:
         self.set_controls_enabled(True)
+        if isinstance(result, ExistingFileReplacementResult):
+            old_path = result.old_path
+            self.scan_candidates = [
+                result.candidate if candidate.path == old_path else candidate
+                for candidate in self.scan_candidates
+            ]
+            self.populate_candidate_table()
+            for row in range(self.candidate_table.rowCount()):
+                path_item = self.candidate_table.item(row, 7)
+                if path_item and str(path_item.data(Qt.UserRole) or path_item.text()) == result.new_path:
+                    self.candidate_table.selectRow(row)
+                    break
+            self.progress_bar.setVisible(False)
+            self.progress_label.setText(
+                tr("import.replace.done", "Best available version downloaded: {path}", config=self.config, path=result.new_path)
+            )
+            self.log_text.append(self.progress_label.text())
+            return
         if isinstance(result, ExistingFileScanResult):
             self.scan_candidates = list(result.candidates)
             self.populate_candidate_table()
@@ -631,7 +706,7 @@ class ImportTab(QWidget):
             if candidate.resolution_status == "match":
                 symbol = "✓"
             elif candidate.resolution_status == "mismatch":
-                symbol = "✗"
+                symbol = "⬆" if candidate.remote_is_better else "✗"
             else:
                 symbol = "?"
             local = f"{candidate.local_width}×{candidate.local_height}" if candidate.local_width else "?"
@@ -642,6 +717,8 @@ class ImportTab(QWidget):
             path.setData(Qt.UserRole, candidate.path)
             path.setData(Qt.UserRole + 1, candidate.remote_image_url)
             path.setData(Qt.UserRole + 2, candidate.remote_post_url)
+            path.setData(Qt.UserRole + 3, candidate.resolution_status)
+            path.setData(Qt.UserRole + 4, candidate.remote_is_better)
             row_background = colors.get(candidate.confidence)
             for column, item in enumerate((check, confidence, post_id, filename, tags, resolution, reason, path)):
                 if column != 0:
@@ -649,6 +726,21 @@ class ImportTab(QWidget):
                 if row_background is not None:
                     item.setBackground(row_background)
                     item.setForeground(QColor(0, 0, 0))
+                if column == 5:
+                    if candidate.resolution_status == "mismatch":
+                        item.setBackground(QColor(255, 170, 70))
+                        item.setForeground(QColor(0, 0, 0))
+                        tooltip = (
+                            "Danbooru has a higher-resolution version. Use Download best version to replace the local file."
+                            if candidate.remote_is_better
+                            else "Local and Danbooru resolutions differ, but the remote file is not larger."
+                        )
+                        item.setToolTip(
+                            tr("import.tooltip.resolution_mismatch", tooltip, config=self.config)
+                        )
+                    elif candidate.resolution_status == "match":
+                        item.setBackground(QColor(185, 238, 195))
+                        item.setForeground(QColor(0, 0, 0))
                 if not candidate.importable and column == 0:
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.candidate_table.setItem(row, column, item)
@@ -670,6 +762,10 @@ class ImportTab(QWidget):
         remote_url = str(item.data(Qt.UserRole + 1) or item.data(Qt.UserRole + 2) or "") if item else ""
         self.open_local_button.setEnabled(enabled and Path(local_path).is_file())
         self.open_remote_button.setEnabled(enabled and bool(remote_url))
+        remote_is_better = bool(item.data(Qt.UserRole + 4)) if item else False
+        self.replace_remote_button.setEnabled(
+            enabled and bool(remote_url) and remote_is_better
+        )
 
     def open_selected_local_file(self) -> None:
         item = self.selected_candidate_path_item()

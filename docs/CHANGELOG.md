@@ -1,3 +1,10 @@
+## 1.3.161
+
+- Highlight resolution mismatches more clearly in the importer review table.
+- Add a **Download best version** action when Danbooru provides a higher-resolution file.
+- Download Danbooru's original file when available and replace the local candidate atomically.
+- Re-evaluate the candidate after replacement and update its path, resolution, and confidence.
+
 ## 1.3.160 - Importer confidence filtering and classification
 
 - Replaced the single confidence dropdown with independent checkboxes for high-confidence, questionable and mismatch candidates.
