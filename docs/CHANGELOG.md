@@ -1,3 +1,10 @@
+## 1.3.182
+
+- Defers Preview refreshes triggered by Configuration saves until an active Fetch has finished.
+- Rejects synchronous GUI-thread database writes while a background writer owns the write queue.
+- Logs the rejected SQL operation and Python caller stack in `database_trace.log`.
+- Prevents a GUI write from taking the next queue ticket and stalling the Fetch worker.
+
 ## 1.3.181 - Remove remaining GUI-thread database writes
 
 - Move Preview sort-order persistence to a dedicated background settings writer.

@@ -346,10 +346,15 @@ class AppWindow(QMainWindow):
             self._pending_preview_reload = True
 
     def on_config_changed(self) -> None:
-        # Active widgets keep a reference to the same config dict.
-        # After config changes, a preview reload is enough for now, but only
-        # if the preview tab already exists. Otherwise we avoid the startup
-        # cost that caused this lazy-loading setup in the first place.
+        # Active widgets keep a reference to the same config dict. Do not
+        # trigger Preview database work while Fetch is still writing. Some
+        # Preview refresh paths can perform maintenance/recommendation updates,
+        # and running those synchronously from the Qt main thread can otherwise
+        # contend with the Fetch writer and stall the write queue.
+        if self._pending_fetch_running:
+            self._pending_preview_reload = True
+            return
+
         if self.preview_window is not None:
             self.preview_window.reload_category_filter()
             self.preview_window.schedule_reload()

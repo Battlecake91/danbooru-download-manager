@@ -28,3 +28,12 @@ Keep transactions short. Do not perform network requests or image processing bet
 ## GUI write requests
 
 GUI actions must not wait synchronously for the write coordinator. Configuration saves are submitted through a dedicated worker thread with its own SQLite connection. The worker may wait in the FIFO writer queue while Fetch is committing posts, but the Qt GUI thread remains free to process progress signals and user input. Runtime configuration is updated only after the queued transaction succeeds.
+
+## GUI-thread write protection
+
+Configuration changes can trigger Preview refreshes. While a Fetch is active,
+those refreshes are deferred until the Fetch finishes. A synchronous mutating SQL
+statement from the Python main thread is also rejected when another writer owns
+the write queue. The rejection is logged with a Python caller stack in
+`logs/database_trace.log` so remaining GUI write paths can be identified without
+stalling the active Fetch.

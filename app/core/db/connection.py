@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -117,11 +119,29 @@ class DatabaseConnectionMixin:
             "BEGIN",
         }
 
-    def _acquire_write_gate(self) -> None:
+    def _acquire_write_gate(self, operation: str = "WRITE") -> None:
         if self._write_gate_held:
             return
         snapshot = self._write_coordinator.snapshot()
-        self._trace(f"WRITE_GATE wait active={snapshot.active} waiting={snapshot.waiting}")
+
+        # A synchronous Qt-main-thread write must never wait behind a background
+        # Fetch writer. Besides freezing the UI, the main connection can hold
+        # read state that makes a later SQLite lock upgrade block indefinitely.
+        # Background workers remain serialized normally; GUI writes should use
+        # the dedicated async writers. Fail fast and leave the Fetch queue free.
+        if threading.current_thread() is threading.main_thread() and snapshot.active:
+            stack = "".join(traceback.format_stack(limit=14)).replace("\n", " | ")
+            self._trace(
+                f"MAIN_THREAD_WRITE_REJECTED operation={operation} "
+                f"active={snapshot.active} waiting={snapshot.waiting} stack={stack}"
+            )
+            raise RuntimeError(
+                "A database write was requested from the GUI thread while a "
+                "background writer was active. The operation was cancelled to "
+                "protect the running Fetch. See database_trace.log for the caller."
+            )
+
+        self._trace(f"WRITE_GATE wait operation={operation} active={snapshot.active} waiting={snapshot.waiting}")
         ticket, waited = self._write_coordinator.acquire(self._write_owner)
         self._write_ticket = ticket
         self._write_gate_held = True
@@ -154,11 +174,11 @@ class DatabaseConnectionMixin:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
         is_mutating = self._sql_is_mutating(sql)
+        operation = str(sql or "").lstrip().split(None, 1)[0].upper() if str(sql or "").strip() else "EMPTY"
         if is_mutating:
-            self._acquire_write_gate()
+            self._acquire_write_gate(operation)
 
         params = tuple(parameters)
-        operation = str(sql or "").lstrip().split(None, 1)[0].upper() if str(sql or "").strip() else "EMPTY"
         started = time.monotonic()
         try:
             for delay in self._lock_retry_delays():
@@ -183,7 +203,8 @@ class DatabaseConnectionMixin:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
         if self._sql_is_mutating(sql):
-            self._acquire_write_gate()
+            operation = str(sql or "").lstrip().split(None, 1)[0].upper() if str(sql or "").strip() else "EXECUTEMANY"
+            self._acquire_write_gate(operation)
 
         materialized_rows = [tuple(row) for row in rows]
         for delay in self._lock_retry_delays():
@@ -206,7 +227,7 @@ class DatabaseConnectionMixin:
         if self.connection is None:
             raise RuntimeError("Database is not connected")
         if _MUTATING_SQL.search(sql_script or "") is not None:
-            self._acquire_write_gate()
+            self._acquire_write_gate("SCRIPT")
         try:
             return self.connection.executescript(sql_script)
         except Exception:
