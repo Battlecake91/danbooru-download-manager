@@ -1,3 +1,11 @@
+## 1.3.181 - Remove remaining GUI-thread database writes
+
+- Move Preview sort-order persistence to a dedicated background settings writer.
+- Move Fetch last-payload persistence off the Qt main-thread database connection.
+- Reuse one queued background writer per database file for small GUI preferences.
+- Prevent the main thread from acquiring and indefinitely holding the global write gate while Fetch is active.
+- Keep Configuration saves and Fetch writes serialized without blocking the interface or starving the Fetch worker.
+
 ## 1.3.180 - Diagnostic Fetch and database tracing
 
 - Add detailed timestamped database write traces with thread, connection, queue ticket and wait duration.

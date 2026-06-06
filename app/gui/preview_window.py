@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.core.db.async_writer import enqueue_app_setting
 from app.core.category_engine import build_category_match_groups
 from app.core.recommendation_engine import RecommendationEngine
 from app.gui.image_viewer import ImageViewerWindow
@@ -1004,12 +1005,10 @@ class PreviewWindow(QMainWindow):
         if isinstance(gui_config, dict):
             gui_config["preview_sort_order"] = sort_key
 
-        try:
-            self.db.set_app_setting("gui.preview_sort_order", json.dumps(sort_key, ensure_ascii=False))
-        except Exception as exc:
-            # Sorting should not tear down the whole previewer just because SQLite
-            # is currently offended. The visible reload still stays correct.
-            self.status_bar.showMessage(tr("preview.sort_save_failed", "Sorting could not be saved: {error}", config=self.config, error=exc), 8000)
+        # Persist this small UI preference asynchronously. A direct write from
+        # the Qt main thread can acquire the global write gate and then block
+        # inside SQLite, starving the active fetch worker.
+        enqueue_app_setting(Path(self.db.path), "gui.preview_sort_order", sort_key)
 
         self.on_active_filter_changed()
 

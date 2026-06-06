@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.core.db.async_writer import enqueue_app_setting
 from app.i18n.i18n import tr
 from app.services.llm_batch_service import LLMBatchPreselectionService
 from app.services.post_import_service import FetchProgress, PostImportService
@@ -554,7 +555,10 @@ class FetchTab(QWidget):
         return payload if isinstance(payload, dict) else None
 
     def save_last_fetch_payload(self) -> None:
-        self.db.set_app_setting("fetch.last_payload", json.dumps(self.current_payload(), ensure_ascii=False, sort_keys=True))
+        # GUI state persistence must never write through the main-thread DB
+        # connection while a fetch is active. Queue it on the shared background
+        # settings writer instead.
+        enqueue_app_setting(Path(self.db.path), "fetch.last_payload", self.current_payload())
 
     def on_preset_selected(self, *_args: Any) -> None:
         name = self.current_preset_name()
