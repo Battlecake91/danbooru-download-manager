@@ -717,28 +717,35 @@ class DatabaseTagMixin:
         placeholders = ", ".join("?" for _ in clean_tags)
         rows = self.execute(
             f"""
+            WITH saved_families AS (
+                SELECT DISTINCT COALESCE(parent_id, id) AS family_root
+                FROM posts
+                WHERE status = 'saved'
+            ),
+            relevant_posts AS (
+                SELECT
+                    pt.tag AS tag,
+                    p.status AS status,
+                    COALESCE(p.parent_id, p.id) AS family_root,
+                    pr.stars AS stars
+                FROM post_tags pt
+                JOIN posts p ON p.id = pt.post_id
+                LEFT JOIN post_reviews pr
+                    ON pr.post_id = pt.post_id
+                   AND pr.stars IS NOT NULL
+                WHERE pt.tag IN ({placeholders})
+            )
             SELECT
-                pt.tag AS tag,
-                SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
-                SUM(CASE WHEN p.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
-                COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
+                rp.tag AS tag,
+                SUM(CASE WHEN rp.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
+                SUM(CASE WHEN rp.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_count,
+                COALESCE(ts.average_rating, AVG(rp.stars)) AS average_rating,
                 COALESCE(ts.scoring_excluded, 0) AS scoring_excluded
-            FROM post_tags pt
-            JOIN posts p ON p.id = pt.post_id
-            LEFT JOIN tag_scores ts ON ts.tag = pt.tag
-            LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
-            WHERE pt.tag IN ({placeholders})
-              AND (
-                    p.status = 'saved'
-                    OR NOT EXISTS (
-                        SELECT 1
-                        FROM posts family_saved
-                        WHERE family_saved.status = 'saved'
-                          AND COALESCE(family_saved.parent_id, family_saved.id) =
-                              COALESCE(p.parent_id, p.id)
-                    )
-              )
-            GROUP BY pt.tag
+            FROM relevant_posts rp
+            LEFT JOIN saved_families sf ON sf.family_root = rp.family_root
+            LEFT JOIN tag_scores ts ON ts.tag = rp.tag
+            WHERE rp.status = 'saved' OR sf.family_root IS NULL
+            GROUP BY rp.tag
             """,
             clean_tags,
         ).fetchall()

@@ -97,6 +97,7 @@ class DatabaseSchemaMixin:
         CREATE INDEX IF NOT EXISTS idx_post_tags_type_tag ON post_tags(tag_type, tag);
         CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
         CREATE INDEX IF NOT EXISTS idx_posts_parent_id ON posts(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_posts_status_family_root ON posts(status, COALESCE(parent_id, id));
 
         CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -341,6 +342,7 @@ class DatabaseSchemaMixin:
         self.execute("CREATE INDEX IF NOT EXISTS idx_posts_rating ON posts(rating)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_posts_file_size ON posts(file_size)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_posts_resolution ON posts(image_width, image_height)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_posts_status_family_root ON posts(status, COALESCE(parent_id, id))")
 
         # Viewer hot path: category influence and tag display metadata need these
         # joins constantly. Without them SQLite gets to cosplay as a space heater
