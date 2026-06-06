@@ -2,7 +2,17 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.190 — Current release
+## 1.3.191 — Current release
+
+### Fixed
+
+- Fixed the portable updater waiting forever for an already closed application because the PID was matched as a loose substring in `tasklist` output.
+- Added exact Windows PID parsing and a persistent `danbooru_manager_data/updates/updater.log`.
+- Added immediate updater-process failure detection and detached helper startup.
+
+---
+
+## 1.3.190
 
 ### Added
 

@@ -1,7 +1,7 @@
 # Danbooru Download Manager
 
-> **Current release:** `1.3.190`  
-> Version `1.3.190` includes the redesigned Importer, Fetch filtering, database-concurrency fixes and the Viewer startup correction.  
+> **Current release:** `1.3.191`  
+> Version `1.3.191` includes the redesigned Importer, Fetch filtering, database-concurrency fixes and the Viewer startup correction.  
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
 Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
@@ -230,7 +230,7 @@ See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 | [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md) | SQLite connection and write-coordination model |
 | [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
-| [`docs/RELEASE_NOTES_1.3.190.md`](docs/RELEASE_NOTES_1.3.190.md) | Changes included in this release |
+| [`docs/RELEASE_NOTES_1.3.191.md`](docs/RELEASE_NOTES_1.3.191.md) | Changes included in this release |
 
 ---
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import shutil
 import subprocess
@@ -34,8 +35,26 @@ class UpdateError(RuntimeError):
     pass
 
 
+_LOG_PATH: Path | None = None
+
+
+def configure_log(path: Path | None) -> None:
+    global _LOG_PATH
+    _LOG_PATH = path
+    if _LOG_PATH is not None:
+        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_PATH.write_text("", encoding="utf-8")
+
+
 def log(message: str) -> None:
-    print(f"[Updater] {message}", flush=True)
+    line = f"[Updater] {message}"
+    print(line, flush=True)
+    if _LOG_PATH is not None:
+        try:
+            with _LOG_PATH.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            pass
 
 
 def wait_for_process(pid: int | None, timeout_seconds: int = 60) -> None:
@@ -55,12 +74,25 @@ def wait_for_process(pid: int | None, timeout_seconds: int = 60) -> None:
 def process_exists(pid: int) -> bool:
     if os.name == "nt":
         completed = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}"],
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             text=True,
             capture_output=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        return str(pid) in completed.stdout
+        if completed.returncode != 0:
+            log(f"tasklist failed with exit code {completed.returncode}: {completed.stderr.strip()}")
+            return False
+
+        for row in csv.reader(completed.stdout.splitlines()):
+            if len(row) < 2:
+                continue
+            try:
+                listed_pid = int(row[1].strip())
+            except ValueError:
+                continue
+            if listed_pid == pid:
+                return True
+        return False
 
     try:
         os.kill(pid, 0)
@@ -166,6 +198,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", required=True, help="Installation/application folder to update.")
     parser.add_argument("--restart", default="", help="Executable to restart after update.")
     parser.add_argument("--pid", type=int, default=0, help="Application PID to wait for before replacing files.")
+    parser.add_argument("--log", default="", help="Persistent updater log file.")
     return parser.parse_args()
 
 
@@ -174,6 +207,9 @@ def main() -> int:
     zip_path = Path(args.zip).resolve()
     target_dir = Path(args.target).resolve()
     restart_path = Path(args.restart).resolve() if args.restart else None
+    log_path = Path(args.log).resolve() if args.log else None
+    configure_log(log_path)
+    log(f"Updater started. pid={args.pid} zip={zip_path} target={target_dir}")
 
     try:
         if not zip_path.exists():

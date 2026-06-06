@@ -297,6 +297,7 @@ def start_portable_update(zip_path: Path, config: dict[str, Any]) -> None:
     else:
         command = [str(updater_path)]
 
+    log_path = updates_dir(config) / "updater.log"
     command.extend(
         [
             "--zip",
@@ -307,12 +308,24 @@ def start_portable_update(zip_path: Path, config: dict[str, Any]) -> None:
             str(restart_executable),
             "--pid",
             str(pid),
+            "--log",
+            str(log_path),
         ]
     )
 
-    subprocess.Popen(
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    process = subprocess.Popen(
         command,
         cwd=str(target_dir),
         close_fds=True,
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        creationflags=creationflags,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
+    if process.poll() is not None:
+        raise RuntimeError(
+            "The updater process exited immediately. "
+            f"See {log_path} for details."
+        )
