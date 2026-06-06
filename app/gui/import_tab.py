@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from app.core.database import Database
 from app.i18n.i18n import tr
+from app.gui.import_compare_viewer import ImportCompareViewer
 from app.services.existing_file_import_service import (
     ExistingFileImportCandidate,
     ExistingFileImportProgress,
@@ -252,6 +253,10 @@ class ImportTab(QWidget):
             checkbox.stateChanged.connect(self.apply_candidate_filter)
             review_row.addWidget(checkbox)
         review_row.addStretch(1)
+        self.compare_button = QPushButton(tr("import.button.compare_images", "Compare images", config=self.config))
+        self.compare_button.clicked.connect(self.open_compare_viewer)
+        self.compare_button.setEnabled(False)
+        review_row.addWidget(self.compare_button)
         self.open_local_button = QPushButton(tr("import.button.open_local", "Open local file", config=self.config))
         self.open_local_button.clicked.connect(self.open_selected_local_file)
         self.open_local_button.setEnabled(False)
@@ -426,8 +431,6 @@ class ImportTab(QWidget):
             update_existing=self.update_existing_checkbox.isChecked(),
             fetch_thumbnails=self.fetch_thumbnails_checkbox.isChecked(),
             candidate_paths=candidate_paths,
-            replacement_path=replacement_path,
-            replacement_post_id=replacement_post_id,
         )
 
     def replace_selected_with_best_remote(self) -> None:
@@ -571,8 +574,6 @@ class ImportTab(QWidget):
             fetch_thumbnails=fetch_thumbnails,
             post_ids=post_ids,
             candidate_paths=candidate_paths,
-            replacement_path=replacement_path,
-            replacement_post_id=replacement_post_id,
         )
         self.worker.moveToThread(self.thread)
 
@@ -783,12 +784,48 @@ class ImportTab(QWidget):
         enabled = self.thread is None and item is not None
         local_path = str(item.data(Qt.UserRole) or item.text()) if item else ""
         remote_url = str(item.data(Qt.UserRole + 1) or item.data(Qt.UserRole + 2) or "") if item else ""
+        self.compare_button.setEnabled(enabled and Path(local_path).is_file() and bool(remote_url))
         self.open_local_button.setEnabled(enabled and Path(local_path).is_file())
         self.open_remote_button.setEnabled(enabled and bool(remote_url))
         remote_is_better = bool(item.data(Qt.UserRole + 4)) if item else False
         self.replace_remote_button.setEnabled(
             enabled and bool(remote_url) and remote_is_better
         )
+
+    def selected_candidate_index(self) -> int | None:
+        item = self.selected_candidate_path_item()
+        if item is None:
+            return None
+        selected_path = str(item.data(Qt.UserRole) or item.text())
+        for index, candidate in enumerate(self.scan_candidates):
+            if candidate.path == selected_path:
+                return index
+        return None
+
+    def open_compare_viewer(self) -> None:
+        index = self.selected_candidate_index()
+        if index is None:
+            return
+        dialog = ImportCompareViewer(self.config, self.scan_candidates, index, self)
+        dialog.decision_changed.connect(self.on_compare_decision_changed)
+        dialog.exec()
+        self.populate_candidate_table()
+        self.select_candidate_by_path(self.scan_candidates[index].path)
+
+    def on_compare_decision_changed(self, index: int, matches: bool) -> None:
+        if index < 0 or index >= len(self.scan_candidates):
+            return
+        candidate = self.scan_candidates[index]
+        self.populate_candidate_table()
+        self.select_candidate_by_path(candidate.path)
+
+    def select_candidate_by_path(self, candidate_path: str) -> None:
+        for row in range(self.candidate_table.rowCount()):
+            item = self.candidate_table.item(row, 8)
+            if item and str(item.data(Qt.UserRole) or item.text()) == candidate_path:
+                self.candidate_table.selectRow(row)
+                self.candidate_table.scrollToItem(item)
+                return
 
     def open_selected_local_file(self) -> None:
         item = self.selected_candidate_path_item()

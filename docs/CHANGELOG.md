@@ -229,3 +229,14 @@ This changelog summarizes the project history by larger development milestones i
 - Added local-versus-Danbooru resolution comparison with match, mismatch, and unknown indicators.
 - Definite mismatches are not selected for import by default; questionable candidates remain available for manual decisions.
 - The candidate model is prepared for a later side-by-side local/original comparison viewer.
+
+## 1.3.164
+
+### Import comparison viewer
+
+- Added an integrated side-by-side viewer for local files and the suspected Danbooru image.
+- Added previous/next navigation through scanned import candidates.
+- Added fit-to-window and 100% image display modes.
+- Added direct manual Match and Mismatch decisions.
+- Manual decisions immediately update candidate confidence and import selection.
+- Kept the external remote-image action available from the comparison viewer.

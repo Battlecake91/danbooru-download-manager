@@ -164,3 +164,11 @@ Resolution mismatches are highlighted in orange in the review table. Select a ca
 The review table places the resolution directly beside the post ID and shows a local and remote thumbnail for every candidate when available. This makes visual identity checks possible without opening every file. Double-click the local thumbnail or filename to open the local file; double-click the remote thumbnail to open the Danbooru image.
 
 Filename tags are no longer shown as a permanently wide table column. The recognized and missing tag evidence remains available as a tooltip on the **Filename** and **Reason** cells.
+
+## Side-by-side comparison viewer
+
+After scanning a folder, select a candidate and choose **Compare images**. The comparison window shows the local file and the suspected Danbooru image next to each other, including their resolutions and the current classification reason.
+
+Use **Previous** and **Next** to review the candidate list. **Mark match** selects the file for import and changes its confidence to high. **Mark mismatch** deselects the file and classifies it as a mismatch. The viewer advances automatically after either decision.
+
+The **Fit images** toggle switches between fitting both images into their panes and showing them at their actual pixel size. The remote image can also be opened in the system browser.
