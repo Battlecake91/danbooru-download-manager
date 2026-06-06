@@ -1,3 +1,10 @@
+## 1.3.179 - Prevent queued Config saves from stalling Fetch
+
+- Stop re-applying `PRAGMA journal_mode=WAL` whenever a worker opens a database connection.
+- Read the persistent journal mode first and only change it when the database is not already using WAL.
+- Prevent short-lived Configuration workers from holding the application write queue while SQLite waits for an exclusive journal-mode lock.
+- Keep Configuration saves asynchronous while allowing an active Fetch to continue committing posts.
+
 ## 1.3.178 - Non-blocking configuration writes
 
 - Moved Configuration saves off the GUI thread into a dedicated database worker.

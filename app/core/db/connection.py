@@ -30,11 +30,23 @@ class DatabaseConnectionMixin:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA busy_timeout = 30000")
         self.connection.execute("PRAGMA foreign_keys = ON")
-        self._acquire_write_gate()
-        try:
-            self.connection.execute("PRAGMA journal_mode = WAL")
-        finally:
-            self._release_write_gate()
+
+        # journal_mode is persistent for the database file. Re-applying WAL on
+        # every connection is not harmless: SQLite may need an exclusive schema
+        # lock for the assignment. A short-lived GUI worker could then acquire
+        # the application write gate, block inside PRAGMA journal_mode=WAL and
+        # prevent the active Fetch connection from obtaining its next write
+        # slot. Read the current mode first and only change it during initial
+        # database bootstrap or when an external tool changed it.
+        journal_row = self.connection.execute("PRAGMA journal_mode").fetchone()
+        journal_mode = str(journal_row[0] if journal_row else "").lower()
+        if journal_mode != "wal":
+            self._acquire_write_gate()
+            try:
+                self.connection.execute("PRAGMA journal_mode = WAL")
+            finally:
+                self._release_write_gate()
+
         self.connection.execute("PRAGMA synchronous = NORMAL")
 
     def close(self) -> None:
