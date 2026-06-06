@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QByteArray, Qt, QUrl, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
     QDialog,
@@ -125,10 +125,53 @@ class ImportCompareViewer(QDialog):
         root.addLayout(comparison_headers)
 
         panes = QHBoxLayout()
+
+        self.previous_button = QPushButton("◀")
+        self.previous_button.setToolTip(tr("import.compare.previous", "Previous", config=self.config))
+        self.previous_button.setFixedWidth(52)
+        self.previous_button.setStyleSheet("font-size: 30px; font-weight: bold;")
+        self.previous_button.clicked.connect(self.previous_candidate)
+        panes.addWidget(self.previous_button, alignment=Qt.AlignVCenter)
+
         self.local_pane = _ImagePane()
-        self.remote_pane = _ImagePane()
         panes.addWidget(self.local_pane, stretch=1)
+
+        decision_column = QVBoxLayout()
+        decision_column.addStretch(1)
+        self.mismatch_button = QPushButton(
+            tr("import.compare.mark_mismatch", "Mark mismatch", config=self.config)
+        )
+        self.mismatch_button.setMinimumWidth(150)
+        self.mismatch_button.setMinimumHeight(54)
+        self.mismatch_button.setStyleSheet(
+            "font-weight: bold; font-size: 15px; background: #f2a7a7; color: black;"
+        )
+        self.mismatch_button.clicked.connect(lambda: self.set_decision(False))
+        decision_column.addWidget(self.mismatch_button)
+
+        self.match_button = QPushButton(
+            tr("import.compare.mark_match", "Mark match", config=self.config)
+        )
+        self.match_button.setMinimumWidth(150)
+        self.match_button.setMinimumHeight(54)
+        self.match_button.setStyleSheet(
+            "font-weight: bold; font-size: 15px; background: #a9dfb3; color: black;"
+        )
+        self.match_button.clicked.connect(lambda: self.set_decision(True))
+        decision_column.addWidget(self.match_button)
+        decision_column.addStretch(1)
+        panes.addLayout(decision_column)
+
+        self.remote_pane = _ImagePane()
         panes.addWidget(self.remote_pane, stretch=1)
+
+        self.next_button = QPushButton("▶")
+        self.next_button.setToolTip(tr("import.compare.next", "Next", config=self.config))
+        self.next_button.setFixedWidth(52)
+        self.next_button.setStyleSheet("font-size: 30px; font-weight: bold;")
+        self.next_button.clicked.connect(self.next_candidate)
+        panes.addWidget(self.next_button, alignment=Qt.AlignVCenter)
+
         root.addLayout(panes, stretch=1)
 
         self.reason_label = QLabel()
@@ -137,14 +180,6 @@ class ImportCompareViewer(QDialog):
         root.addWidget(self.reason_label)
 
         controls = QHBoxLayout()
-        self.previous_button = QPushButton(tr("import.compare.previous", "Previous", config=self.config))
-        self.previous_button.clicked.connect(self.previous_candidate)
-        controls.addWidget(self.previous_button)
-
-        self.next_button = QPushButton(tr("import.compare.next", "Next", config=self.config))
-        self.next_button.clicked.connect(self.next_candidate)
-        controls.addWidget(self.next_button)
-
         controls.addStretch(1)
         self.fit_button = QPushButton(tr("import.compare.fit", "Fit images", config=self.config))
         self.fit_button.setCheckable(True)
@@ -157,20 +192,15 @@ class ImportCompareViewer(QDialog):
         controls.addWidget(self.open_remote_button)
 
         controls.addStretch(1)
-        self.mismatch_button = QPushButton(tr("import.compare.mark_mismatch", "Mark mismatch", config=self.config))
-        self.mismatch_button.setStyleSheet("font-weight: bold; background: #f2a7a7; color: black;")
-        self.mismatch_button.clicked.connect(lambda: self.set_decision(False))
-        controls.addWidget(self.mismatch_button)
-
-        self.match_button = QPushButton(tr("import.compare.mark_match", "Mark match", config=self.config))
-        self.match_button.setStyleSheet("font-weight: bold; background: #a9dfb3; color: black;")
-        self.match_button.clicked.connect(lambda: self.set_decision(True))
-        controls.addWidget(self.match_button)
-
         self.close_button = QPushButton(tr("common.close", "Close", config=self.config))
         self.close_button.clicked.connect(self.accept)
         controls.addWidget(self.close_button)
         root.addLayout(controls)
+
+        self.previous_shortcut = QShortcut(QKeySequence(Qt.Key_Left), self)
+        self.previous_shortcut.activated.connect(self.previous_candidate)
+        self.next_shortcut = QShortcut(QKeySequence(Qt.Key_Right), self)
+        self.next_shortcut.activated.connect(self.next_candidate)
 
         self.show_candidate()
 

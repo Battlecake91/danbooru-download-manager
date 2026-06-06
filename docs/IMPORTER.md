@@ -182,4 +182,6 @@ The comparison viewer can be maximized or minimized with the normal window contr
 
 The comparison viewer now follows every candidate visible under the active confidence filters. Import checkboxes do not restrict comparison navigation, so a filtered **Wrong ID / mismatch** review works even when those rows were initially unchecked.
 
-Use **Mark all** or **Import all** to check every row in the current filtered view. Neither button starts the import. Importing still requires the separate **Import selected** action, which prevents a bulk-selection click from immediately changing files or the database.
+Use **Mark all** to select every visible table row, equivalent to selecting the rows with Ctrl+A. This does not change any import checkbox. Use **Import all** to check the import boxes for every candidate in the current filtered view. Neither button starts the import; importing still requires the separate **Import selected** action.
+
+In the comparison viewer, the large arrow buttons beside the images and the Left/Right arrow keys navigate through the filtered candidates. The Match and Mismatch buttons are positioned directly between the local and Danbooru images for faster review.

@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QSize, Qt, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import QItemSelectionModel, QObject, QSize, Qt, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -254,12 +254,12 @@ class ImportTab(QWidget):
             review_row.addWidget(checkbox)
 
         self.mark_all_button = QPushButton(tr("import.button.mark_all", "Mark all", config=self.config))
-        self.mark_all_button.clicked.connect(lambda: self.mark_all_visible_candidates())
+        self.mark_all_button.clicked.connect(self.select_all_visible_candidates)
         self.mark_all_button.setEnabled(False)
         review_row.addWidget(self.mark_all_button)
 
         self.import_all_button = QPushButton(tr("import.button.import_all_visible", "Import all", config=self.config))
-        self.import_all_button.clicked.connect(self.mark_all_visible_candidates)
+        self.import_all_button.clicked.connect(self.check_all_visible_candidates)
         self.import_all_button.setEnabled(False)
         review_row.addWidget(self.import_all_button)
 
@@ -298,6 +298,7 @@ class ImportTab(QWidget):
         ])
         self.candidate_table.setAlternatingRowColors(True)
         self.candidate_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.candidate_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.candidate_table.setSortingEnabled(True)
         self.candidate_table.itemSelectionChanged.connect(self.update_candidate_open_buttons)
         self.candidate_table.itemDoubleClicked.connect(self.open_candidate_from_item)
@@ -431,8 +432,24 @@ class ImportTab(QWidget):
             paths.append(str(path_item.data(Qt.UserRole) or path_item.text()))
         return paths
 
-    def mark_all_visible_candidates(self) -> None:
-        """Check every candidate currently visible through the confidence filters."""
+    def select_all_visible_candidates(self) -> None:
+        """Select every row currently visible through the confidence filters."""
+        selection_model = self.candidate_table.selectionModel()
+        if selection_model is None:
+            return
+        self.candidate_table.clearSelection()
+        for row in range(self.candidate_table.rowCount()):
+            if self.candidate_table.isRowHidden(row):
+                continue
+            index = self.candidate_table.model().index(row, 0)
+            selection_model.select(
+                index,
+                QItemSelectionModel.Select | QItemSelectionModel.Rows,
+            )
+        self.update_candidate_open_buttons()
+
+    def check_all_visible_candidates(self) -> None:
+        """Check the import checkbox for every currently visible candidate."""
         for row in range(self.candidate_table.rowCount()):
             if self.candidate_table.isRowHidden(row):
                 continue

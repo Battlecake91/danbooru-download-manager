@@ -1,3 +1,11 @@
+## 1.3.168 - Importer row selection and comparison controls
+
+- Changed **Mark all** to select every visible table row, matching Ctrl+A semantics without changing import checkboxes.
+- Kept **Import all** as the bulk action that checks the import boxes for the current filtered view.
+- Added large previous and next arrow buttons beside the comparison images.
+- Added Left and Right arrow-key navigation in the comparison viewer.
+- Moved the Match and Mismatch decision buttons between the local and Danbooru images.
+
 ## 1.3.167 - Importer filtered selection fixes
 
 - Changed **Import all** to only check every candidate in the current filtered view instead of starting the import immediately.
