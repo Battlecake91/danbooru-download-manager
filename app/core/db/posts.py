@@ -507,12 +507,16 @@ class DatabasePostMixin:
             (post_id, stars, decision),
         )
         self.execute("UPDATE posts SET reviewed_at = CURRENT_TIMESTAMP WHERE id = ?", (post_id,))
-        self.refresh_tag_statistics_for_post(post_id)
+        # Tag statistics are cached maintenance data. Recomputing them here can
+        # block the GUI for several seconds on large databases. The underlying
+        # review is committed immediately; cached statistics are refreshed by
+        # maintenance/overview workflows instead of every viewer interaction.
         self.commit()
 
     def set_post_status(self, post_id: int, status: str, config: dict[str, Any] | None = None) -> None:
         self._set_post_status_no_commit(post_id, status, config)
-        self.refresh_tag_statistics_for_post(post_id)
+        # Do not recalculate tag aggregates synchronously in the caller's GUI
+        # thread. Status changes must remain immediate even with large DBs.
         self.commit()
 
     def set_post_statuses(self, post_ids: list[int], status: str, config: dict[str, Any] | None = None) -> None:
@@ -531,24 +535,13 @@ class DatabasePostMixin:
         if status not in ALL_ALLOWED_STATUSES:
             raise ValueError(f"Invalid status: {status}")
 
-        scoring_statuses = {"saved", "rejected", "auto_rejected"}
-        old_statuses = self._fetch_statuses_for_posts(clean_ids)
-        needs_tag_statistics_refresh = status in scoring_statuses or any(
-            old_status in scoring_statuses for old_status in old_statuses.values()
-        )
-        affected_tags = self._fetch_tags_for_posts(clean_ids) if needs_tag_statistics_refresh else []
-
         for post_id in clean_ids:
             self._set_post_status_no_commit(post_id, status, config)
 
-        # Important for the previewer: with 100 selected thumbnails, do not aggregate
-        # the same tag statistics once per post. It was technically correct, but about
-        # as elegant for performance as a database join wearing concrete shoes. Update
-        # the combined tag set exactly once, and only when saved/rejected is actually
-        # affected for score calculation.
-        if affected_tags:
-            self.refresh_tag_statistics_for_tags(affected_tags)
-
+        # Bulk status changes are commonly triggered from the previewer. Cached
+        # tag aggregates must not turn that user action into a long-running,
+        # synchronous database job. Commit the authoritative post states now;
+        # statistics can be rebuilt separately when their overview is needed.
         self.commit()
 
     def _fetch_statuses_for_posts(self, post_ids: list[int]) -> dict[int, str]:
