@@ -47,6 +47,8 @@ class ExistingFileImportWorker(QObject):
         rename_after_import: bool,
         old_category_id: int | None = None,
         update_existing: bool = True,
+        fetch_thumbnails: bool = False,
+        post_ids: list[int] | None = None,
     ) -> None:
         super().__init__()
         self.config = config
@@ -57,6 +59,8 @@ class ExistingFileImportWorker(QObject):
         self.rename_after_import = bool(rename_after_import)
         self.old_category_id = int(old_category_id) if old_category_id is not None else None
         self.update_existing = bool(update_existing)
+        self.fetch_thumbnails = bool(fetch_thumbnails)
+        self.post_ids = list(post_ids or [])
 
     @Slot()
     def run(self) -> None:
@@ -76,6 +80,7 @@ class ExistingFileImportWorker(QObject):
                     recursive=self.recursive,
                     rename_after_import=self.rename_after_import,
                     update_existing=self.update_existing,
+                    fetch_thumbnails=self.fetch_thumbnails,
                 )
             elif self.mode == "repair":
                 if self.old_category_id is None:
@@ -90,7 +95,7 @@ class ExistingFileImportWorker(QObject):
                 )
             elif self.mode == "rename":
                 self.log.emit(tr("import.log.rename_started", "Renaming saved files using the current filename schema started.", config=self.config))
-                result = service.rename_saved_files_for_category(self.category_id)
+                result = service.rename_saved_files_for_category(self.category_id, self.post_ids or None)
             else:
                 raise RuntimeError(tr("import.error.unknown_mode", "Unknown import mode: {mode}", config=self.config, mode=self.mode))
 
@@ -114,6 +119,7 @@ class ImportTab(QWidget):
         self.db = db
         self.thread: QThread | None = None
         self.worker: ExistingFileImportWorker | None = None
+        self.last_imported_post_ids: list[int] = []
 
         self.main_layout = QVBoxLayout(self)
 
@@ -156,6 +162,14 @@ class ImportTab(QWidget):
         self.update_existing_checkbox = QCheckBox(tr("import.checkbox.update_existing", config=self.config))
         self.update_existing_checkbox.setChecked(True)
         self.import_layout.addRow(tr("import.label.existing_posts", config=self.config), self.update_existing_checkbox)
+
+        self.fetch_thumbnails_checkbox = QCheckBox(tr("import.checkbox.fetch_thumbnails", config=self.config))
+        self.fetch_thumbnails_checkbox.setChecked(False)
+        self.import_layout.addRow(tr("import.label.thumbnails", config=self.config), self.fetch_thumbnails_checkbox)
+
+        self.rename_last_import_checkbox = QCheckBox(tr("import.checkbox.rename_last_import_only", config=self.config))
+        self.rename_last_import_checkbox.setChecked(True)
+        self.import_layout.addRow(tr("import.label.rename_scope", config=self.config), self.rename_last_import_checkbox)
 
         self.repair_group = QGroupBox(tr("import.group.repair", config=self.config))
         self.repair_layout = QFormLayout(self.repair_group)
@@ -266,6 +280,8 @@ class ImportTab(QWidget):
         self.recursive_checkbox.setEnabled(enabled)
         self.rename_after_import_checkbox.setEnabled(enabled)
         self.update_existing_checkbox.setEnabled(enabled)
+        self.fetch_thumbnails_checkbox.setEnabled(enabled)
+        self.rename_last_import_checkbox.setEnabled(enabled)
         self.old_category_combo.setEnabled(enabled)
         self.repair_button.setEnabled(enabled)
         self.import_button.setEnabled(enabled)
@@ -293,6 +309,7 @@ class ImportTab(QWidget):
             recursive=self.recursive_checkbox.isChecked(),
             rename_after_import=self.rename_after_import_checkbox.isChecked(),
             update_existing=self.update_existing_checkbox.isChecked(),
+            fetch_thumbnails=self.fetch_thumbnails_checkbox.isChecked(),
         )
 
     def start_repair_category(self) -> None:
@@ -339,10 +356,16 @@ class ImportTab(QWidget):
             return
 
         category_name = self.category_combo.currentText()
+        rename_last_only = self.rename_last_import_checkbox.isChecked()
+        post_ids = self.last_imported_post_ids if rename_last_only else []
+        if rename_last_only and not post_ids:
+            QMessageBox.information(self, tr("import.rename_title", config=self.config), tr("import.info.no_last_import", config=self.config))
+            return
+        message_key = "import.confirm_rename.last_import_message" if rename_last_only else "import.confirm_rename.message"
         if QMessageBox.question(
             self,
             tr("import.confirm_rename.title", config=self.config),
-            tr("import.confirm_rename.message", config=self.config, category_name=category_name),
+            tr(message_key, config=self.config, category_name=category_name, count=len(post_ids)),
         ) != QMessageBox.Yes:
             return
 
@@ -352,6 +375,7 @@ class ImportTab(QWidget):
             category_id=category_id,
             recursive=False,
             rename_after_import=False,
+            post_ids=post_ids,
         )
 
     def start_worker(
@@ -364,6 +388,8 @@ class ImportTab(QWidget):
         rename_after_import: bool,
         old_category_id: int | None = None,
         update_existing: bool = True,
+        fetch_thumbnails: bool = False,
+        post_ids: list[int] | None = None,
     ) -> None:
         if self.thread is not None:
             QMessageBox.information(self, tr("import.importer_title", config=self.config), tr("import.info.already_running", config=self.config))
@@ -387,6 +413,8 @@ class ImportTab(QWidget):
             rename_after_import=rename_after_import,
             old_category_id=old_category_id,
             update_existing=update_existing,
+            fetch_thumbnails=fetch_thumbnails,
+            post_ids=post_ids,
         )
         self.worker.moveToThread(self.thread)
 
@@ -425,6 +453,8 @@ class ImportTab(QWidget):
                 renamed=progress.renamed,
                 skipped_existing=progress.skipped_existing,
                 skipped_no_md5=progress.skipped_no_md5,
+                skipped_tag_mismatch=progress.skipped_tag_mismatch,
+                cached_thumbnails=progress.cached_thumbnails,
                 not_found=progress.not_found,
                 errors=progress.errors,
             )
@@ -434,6 +464,9 @@ class ImportTab(QWidget):
 
     def on_finished(self, result: object) -> None:
         self.set_controls_enabled(True)
+        imported_ids = list(getattr(result, "imported_post_ids", []) or [])
+        if imported_ids:
+            self.last_imported_post_ids = imported_ids
         self.progress_bar.setVisible(True)
         summary = tr(
             "import.summary",
@@ -450,6 +483,8 @@ class ImportTab(QWidget):
             skipped_no_md5=getattr(result, "skipped_no_md5", 0),
             not_found=getattr(result, "not_found", 0),
             errors=getattr(result, "errors", 0),
+            skipped_tag_mismatch=getattr(result, "skipped_tag_mismatch", 0),
+            cached_thumbnails=getattr(result, "cached_thumbnails", 0),
         )
         self.log_text.append(summary)
         self.progress_label.setText(summary.replace("\n", " | "))

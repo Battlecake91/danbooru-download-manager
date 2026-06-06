@@ -223,7 +223,7 @@
   "import.log.import_started": "Existing file import started.",
   "import.log.rename_started": "Renaming saved files using the current filename schema started.",
   "import.log.repair_started": "Import category repair started.",
-  "import.progress.status": "File {current}/{total} | Imported: {imported} | Updated: {updated} | Repaired: {repaired} | Renamed: {renamed} | Existing skipped: {skipped_existing} | Without ID/MD5: {skipped_no_md5} | Not found: {not_found} | Errors: {errors}",
+  "import.progress.status": "Datei {current}/{total} | Importiert: {imported} | Aktualisiert: {updated} | Repariert: {repaired} | Umbenannt: {renamed} | Vorhandene übersprungen: {skipped_existing} | Ohne ID/MD5: {skipped_no_md5} | Tag-Abweichung: {skipped_tag_mismatch} | Nicht gefunden: {not_found} | Thumbnails: {cached_thumbnails} | Fehler: {errors}",
   "import.rename_title": "Rename",
   "import.repair_hint": "Uses the selected folder above, finds saved files with the old category, and assigns them to the selected new category. Files are not moved.",
   "import.repair_title": "Repair import",
@@ -249,7 +249,7 @@
   "import.service.rename_started": "Rename started: {count} saved files, category {category}",
   "import.service.renamed_suffix": "; renamed: {filename}",
   "import.service.skipped_no_id_md5": "Skipped, no post ID and no MD5 in filename: {filename}",
-  "import.summary": "\nImporter summary:\n  Category: {category}\n  Previous category: {old_category}\n  Files checked: {scanned}\n  Imported: {imported}\n  Updated: {updated}\n  Repaired: {repaired}\n  Renamed: {renamed}\n  Name already current/skipped: {skipped_rename}\n  Existing skipped: {skipped_existing}\n  Without ID/MD5: {skipped_no_md5}\n  Not found: {not_found}\n  Errors: {errors}",
+  "import.summary": "\\nImporter-Zusammenfassung:\\n  Kategorie: {category}\\n  Vorherige Kategorie: {old_category}\\n  Geprüfte Dateien: {scanned}\\n  Importiert: {imported}\\n  Aktualisiert: {updated}\\n  Repariert: {repaired}\\n  Umbenannt: {renamed}\\n  Name bereits aktuell/übersprungen: {skipped_rename}\\n  Vorhandene übersprungen: {skipped_existing}\\n  Ohne ID/MD5: {skipped_no_md5}\\n  Dateiname/Tags unpassend: {skipped_tag_mismatch}\\n  Nicht gefunden: {not_found}\\n  Thumbnails gespeichert: {cached_thumbnails}\\n  Fehler: {errors}",
   "import.title": "Import",
   "import.warning.folder_not_found": "Folder not found:\n{folder}",
   "import.warning.old_new_category_same": "Old and new category are identical.",
@@ -752,5 +752,12 @@
   "viewer.fetch_exclude_title": "Fetch exclude",
   "viewer.tags_excluded_from_fetch": "{count} tag(s) excluded from future fetches.",
   "viewer.fetch_excludes_removed": "{count} fetch exclude(s) removed.",
-  "fetch.summary.fetch_excluded": "Fetch-excluded"
+  "fetch.summary.fetch_excluded": "Fetch-excluded",
+  "import.checkbox.fetch_thumbnails": "Thumbnails beim Import abrufen und zwischenspeichern",
+  "import.checkbox.rename_last_import_only": "Nur Dateien des letzten Imports umbenennen",
+  "import.label.thumbnails": "Thumbnails:",
+  "import.label.rename_scope": "Umbenennungsumfang:",
+  "import.info.no_last_import": "Beim letzten Durchlauf wurden keine Posts importiert.",
+  "import.confirm_rename.last_import_message": "Die {count} Posts des letzten Imports nach dem aktuellen Dateinamenschema umbenennen?\\n\\nKategorie: {category_name}",
+  "import.service.filename_tag_mismatch": "Mögliche ID-Kollision mit fremdem Booru übersprungen: Dateiname passt nicht zu Danbooru-Post {post_id}: {filename}"
 }

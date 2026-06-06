@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 import requests
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +29,39 @@ POST_ID_HINT_RE = re.compile(r"(?i)(?:^|[^a-z0-9])(?:post|postid|post_id|id|danb
 POST_ID_FALLBACK_RE = re.compile(r"(?<!\d)(\d{5,12})(?!\d)")
 
 
+def filename_matches_danbooru_post(filename: str, post: dict[str, Any]) -> bool:
+    """Reject obvious foreign-board ID collisions and verify filename tags when possible."""
+    stem = Path(filename).stem
+    lowered = stem.casefold()
+    if "konachan.com" in lowered or lowered.startswith("konachan -"):
+        return False
+
+    post_tags: set[str] = set()
+    for field_name in (
+        "tag_string", "tag_string_general", "tag_string_character",
+        "tag_string_copyright", "tag_string_artist", "tag_string_meta",
+    ):
+        post_tags.update(tag.casefold() for tag in str(post.get(field_name) or "").split() if tag)
+
+    if not post_tags:
+        return False
+
+    normalized = re.sub(r"[\s\-.,;()[\]{}]+", "_", lowered)
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    padded = f"_{normalized}_"
+    for tag in post_tags:
+        normalized_tag = re.sub(r"_+", "_", tag.strip("_"))
+        if normalized_tag and f"_{normalized_tag}_" in padded:
+            return True
+
+    # ID-only names contain no useful evidence. Keep them compatible unless they name another board.
+    stripped = MD5_RE.sub("", lowered)
+    stripped = POST_ID_HINT_RE.sub("", stripped)
+    stripped = POST_ID_FALLBACK_RE.sub("", stripped)
+    stripped = re.sub(r"[^a-z]+", "", stripped)
+    return len(stripped) < 3
+
+
 @dataclass
 class ExistingFileImportProgress:
     phase: str = "running"
@@ -49,6 +82,8 @@ class ExistingFileImportProgress:
     skipped_existing: int = 0
     not_found: int = 0
     errors: int = 0
+    skipped_tag_mismatch: int = 0
+    cached_thumbnails: int = 0
     message: str = ""
 
 
@@ -66,6 +101,9 @@ class ExistingFileImportResult:
     errors: int = 0
     category_name: str = ""
     old_category_name: str = ""
+    skipped_tag_mismatch: int = 0
+    cached_thumbnails: int = 0
+    imported_post_ids: list[int] = field(default_factory=list)
 
 
 class ExistingFileImportService:
@@ -95,6 +133,7 @@ class ExistingFileImportService:
         recursive: bool = True,
         rename_after_import: bool = False,
         update_existing: bool = True,
+        fetch_thumbnails: bool = False,
     ) -> ExistingFileImportResult:
         root = Path(folder).expanduser()
         if not root.exists() or not root.is_dir():
@@ -164,6 +203,14 @@ class ExistingFileImportService:
                     self.emit_progress(base_progress)
                     continue
 
+                if not md5_hash and not filename_matches_danbooru_post(path.name, post):
+                    result.skipped_tag_mismatch += 1
+                    base_progress.phase = "tag_mismatch"
+                    base_progress.skipped_tag_mismatch = result.skipped_tag_mismatch
+                    base_progress.message = tr("import.service.filename_tag_mismatch", config=self.config, filename=path.name, post_id=post.get("id"))
+                    self.emit_progress(base_progress)
+                    continue
+
                 post_id = int(post["id"])
                 existing = self.db.execute(
                     """
@@ -206,6 +253,18 @@ class ExistingFileImportService:
                     file_path=str(path),
                     source="existing-file-import-update" if existing is not None else "existing-file-import",
                 )
+                result.imported_post_ids.append(post_id)
+
+                if fetch_thumbnails:
+                    thumbnail_path = self.post_import_service.thumbnail_cache.cache_thumbnail(post)
+                    if thumbnail_path:
+                        self.post_import_service.set_thumbnail_path(post_id, thumbnail_path)
+                        saved_path = self.db.move_thumbnail_to_bucket(
+                            post_id, Path(str(self.config["saved_thumbnail_dir"]))
+                        )
+                        if saved_path:
+                            self.post_import_service.set_thumbnail_path(post_id, saved_path)
+                        result.cached_thumbnails += 1
 
                 current_path = path
                 rename_message = ""
@@ -310,9 +369,28 @@ class ExistingFileImportService:
                 return None
             raise
 
-    def rename_saved_files_for_category(self, category_id: int) -> ExistingFileImportResult:
+    def rename_saved_files_for_category(
+        self,
+        category_id: int,
+        post_ids: list[int] | None = None,
+    ) -> ExistingFileImportResult:
         category = self.category_match_for_id(category_id)
-        rows = self.db.fetch_saved_file_posts_for_category(category_id)
+        if post_ids:
+            unique_ids = sorted({int(post_id) for post_id in post_ids})
+            placeholders = ",".join("?" for _ in unique_ids)
+            rows = self.db.execute(
+                f"""
+                SELECT p.id, p.final_file_path
+                FROM posts p
+                WHERE p.category_id = ?
+                  AND p.status = 'saved'
+                  AND p.id IN ({placeholders})
+                ORDER BY p.id
+                """,
+                (int(category_id), *unique_ids),
+            ).fetchall()
+        else:
+            rows = self.db.fetch_saved_file_posts_for_category(category_id)
         result = ExistingFileImportResult(scanned_files=len(rows), category_name=category.name)
 
         self.emit_progress(

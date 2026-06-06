@@ -1,6 +1,6 @@
 # Importer
 
-The importer allows Danbooru Download Manager `1.3.152` to take existing local image collections and register them inside the local database.
+The importer allows Danbooru Download Manager `1.3.156` to take existing local image collections and register them inside the local database.
 
 This is useful when images were downloaded before using the manager, when files were sorted manually, or when an older downloader setup should be migrated into the new workflow without losing the existing collection structure.
 
@@ -44,9 +44,10 @@ Depending on the available information, the importer can:
 - mark imported files with an import/local status,
 - avoid importing the same file multiple times,
 - preserve the existing directory structure unless explicitly changed later,
-- prepare imported posts for later metadata fetching.
+- optionally fetch and cache thumbnails immediately,
+- rename only files from the latest import run or all saved files of a category.
 
-The importer does not require every file to have a valid Danbooru post ID. Files without a detected ID can still be registered as local files, but Danbooru-specific features only become available after the post can be matched to Danbooru metadata.
+The importer requires either a Danbooru post ID or a 32-character MD5 hash in the filename. Files without either identifier are skipped.
 
 ---
 
@@ -83,9 +84,9 @@ post_1234567.webp
 artist_character_9f86d081884c7d659a2feaa0c55ad015.png
 ```
 
-If a post ID is detected, the application can later fetch metadata from Danbooru and generate the original post link from the configured base URL. If only an MD5 hash is detected, the file can still be registered and may be matched later against known or fetched Danbooru metadata.
+If a post ID is detected, the importer fetches the matching Danbooru post. Because other booru sites can reuse the same numeric IDs, the importer checks recognizable filename tags against the fetched Danbooru tags. Files prefixed with `Konachan.com -` or files whose meaningful filename tags do not match are skipped.
 
-Files without a detected post ID can still be tracked locally, but they may remain metadata-limited until manually matched or enriched later.
+MD5 matches are treated as authoritative because the hash identifies the actual file rather than merely reusing a numeric ID.
 
 ---
 
@@ -105,9 +106,10 @@ Use the importer carefully the first time:
 2. Check how many files were detected.
 3. Check whether post IDs were detected correctly.
 4. Verify local paths and category hints.
-5. Fetch missing metadata where possible.
+5. Enable thumbnail fetching during import when the preview should be ready immediately.
 6. Review the imported posts in the Previewer and Viewer.
-7. Import larger folders only after the small test behaves correctly.
+7. Use “rename latest import only” before considering a category-wide rename.
+8. Import larger folders only after the small test behaves correctly.
 
 This avoids large-scale cleanup after a wrong assumption. Databases are very good at remembering mistakes, the little goblins.
 
@@ -120,7 +122,9 @@ This avoids large-scale cleanup after a wrong assumption. Databases are very goo
 - Avoid moving imported files manually after import unless you also update or repair their paths in the application.
 - Files are registered in the database; they are not automatically re-downloaded just because they were imported.
 - A valid post ID improves metadata quality, original link generation and tag-based search.
-- A Danbooru MD5 hash in the filename can help identify files that no longer have a post ID in their filename.
+- A Danbooru MD5 hash in the filename provides the safest match.
+- Numeric post IDs are checked against filename tags to reduce collisions with Konachan and other boards.
+- Category-wide renaming remains available, but the latest-import-only scope avoids needlessly renaming thousands of older files.
 
 ---
 

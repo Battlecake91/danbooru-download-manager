@@ -1,3 +1,9 @@
+## 1.3.156
+
+- Added filename/tag validation for post-ID imports to avoid Konachan and other booru ID collisions.
+- Added an option to fetch thumbnails during existing-file imports.
+- Added a rename scope for only the posts imported in the latest run.
+
 # Changelog
 
 This changelog summarizes the project history by larger development milestones instead of listing every internal patch. Detailed patch notes are kept under `docs/patches/` for archaeology, blame assignment and other ancient rituals developers pretend are healthy.

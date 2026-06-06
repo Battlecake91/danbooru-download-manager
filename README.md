@@ -1,7 +1,6 @@
 # Danbooru Download Manager
 
-> **First official release:** `1.3.152`
-
+> **First official release:** `1.3.152`  
 > A local Danbooru download manager for fetching, previewing, rating, importing, categorizing and organizing Danbooru posts without turning your folders into archaeological debris.
 
 Danbooru Download Manager is a desktop application for managing a local Danbooru-based image collection. It focuses on **metadata-first review**, **local database-backed organization**, **manual control**, and optional experimental automation through scoring and LLM-assisted preselection.
@@ -25,7 +24,7 @@ The project was created through **vibe-coding**, but not through button-mashing 
   Triage posts quickly in the Previewer, then rate, categorize, reject or save in the Viewer.
 
 - 📥 **Importer for existing collections**  
-  Register already downloaded files, detect post IDs from filenames where possible(post-ID or md5-hash in filename), keep local paths and bring older collections into the database-backed workflow.
+  Register already downloaded files, detect post IDs from filenames where possible, keep local paths and bring older collections into the database-backed workflow.
 
 - ⭐ **Rating system with learning structure**  
   Use local ratings, saved/rejected decisions, tag scores and manual score adjustments to improve preselection over time.
@@ -45,6 +44,8 @@ The project was created through **vibe-coding**, but not through button-mashing 
 ---
 
 ## 📸 Screenshots
+
+The screenshots below are placeholders stored under `docs/screenshots/`. Replace the image files with real captures before preparing the public release page.
 
 ### 🧭 First-time setup
 
@@ -125,10 +126,12 @@ It can:
 
 - scan local folders,
 - register existing files in the database,
-- detect Danbooru post IDs from filenames where possible,
+- detect Danbooru post IDs or MD5 hashes from filenames,
+- reject obvious foreign-board ID collisions by checking filename tags against the fetched Danbooru post,
 - preserve local file paths,
 - assign initial categories from folder structure,
-- prepare imported posts for later metadata fetching,
+- optionally fetch and cache thumbnails during import,
+- rename either the latest import only or all saved files of a category,
 - make imported posts searchable by local path, post ID, status, rating and tags when available.
 
 This allows the manager to adopt an existing collection instead of pretending years of local files never happened, which would be rude even by software standards.
