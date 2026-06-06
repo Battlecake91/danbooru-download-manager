@@ -1,3 +1,11 @@
+## 1.3.178 - Non-blocking configuration writes
+
+- Moved Configuration saves off the GUI thread into a dedicated database worker.
+- Queue configuration writes behind active Fetch transactions without freezing the interface.
+- Use a separate SQLite connection owned by the save worker thread.
+- Apply runtime settings only after the queued database transaction commits successfully.
+- Prevent repeated Save clicks while a configuration write is pending.
+
 ## 1.3.177 - Central SQLite write coordination
 
 - Added one process-wide FIFO write coordinator per database file.

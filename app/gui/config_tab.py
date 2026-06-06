@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -232,6 +232,50 @@ class LastLLMPayloadsDialog(QDialog):
         QApplication.clipboard().setText(json.dumps(self.payloads, ensure_ascii=False, indent=2))
 
 
+class ConfigSaveWorker(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, database_file: Path, values: dict[str, Any]) -> None:
+        super().__init__()
+        self.database_file = Path(database_file)
+        self.values = dict(values)
+
+    @Slot()
+    def run(self) -> None:
+        worker_db: Database | None = None
+        try:
+            worker_db = Database(self.database_file)
+            worker_db.connect()
+            for key, value in self.values.items():
+                encoded = json.dumps(value, ensure_ascii=False)
+                worker_db.execute(
+                    """
+                    INSERT INTO app_settings (key, value, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (key, encoded),
+                )
+            worker_db.commit()
+            self.finished.emit(self.values)
+        except Exception as exc:
+            if worker_db is not None:
+                try:
+                    worker_db.rollback()
+                except Exception:
+                    pass
+            self.failed.emit(str(exc))
+        finally:
+            if worker_db is not None:
+                try:
+                    worker_db.close()
+                except Exception:
+                    pass
+
+
 class ConfigTab(QWidget):
     config_changed = Signal()
 
@@ -240,6 +284,8 @@ class ConfigTab(QWidget):
 
         self.config = config
         self.db = db
+        self._save_thread: QThread | None = None
+        self._save_worker: ConfigSaveWorker | None = None
 
         self.main_layout = QVBoxLayout(self)
 
@@ -1388,26 +1434,54 @@ class ConfigTab(QWidget):
         }
 
     def save_config(self) -> None:
-        values = self.collect_values()
-
-        try:
-            for key, value in values.items():
-                self.set_setting(key, value)
-                self.set_runtime_value(key, value)
-
-            self.db.commit()
-            self.refresh_raw_settings()
-            self.config_changed.emit()
-
-        except Exception as exc:
-            QMessageBox.critical(self, tr("config.save_error_title", config=self.config), str(exc))
+        if self._save_thread is not None:
             return
 
+        values = self.collect_values()
+        database_file = Path(self.db.path)
+
+        self.save_button.setEnabled(False)
+        self.save_button.setText(tr("config.saving", "Saving…", config=self.config))
+
+        self._save_thread = QThread(self)
+        self._save_worker = ConfigSaveWorker(database_file, values)
+        self._save_worker.moveToThread(self._save_thread)
+        self._save_thread.started.connect(self._save_worker.run)
+        self._save_worker.finished.connect(self._on_config_save_finished)
+        self._save_worker.failed.connect(self._on_config_save_failed)
+        self._save_worker.finished.connect(self._save_thread.quit)
+        self._save_worker.failed.connect(self._save_thread.quit)
+        self._save_thread.finished.connect(self._cleanup_config_save_thread)
+        self._save_thread.start()
+
+    @Slot(object)
+    def _on_config_save_finished(self, values: object) -> None:
+        saved_values = values if isinstance(values, dict) else {}
+        for key, value in saved_values.items():
+            self.set_runtime_value(str(key), value)
+
+        self.refresh_raw_settings()
+        self.config_changed.emit()
         QMessageBox.information(
             self,
             tr("config.saved_title", config=self.config),
             tr("config.saved_message", config=self.config),
         )
+
+    @Slot(str)
+    def _on_config_save_failed(self, message: str) -> None:
+        QMessageBox.critical(self, tr("config.save_error_title", config=self.config), message)
+
+    @Slot()
+    def _cleanup_config_save_thread(self) -> None:
+        if self._save_worker is not None:
+            self._save_worker.deleteLater()
+        if self._save_thread is not None:
+            self._save_thread.deleteLater()
+        self._save_worker = None
+        self._save_thread = None
+        self.save_button.setText(tr("config.save", config=self.config))
+        self.save_button.setEnabled(True)
 
 
     # -------------------------------------------------------------------------

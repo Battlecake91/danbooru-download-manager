@@ -24,3 +24,7 @@ The coordinator only covers this application process. SQLite `busy_timeout` and 
 ## Transaction guidance
 
 Keep transactions short. Do not perform network requests or image processing between a mutating statement and its commit. A queued settings change should wait for a database transaction, not for an entire download batch.
+
+## GUI write requests
+
+GUI actions must not wait synchronously for the write coordinator. Configuration saves are submitted through a dedicated worker thread with its own SQLite connection. The worker may wait in the FIFO writer queue while Fetch is committing posts, but the Qt GUI thread remains free to process progress signals and user input. Runtime configuration is updated only after the queued transaction succeeds.
