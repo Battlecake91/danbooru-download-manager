@@ -1,3 +1,11 @@
+## 1.3.173 - Reliable initial window layout
+
+- Recalculate nested tab and toolbar layouts after the main window receives its final screen geometry.
+- Repeat the initial layout pass shortly after showing the window to accommodate delayed Windows/Qt frame sizing.
+- Refresh the active tab layout after tab changes.
+- Make the Preview search field flexible so Search and Clear remain visible at narrower widths.
+- Clamp the initial window size to the available desktop area.
+
 ## 1.3.172 - Prominent review-to-import transition
 
 - Replaced the small corner button with a dedicated full-width next-step panel below the candidate table.

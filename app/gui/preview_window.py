@@ -305,7 +305,8 @@ class PreviewWindow(QMainWindow):
         self.search_edit.setPlaceholderText(tr("preview.search.placeholder", "Search exact tags, e.g. brown_eyes -red_hair", config=self.config))
         self.search_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.search_edit.returnPressed.connect(self.reload_posts)
-        self.search_edit.setMinimumWidth(280)
+        self.search_edit.setMinimumWidth(160)
+        self.search_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.toolbar_filters.addWidget(self.search_edit)
 
         self.search_button = QPushButton(tr("common.search", "Search", config=self.config))
@@ -407,6 +408,31 @@ class PreviewWindow(QMainWindow):
         self.show_preview_loading(tr("preview.ready_hint", "Preview ready. Choose a view or click Reload.", config=self.config))
 
 
+
+
+    def refresh_host_layout(self) -> None:
+        """Refresh toolbars after the containing tab receives its final geometry."""
+        for toolbar in (self.toolbar_actions, self.toolbar_filters, self.toolbar_sort):
+            toolbar.updateGeometry()
+            layout = toolbar.layout()
+            if layout is not None:
+                layout.invalidate()
+                layout.activate()
+            toolbar.update()
+
+        if self.main_widget.layout() is not None:
+            self.main_widget.layout().invalidate()
+            self.main_widget.layout().activate()
+
+        self.main_widget.updateGeometry()
+        self.content_stack.updateGeometry()
+        self.updateGeometry()
+        self.update()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        QTimer.singleShot(0, self.refresh_host_layout)
+        QTimer.singleShot(120, self.refresh_host_layout)
 
     def create_loading_panel(self) -> QFrame:
         panel = QFrame()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.database import Database
@@ -79,6 +80,39 @@ class AppWindow(QMainWindow):
 
         self.tabs.currentChanged.connect(self.on_tab_changed)
         self._startup_log("AppWindow: shown-ready")
+
+
+    def refresh_layout_after_show(self) -> None:
+        """Recalculate nested tab layouts after the outer window has its final size."""
+        central = self.centralWidget()
+        if central is not None:
+            central.updateGeometry()
+            layout = central.layout()
+            if layout is not None:
+                layout.invalidate()
+                layout.activate()
+
+        current = self.tabs.currentWidget()
+        if current is not None:
+            current.updateGeometry()
+            layout = current.layout()
+            if layout is not None:
+                layout.invalidate()
+                layout.activate()
+
+            refresh = getattr(current, "refresh_host_layout", None)
+            if callable(refresh):
+                refresh()
+
+        self.tabs.updateGeometry()
+        self.tabs.update()
+        self.updateGeometry()
+        self.update()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        QTimer.singleShot(0, self.refresh_layout_after_show)
+        QTimer.singleShot(150, self.refresh_layout_after_show)
 
     def _create_menu_bar(self) -> None:
         # The former top-level Help menu was intentionally removed. Help,
@@ -269,6 +303,7 @@ class AppWindow(QMainWindow):
             self.tabs.setCurrentIndex(index)
             if key == "preview":
                 widget.on_tab_activated()
+            QTimer.singleShot(0, self.refresh_layout_after_show)
             return
 
     def on_fetch_started(self) -> None:

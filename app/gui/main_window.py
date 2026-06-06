@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.core.database import Database
@@ -29,8 +30,19 @@ def run_gui(config: dict[str, Any], db: Database) -> int:
             setup_dialog.exec()
 
         window = AppWindow(config, db)
-        window.resize(1500, 950)
+
+        screen = app.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            target_width = min(1500, max(1100, available.width() - 80))
+            target_height = min(950, max(760, available.height() - 80))
+            window.resize(target_width, target_height)
+        else:
+            window.resize(1500, 950)
+
         window.show()
+        QTimer.singleShot(0, window.refresh_layout_after_show)
+        QTimer.singleShot(150, window.refresh_layout_after_show)
     except Exception as exc:
         error_logger.write_exception(type(exc), exc, exc.__traceback__, "GUI startup failed")
         QMessageBox.critical(
