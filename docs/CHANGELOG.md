@@ -1,3 +1,11 @@
+## 1.3.162 - Importer thumbnail comparison layout
+
+- Moved the resolution column directly next to the post ID.
+- Added local and remote thumbnail columns to the importer candidate list.
+- Removed the wide filename-tags column from the main table.
+- Kept matched and missing tag evidence available through tooltips on the filename and reason cells.
+- Increased candidate row height for readable side-by-side previews.
+
 ## 1.3.161
 
 - Highlight resolution mismatches more clearly in the importer review table.

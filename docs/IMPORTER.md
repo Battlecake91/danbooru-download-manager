@@ -156,3 +156,9 @@ Select a candidate and use **Open local file** or **Open remote image** to compa
 ## Replacing lower-resolution files
 
 Resolution mismatches are highlighted in orange in the review table. Select a candidate marked with an upward arrow and use **Download best version** to replace the local file with Danbooru's original file when available. The replacement is downloaded to a temporary file first, then swapped in atomically. If the remote file uses a different extension, the local filename is updated accordingly and the candidate is re-evaluated before import.
+
+## Thumbnail comparison in the candidate list
+
+The review table places the resolution directly beside the post ID and shows a local and remote thumbnail for every candidate when available. This makes visual identity checks possible without opening every file. Double-click the local thumbnail or filename to open the local file; double-click the remote thumbnail to open the Danbooru image.
+
+Filename tags are no longer shown as a permanently wide table column. The recognized and missing tag evidence remains available as a tooltip on the **Filename** and **Reason** cells.

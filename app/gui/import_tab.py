@@ -5,8 +5,8 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Qt, QThread, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -268,14 +268,15 @@ class ImportTab(QWidget):
         review_row.addWidget(self.replace_remote_button)
         self.main_layout.addLayout(review_row)
 
-        self.candidate_table = QTableWidget(0, 8)
+        self.candidate_table = QTableWidget(0, 9)
         self.candidate_table.setHorizontalHeaderLabels([
             tr("import.table.import", "Import", config=self.config),
             tr("import.table.confidence", "Confidence", config=self.config),
             tr("import.table.post_id", "Post ID", config=self.config),
-            tr("import.table.filename", "Local file", config=self.config),
-            tr("import.table.tags", "Filename tags", config=self.config),
             tr("import.table.resolution", "Resolution", config=self.config),
+            tr("import.table.local_preview", "Local", config=self.config),
+            tr("import.table.remote_preview", "Remote", config=self.config),
+            tr("import.table.filename", "Filename", config=self.config),
             tr("import.table.reason", "Reason", config=self.config),
             tr("import.table.path", "Path", config=self.config),
         ])
@@ -286,8 +287,10 @@ class ImportTab(QWidget):
         self.candidate_table.itemDoubleClicked.connect(self.open_candidate_from_item)
         header = self.candidate_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(6, QHeaderView.Stretch)
+        header.setSectionResizeMode(7, QHeaderView.Stretch)
+        self.candidate_table.setIconSize(QSize(96, 96))
+        self.candidate_table.verticalHeader().setDefaultSectionSize(104)
         self.candidate_table.setMinimumHeight(260)
         self.main_layout.addWidget(self.candidate_table, stretch=1)
 
@@ -398,7 +401,7 @@ class ImportTab(QWidget):
         paths: list[str] = []
         for row in range(self.candidate_table.rowCount()):
             check_item = self.candidate_table.item(row, 0)
-            path_item = self.candidate_table.item(row, 7)
+            path_item = self.candidate_table.item(row, 8)
             if check_item and path_item and check_item.checkState() == Qt.Checked:
                 paths.append(path_item.data(Qt.UserRole) or path_item.text())
         return paths
@@ -433,7 +436,7 @@ class ImportTab(QWidget):
             return
         row = item.row()
         post_item = self.candidate_table.item(row, 2)
-        resolution_item = self.candidate_table.item(row, 5)
+        resolution_item = self.candidate_table.item(row, 3)
         path = str(item.data(Qt.UserRole) or item.text())
         try:
             post_id = int(post_item.text()) if post_item else 0
@@ -627,7 +630,7 @@ class ImportTab(QWidget):
             ]
             self.populate_candidate_table()
             for row in range(self.candidate_table.rowCount()):
-                path_item = self.candidate_table.item(row, 7)
+                path_item = self.candidate_table.item(row, 8)
                 if path_item and str(path_item.data(Qt.UserRole) or path_item.text()) == result.new_path:
                     self.candidate_table.selectRow(row)
                     break
@@ -699,10 +702,10 @@ class ImportTab(QWidget):
             confidence.setData(Qt.UserRole, candidate.confidence)
             post_id = QTableWidgetItem(str(candidate.post_id or ""))
             filename = QTableWidgetItem(candidate.filename)
-            tags_text = ", ".join(candidate.matched_tags)
+            tag_evidence = ", ".join(candidate.matched_tags) or "No reliable filename tags recognized"
             if candidate.missing_tags:
-                tags_text += " | missing: " + ", ".join(candidate.missing_tags)
-            tags = QTableWidgetItem(tags_text)
+                tag_evidence += "\nMissing from remote post: " + ", ".join(candidate.missing_tags)
+            filename.setToolTip(tag_evidence)
             if candidate.resolution_status == "match":
                 symbol = "✓"
             elif candidate.resolution_status == "mismatch":
@@ -712,21 +715,41 @@ class ImportTab(QWidget):
             local = f"{candidate.local_width}×{candidate.local_height}" if candidate.local_width else "?"
             remote = f"{candidate.remote_width}×{candidate.remote_height}" if candidate.remote_width else "?"
             resolution = QTableWidgetItem(f"{symbol} {local} / {remote}")
+            local_preview = QTableWidgetItem()
+            local_preview.setTextAlignment(Qt.AlignCenter)
+            local_pixmap = QPixmap(candidate.path)
+            if not local_pixmap.isNull():
+                local_preview.setIcon(QIcon(local_pixmap))
+                local_preview.setToolTip(candidate.path)
+            else:
+                local_preview.setText("?")
+
+            remote_preview = QTableWidgetItem()
+            remote_preview.setTextAlignment(Qt.AlignCenter)
+            remote_pixmap = QPixmap(candidate.remote_thumbnail_path) if candidate.remote_thumbnail_path else QPixmap()
+            if not remote_pixmap.isNull():
+                remote_preview.setIcon(QIcon(remote_pixmap))
+                remote_preview.setToolTip(candidate.remote_image_url or candidate.remote_post_url)
+            else:
+                remote_preview.setText("?")
+
             reason = QTableWidgetItem(candidate.reason)
+            reason.setToolTip(tag_evidence)
             path = QTableWidgetItem(candidate.path)
             path.setData(Qt.UserRole, candidate.path)
             path.setData(Qt.UserRole + 1, candidate.remote_image_url)
             path.setData(Qt.UserRole + 2, candidate.remote_post_url)
             path.setData(Qt.UserRole + 3, candidate.resolution_status)
             path.setData(Qt.UserRole + 4, candidate.remote_is_better)
+            path.setData(Qt.UserRole + 5, candidate.remote_thumbnail_path)
             row_background = colors.get(candidate.confidence)
-            for column, item in enumerate((check, confidence, post_id, filename, tags, resolution, reason, path)):
+            for column, item in enumerate((check, confidence, post_id, resolution, local_preview, remote_preview, filename, reason, path)):
                 if column != 0:
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 if row_background is not None:
                     item.setBackground(row_background)
                     item.setForeground(QColor(0, 0, 0))
-                if column == 5:
+                if column == 3:
                     if candidate.resolution_status == "mismatch":
                         item.setBackground(QColor(255, 170, 70))
                         item.setForeground(QColor(0, 0, 0))
@@ -751,7 +774,7 @@ class ImportTab(QWidget):
         row = self.candidate_table.currentRow()
         if row < 0:
             return None
-        return self.candidate_table.item(row, 7)
+        return self.candidate_table.item(row, 8)
 
     def update_candidate_open_buttons(self) -> None:
         if not hasattr(self, "open_local_button"):
@@ -786,9 +809,9 @@ class ImportTab(QWidget):
             QDesktopServices.openUrl(QUrl(remote_url))
 
     def open_candidate_from_item(self, item: QTableWidgetItem) -> None:
-        if item.column() in (3, 7):
+        if item.column() in (4, 6, 8):
             self.open_selected_local_file()
-        else:
+        elif item.column() == 5:
             self.open_selected_remote_image()
 
     def apply_candidate_filter(self) -> None:

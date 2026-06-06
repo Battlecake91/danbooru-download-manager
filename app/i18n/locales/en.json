@@ -782,5 +782,7 @@
   "import.confidence.mismatch": "Mismatch",
   "import.button.open_local": "Open local file",
   "import.button.open_remote": "Open remote image",
-  "import.warning.local_file_missing": "The local file no longer exists."
+  "import.warning.local_file_missing": "The local file no longer exists.",
+  "import.table.local_preview": "Local",
+  "import.table.remote_preview": "Remote"
 }

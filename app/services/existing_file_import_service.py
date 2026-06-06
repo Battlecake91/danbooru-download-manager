@@ -110,6 +110,7 @@ class ExistingFileImportCandidate:
     resolution_status: str = "unknown"
     remote_is_better: bool = False
     remote_image_url: str = ""
+    remote_thumbnail_path: str = ""
     remote_post_url: str = ""
     importable: bool = True
 
@@ -494,6 +495,12 @@ class ExistingFileImportService:
             confidence = "questionable"
             reason = "No reliable filename tags found"
 
+        remote_thumbnail_path = ""
+        try:
+            remote_thumbnail_path = str(self.post_import_service.thumbnail_cache.cache_thumbnail(post) or "")
+        except Exception:
+            remote_thumbnail_path = ""
+
         return ExistingFileImportCandidate(
             path=str(path),
             filename=path.name,
@@ -512,6 +519,7 @@ class ExistingFileImportService:
             resolution_status=resolution_status,
             remote_is_better=remote_is_better,
             remote_image_url=str(post.get("large_file_url") or post.get("file_url") or post.get("preview_file_url") or ""),
+            remote_thumbnail_path=remote_thumbnail_path,
             remote_post_url=f"{str(self.config.get('base_url') or 'https://danbooru.donmai.us').rstrip('/')}/posts/{int(post['id'])}",
             importable=confidence != "mismatch",
         )
