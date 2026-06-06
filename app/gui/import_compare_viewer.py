@@ -102,6 +102,8 @@ class ImportCompareViewer(QDialog):
         self._remote_bytes = QByteArray()
 
         self.setWindowTitle(tr("import.compare.title", "Compare local and remote image", config=self.config))
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+        self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
         self.resize(1450, 900)
 
         root = QVBoxLayout(self)

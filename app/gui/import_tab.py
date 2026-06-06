@@ -807,17 +807,9 @@ class ImportTab(QWidget):
         if index is None:
             return
         dialog = ImportCompareViewer(self.config, self.scan_candidates, index, self)
-        dialog.decision_changed.connect(self.on_compare_decision_changed)
         dialog.exec()
         self.populate_candidate_table()
         self.select_candidate_by_path(self.scan_candidates[index].path)
-
-    def on_compare_decision_changed(self, index: int, matches: bool) -> None:
-        if index < 0 or index >= len(self.scan_candidates):
-            return
-        candidate = self.scan_candidates[index]
-        self.populate_candidate_table()
-        self.select_candidate_by_path(candidate.path)
 
     def select_candidate_by_path(self, candidate_path: str) -> None:
         for row in range(self.candidate_table.rowCount()):

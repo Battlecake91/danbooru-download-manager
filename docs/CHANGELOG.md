@@ -1,3 +1,10 @@
+## 1.3.165 - Faster importer comparison decisions
+
+- Added native maximize and minimize controls to the importer comparison viewer.
+- Removed the full candidate-table rebuild from every manual match or mismatch decision.
+- Refresh the importer table once after the comparison viewer closes instead.
+- Make status decisions advance to the next candidate immediately, even with large scans and cached thumbnails.
+
 ## 1.3.163 - Preserve hyphenated tags during importer matching
 
 - Preserve internal hyphens while parsing tags from imported filenames.

@@ -172,3 +172,7 @@ After scanning a folder, select a candidate and choose **Compare images**. The c
 Use **Previous** and **Next** to review the candidate list. **Mark match** selects the file for import and changes its confidence to high. **Mark mismatch** deselects the file and classifies it as a mismatch. The viewer advances automatically after either decision.
 
 The **Fit images** toggle switches between fitting both images into their panes and showing them at their actual pixel size. The remote image can also be opened in the system browser.
+### Comparison viewer performance
+
+The comparison viewer can be maximized or minimized with the normal window controls. Manual **Match** and **Mismatch** decisions update the in-memory candidate immediately and advance without rebuilding the complete importer table. The table is refreshed once when the comparison viewer is closed.
+
