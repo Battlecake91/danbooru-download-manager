@@ -197,3 +197,10 @@ The comparison viewer now follows every candidate visible under the active confi
 Use **Mark all** to select every visible table row, equivalent to selecting the rows with Ctrl+A. This does not change any import checkbox. Use **Import all** to check the import boxes for every candidate in the current filtered view. Neither button starts the import; importing still requires the separate **Import selected** action.
 
 In the comparison viewer, the large arrow buttons beside the images and the Left/Right arrow keys navigate through the filtered candidates. The Match and Mismatch buttons are positioned directly between the local and Danbooru images for faster review.
+
+## Source-page scan summary
+
+After a folder scan, the Source step uses the available page area for a larger, line-by-line summary. The **Review scan results** button appears directly below that summary and opens the candidate list. It stays hidden until a scan has returned candidates.
+
+The resolution-mismatch statistic only counts candidates already classified as **Match**. Questionable and mismatched IDs are excluded because their resolution comparison is not useful as an import-quality metric.
+

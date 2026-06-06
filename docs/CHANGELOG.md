@@ -1,3 +1,11 @@
+## 1.3.170 - Import scan summary and navigation fixes
+
+- Enlarged the source-page scan summary and used the remaining page space for readable scan results.
+- Added a prominent full-width **Review scan results** button below the completed statistics.
+- Hide the review button until a scan has produced candidates and show it reliably after completion.
+- Count resolution mismatches only for candidates already classified as matches.
+- Improved the shared scan-status text readability.
+
 ## 1.3.169 - Three-step importer workflow
 
 - Reorganized the importer into Source, Review and Import Process steps.

@@ -195,24 +195,30 @@ class ImportTab(QWidget):
         self.refresh_categories_button.clicked.connect(self.load_categories)
         source_buttons.addWidget(self.refresh_categories_button)
         source_buttons.addStretch(1)
-        self.review_results_button = QPushButton(
-            tr("import.button.review_results", "Review scan results", config=self.config)
-        )
-        self.review_results_button.clicked.connect(self.show_review_page)
-        self.review_results_button.setEnabled(False)
-        source_buttons.addWidget(self.review_results_button)
         source_layout.addLayout(source_buttons)
 
         self.scan_statistics_label = QLabel(
             tr("import.scan.no_results", "No scan results yet.", config=self.config)
         )
         self.scan_statistics_label.setWordWrap(True)
+        self.scan_statistics_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.scan_statistics_label.setMinimumHeight(180)
+        self.scan_statistics_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.scan_statistics_label.setStyleSheet(
             "QLabel { background: palette(base); border: 1px solid palette(mid); "
-            "border-radius: 6px; padding: 10px; font-weight: bold; }"
+            "border-radius: 8px; padding: 18px; font-size: 14px; font-weight: bold; }"
         )
-        source_layout.addWidget(self.scan_statistics_label)
-        source_layout.addStretch(1)
+        source_layout.addWidget(self.scan_statistics_label, stretch=1)
+
+        self.review_results_button = QPushButton(
+            tr("import.button.review_results", "Review scan results", config=self.config)
+        )
+        self.review_results_button.clicked.connect(self.show_review_page)
+        self.review_results_button.setEnabled(False)
+        self.review_results_button.setVisible(False)
+        self.review_results_button.setMinimumHeight(44)
+        self.review_results_button.setStyleSheet("QPushButton { font-size: 14px; font-weight: bold; }")
+        source_layout.addWidget(self.review_results_button)
         self.workflow_stack.addWidget(self.source_page)
 
         # Step 2: inspect, filter and select candidates.
@@ -375,6 +381,10 @@ class ImportTab(QWidget):
         # Shared progress and log area for all workflow steps.
         self.progress_label = QLabel(tr("common.ready", "Ready.", config=self.config))
         self.progress_label.setWordWrap(True)
+        self.progress_label.setMinimumHeight(36)
+        self.progress_label.setStyleSheet(
+            "QLabel { padding: 6px 10px; font-size: 13px; font-weight: bold; }"
+        )
         self.main_layout.addWidget(self.progress_label)
 
         self.progress_bar = QProgressBar()
@@ -446,7 +456,9 @@ class ImportTab(QWidget):
         questionable = sum(1 for candidate in candidates if candidate.confidence == "questionable")
         mismatch = sum(1 for candidate in candidates if candidate.confidence == "mismatch")
         resolution_mismatch = sum(
-            1 for candidate in candidates if candidate.resolution_status == "mismatch"
+            1
+            for candidate in candidates
+            if candidate.confidence == "high" and candidate.resolution_status == "mismatch"
         )
         already_known = 0
         seen_post_ids: set[int] = set()
@@ -474,7 +486,9 @@ class ImportTab(QWidget):
                 resolution_mismatch=resolution_mismatch,
             )
         )
-        self.review_results_button.setEnabled(self.thread is None and scanned > 0)
+        has_results = scanned > 0
+        self.review_results_button.setVisible(has_results)
+        self.review_results_button.setEnabled(self.thread is None and has_results)
 
     def load_categories(self) -> None:
         current_id = self.current_category_id()
@@ -904,6 +918,7 @@ class ImportTab(QWidget):
             self.continue_process_button.setEnabled(False)
         if hasattr(self, "review_results_button"):
             self.review_results_button.setEnabled(False)
+            self.review_results_button.setVisible(False)
         if hasattr(self, "scan_statistics_label"):
             self.scan_statistics_label.setText(
                 tr("import.scan.no_results", "No scan results yet.", config=self.config)

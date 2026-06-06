@@ -818,6 +818,6 @@
   "import.label.selection": "Auswahl",
   "import.info.scan_first": "Prüfe zuerst einen Ordner, bevor du die Kandidaten ansiehst.",
   "import.scan.no_results": "Noch keine Scan-Ergebnisse vorhanden.",
-  "import.scan.statistics": "Scan abgeschlossen\nGeprüft: {scanned} | Match: {matched} | Fragwürdig: {questionable} | Mismatch: {mismatch} | Bereits bekannt: {already_known} | Abweichende Auflösung: {resolution_mismatch}",
+  "import.scan.statistics": "Scan abgeschlossen\n\nGeprüft: {scanned}\nMatch: {matched}\nFragwürdig: {questionable}\nMismatch: {mismatch}\nBereits bekannt: {already_known}\nAbweichende Auflösung bei Matches: {resolution_mismatch}",
   "import.process.selection_summary": "{selected} von {total} geprüften Kandidaten sind für den Import ausgewählt."
 }
