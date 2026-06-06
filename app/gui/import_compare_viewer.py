@@ -23,17 +23,12 @@ from app.services.existing_file_import_service import ExistingFileImportCandidat
 
 
 class _ImagePane(QWidget):
-    def __init__(self, title: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self._pixmap = QPixmap()
         self._fit = True
 
         layout = QVBoxLayout(self)
-        self.title_label = QLabel(title)
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(self.title_label)
-
         self.info_label = QLabel()
         self.info_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.info_label)
@@ -112,9 +107,26 @@ class ImportCompareViewer(QDialog):
         self.header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         root.addWidget(self.header_label)
 
+        comparison_headers = QHBoxLayout()
+        self.local_heading = QLabel(tr("import.compare.local", "Local file", config=self.config))
+        self.local_heading.setAlignment(Qt.AlignCenter)
+        self.local_heading.setStyleSheet("font-weight: 700; font-size: 22px;")
+        comparison_headers.addWidget(self.local_heading, stretch=1)
+
+        self.status_label = QLabel()
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setMinimumWidth(180)
+        comparison_headers.addWidget(self.status_label)
+
+        self.remote_heading = QLabel(tr("import.compare.remote", "Danbooru candidate", config=self.config))
+        self.remote_heading.setAlignment(Qt.AlignCenter)
+        self.remote_heading.setStyleSheet("font-weight: 700; font-size: 22px;")
+        comparison_headers.addWidget(self.remote_heading, stretch=1)
+        root.addLayout(comparison_headers)
+
         panes = QHBoxLayout()
-        self.local_pane = _ImagePane(tr("import.compare.local", "Local file", config=self.config))
-        self.remote_pane = _ImagePane(tr("import.compare.remote", "Danbooru candidate", config=self.config))
+        self.local_pane = _ImagePane()
+        self.remote_pane = _ImagePane()
         panes.addWidget(self.local_pane, stretch=1)
         panes.addWidget(self.remote_pane, stretch=1)
         root.addLayout(panes, stretch=1)
@@ -185,6 +197,7 @@ class ImportCompareViewer(QDialog):
                 filename=candidate.filename,
             )
         )
+        self._update_status_label(candidate.confidence)
         local_info = self._resolution_text(candidate.local_width, candidate.local_height)
         remote_info = self._resolution_text(candidate.remote_width, candidate.remote_height)
 
@@ -224,6 +237,23 @@ class ImportCompareViewer(QDialog):
             request.setRawHeader(b"User-Agent", b"DanbooruDownloadManager/1.3")
             self.reply = self.network.get(request)
             self.reply.finished.connect(self.remote_download_finished)
+
+    def _update_status_label(self, confidence: str) -> None:
+        labels = {
+            "high": tr("import.compare.status_match", "Match", config=self.config),
+            "mismatch": tr("import.compare.status_mismatch", "Mismatch", config=self.config),
+            "questionable": tr("import.compare.status_questionable", "Questionable", config=self.config),
+        }
+        styles = {
+            "high": "background: #a9dfb3; color: black;",
+            "mismatch": "background: #f2a7a7; color: black;",
+            "questionable": "background: #ffe59a; color: black;",
+        }
+        self.status_label.setText(labels.get(confidence, confidence.title()))
+        self.status_label.setStyleSheet(
+            "font-weight: 800; font-size: 18px; padding: 8px 18px; "
+            "border: 1px solid #666; border-radius: 6px; " + styles.get(confidence, "")
+        )
 
     def remote_download_finished(self) -> None:
         reply = self.reply

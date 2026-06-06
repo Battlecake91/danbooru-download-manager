@@ -1,3 +1,11 @@
+## 1.3.166 - Importer review selection workflow
+
+- Added a prominent Match, Mismatch or Questionable status badge between the local and Danbooru headings in the comparison viewer.
+- Increased the Local file and Danbooru candidate heading sizes for faster visual orientation.
+- Limited comparison-viewer navigation to checked candidates that are visible under the current confidence filters.
+- Added **Mark all** for all importable candidates in the current filtered view.
+- Added **Import all** to import the complete current filtered view without manually checking every row.
+
 ## 1.3.165 - Faster importer comparison decisions
 
 - Added native maximize and minimize controls to the importer comparison viewer.

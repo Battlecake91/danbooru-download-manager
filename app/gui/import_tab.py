@@ -215,7 +215,7 @@ class ImportTab(QWidget):
         button_row.addWidget(self.scan_button)
 
         self.import_button = QPushButton(tr("import.button.import_selected", "Import selected", config=self.config))
-        self.import_button.clicked.connect(self.start_import)
+        self.import_button.clicked.connect(lambda: self.start_import())
         self.import_button.setEnabled(False)
         button_row.addWidget(self.import_button)
 
@@ -252,6 +252,17 @@ class ImportTab(QWidget):
             checkbox.setChecked(True)
             checkbox.stateChanged.connect(self.apply_candidate_filter)
             review_row.addWidget(checkbox)
+
+        self.mark_all_button = QPushButton(tr("import.button.mark_all", "Mark all", config=self.config))
+        self.mark_all_button.clicked.connect(lambda: self.mark_all_visible_candidates())
+        self.mark_all_button.setEnabled(False)
+        review_row.addWidget(self.mark_all_button)
+
+        self.import_all_button = QPushButton(tr("import.button.import_all_visible", "Import all", config=self.config))
+        self.import_all_button.clicked.connect(lambda: self.start_import_all_visible())
+        self.import_all_button.setEnabled(False)
+        review_row.addWidget(self.import_all_button)
+
         review_row.addStretch(1)
         self.compare_button = QPushButton(tr("import.button.compare_images", "Compare images", config=self.config))
         self.compare_button.clicked.connect(self.open_compare_viewer)
@@ -382,6 +393,10 @@ class ImportTab(QWidget):
         self.repair_button.setEnabled(enabled)
         self.scan_button.setEnabled(enabled)
         self.import_button.setEnabled(enabled and bool(self.scan_candidates))
+        if hasattr(self, "mark_all_button"):
+            has_visible = bool(self.visible_candidate_paths(importable_only=True))
+            self.mark_all_button.setEnabled(enabled and has_visible)
+            self.import_all_button.setEnabled(enabled and has_visible)
         self.confidence_high_checkbox.setEnabled(enabled)
         self.confidence_questionable_checkbox.setEnabled(enabled)
         self.confidence_mismatch_checkbox.setEnabled(enabled)
@@ -402,6 +417,32 @@ class ImportTab(QWidget):
             recursive=self.recursive_checkbox.isChecked(), rename_after_import=False,
         )
 
+    def visible_candidate_paths(self, *, importable_only: bool = False) -> list[str]:
+        paths: list[str] = []
+        for row in range(self.candidate_table.rowCount()):
+            if self.candidate_table.isRowHidden(row):
+                continue
+            check_item = self.candidate_table.item(row, 0)
+            path_item = self.candidate_table.item(row, 8)
+            if not check_item or not path_item:
+                continue
+            if importable_only and not bool(check_item.flags() & Qt.ItemIsUserCheckable):
+                continue
+            paths.append(str(path_item.data(Qt.UserRole) or path_item.text()))
+        return paths
+
+    def mark_all_visible_candidates(self) -> None:
+        for row in range(self.candidate_table.rowCount()):
+            if self.candidate_table.isRowHidden(row):
+                continue
+            check_item = self.candidate_table.item(row, 0)
+            if check_item and bool(check_item.flags() & Qt.ItemIsUserCheckable):
+                check_item.setCheckState(Qt.Checked)
+
+    def start_import_all_visible(self) -> None:
+        self.mark_all_visible_candidates()
+        self.start_import(visible_only=True)
+
     def selected_candidate_paths(self) -> list[str]:
         paths: list[str] = []
         for row in range(self.candidate_table.rowCount()):
@@ -411,12 +452,16 @@ class ImportTab(QWidget):
                 paths.append(path_item.data(Qt.UserRole) or path_item.text())
         return paths
 
-    def start_import(self) -> None:
+    def start_import(self, *, visible_only: bool = False) -> None:
         folder = self.folder_edit.text().strip()
         if not folder or not Path(folder).expanduser().is_dir():
             QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.folder_not_found", config=self.config, folder=folder))
             return
-        candidate_paths = self.selected_candidate_paths()
+        candidate_paths = (
+            self.visible_candidate_paths(importable_only=True)
+            if visible_only
+            else self.selected_candidate_paths()
+        )
         if not candidate_paths:
             QMessageBox.information(self, tr("import.title", config=self.config), tr("import.info.no_candidates_selected", "No import candidates selected.", config=self.config))
             return
@@ -679,6 +724,9 @@ class ImportTab(QWidget):
             self.candidate_table.setRowCount(0)
         if hasattr(self, "import_button"):
             self.import_button.setEnabled(False)
+        if hasattr(self, "mark_all_button"):
+            self.mark_all_button.setEnabled(False)
+            self.import_all_button.setEnabled(False)
 
     def populate_candidate_table(self) -> None:
         self.candidate_table.setSortingEnabled(False)
@@ -803,13 +851,38 @@ class ImportTab(QWidget):
         return None
 
     def open_compare_viewer(self) -> None:
-        index = self.selected_candidate_index()
-        if index is None:
+        selected_path_item = self.selected_candidate_path_item()
+        if selected_path_item is None:
             return
-        dialog = ImportCompareViewer(self.config, self.scan_candidates, index, self)
+        selected_path = str(selected_path_item.data(Qt.UserRole) or selected_path_item.text())
+        visible_selected_paths = {
+            str(self.candidate_table.item(row, 8).data(Qt.UserRole) or self.candidate_table.item(row, 8).text())
+            for row in range(self.candidate_table.rowCount())
+            if not self.candidate_table.isRowHidden(row)
+            and self.candidate_table.item(row, 0) is not None
+            and self.candidate_table.item(row, 8) is not None
+            and self.candidate_table.item(row, 0).checkState() == Qt.Checked
+        }
+        candidates = [candidate for candidate in self.scan_candidates if candidate.path in visible_selected_paths]
+        if not candidates:
+            QMessageBox.information(
+                self,
+                tr("import.title", config=self.config),
+                tr(
+                    "import.info.no_selected_visible_candidates",
+                    "No checked candidates are visible with the current filter.",
+                    config=self.config,
+                ),
+            )
+            return
+        start_index = next(
+            (index for index, candidate in enumerate(candidates) if candidate.path == selected_path),
+            0,
+        )
+        dialog = ImportCompareViewer(self.config, candidates, start_index, self)
         dialog.exec()
         self.populate_candidate_table()
-        self.select_candidate_by_path(self.scan_candidates[index].path)
+        self.select_candidate_by_path(selected_path)
 
     def select_candidate_by_path(self, candidate_path: str) -> None:
         for row in range(self.candidate_table.rowCount()):
@@ -856,6 +929,13 @@ class ImportTab(QWidget):
             item = self.candidate_table.item(row, 1)
             confidence = str(item.data(Qt.UserRole) or "") if item else ""
             self.candidate_table.setRowHidden(row, confidence not in visible_confidences)
+
+        has_visible_importable = bool(self.visible_candidate_paths(importable_only=True))
+        controls_enabled = self.thread is None
+        if hasattr(self, "mark_all_button"):
+            self.mark_all_button.setEnabled(controls_enabled and has_visible_importable)
+            self.import_all_button.setEnabled(controls_enabled and has_visible_importable)
+        self.update_candidate_open_buttons()
 
     def on_failed(self, traceback_text: str) -> None:
         self.set_controls_enabled(True)

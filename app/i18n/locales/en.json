@@ -803,5 +803,11 @@
   "viewer.use_all_auto_scores_again": "Use for All Automatic Scores Again",
   "viewer.use_category_hint_again": "Use Category Hint Again",
   "viewer.window_title": "Danbooru Manager - Viewer",
-  "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}"
+  "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}",
+  "import.button.mark_all": "Mark all",
+  "import.button.import_all_visible": "Import all",
+  "import.info.no_selected_visible_candidates": "No checked candidates are visible with the current filter.",
+  "import.compare.status_match": "Match",
+  "import.compare.status_mismatch": "Mismatch",
+  "import.compare.status_questionable": "Questionable"
 }
