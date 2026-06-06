@@ -325,13 +325,32 @@ class ImportTab(QWidget):
         self.back_to_source_button.clicked.connect(self.show_source_page)
         review_navigation.addWidget(self.back_to_source_button)
         review_navigation.addStretch(1)
+        review_page_layout.addLayout(review_navigation)
+
+        self.review_continue_group = QGroupBox(
+            tr("import.group.next_step", "Next step", config=self.config)
+        )
+        review_continue_layout = QVBoxLayout(self.review_continue_group)
+        self.review_selection_label = QLabel()
+        self.review_selection_label.setWordWrap(True)
+        self.review_selection_label.setAlignment(Qt.AlignCenter)
+        self.review_selection_label.setStyleSheet(
+            "QLabel { font-size: 14px; font-weight: bold; padding: 4px; }"
+        )
+        review_continue_layout.addWidget(self.review_selection_label)
+
         self.continue_process_button = QPushButton(
             tr("import.button.import_process", "Import process", config=self.config)
         )
         self.continue_process_button.clicked.connect(self.show_process_page)
         self.continue_process_button.setEnabled(False)
-        review_navigation.addWidget(self.continue_process_button)
-        review_page_layout.addLayout(review_navigation)
+        self.continue_process_button.setMinimumHeight(54)
+        self.continue_process_button.setCursor(Qt.PointingHandCursor)
+        self.continue_process_button.setStyleSheet(
+            "QPushButton { font-size: 16px; font-weight: bold; padding: 10px 18px; }"
+        )
+        review_continue_layout.addWidget(self.continue_process_button)
+        review_page_layout.addWidget(self.review_continue_group)
         self.workflow_stack.addWidget(self.review_page)
 
         # Step 3: decide what the actual import should do.
@@ -454,8 +473,25 @@ class ImportTab(QWidget):
                 total=total,
             )
         )
+        if hasattr(self, "review_selection_label"):
+            self.review_selection_label.setText(
+                tr(
+                    "import.process.selection_summary",
+                    "{selected} of {total} scanned candidates selected for import.",
+                    config=self.config,
+                    selected=selected,
+                    total=total,
+                )
+            )
         if hasattr(self, "continue_process_button"):
             self.continue_process_button.setEnabled(self.thread is None and selected > 0)
+            self.continue_process_button.setToolTip(
+                "" if selected > 0 else tr(
+                    "import.info.no_candidates_selected",
+                    "No import candidates selected.",
+                    config=self.config,
+                )
+            )
         if hasattr(self, "import_button"):
             self.import_button.setEnabled(self.thread is None and selected > 0)
 

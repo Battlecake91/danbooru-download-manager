@@ -204,3 +204,8 @@ After a folder scan, the Source step uses the available page area for a larger, 
 
 The resolution-mismatch statistic only counts candidates already classified as **Match**. Questionable and mismatched IDs are excluded because their resolution comparison is not useful as an import-quality metric.
 
+
+
+## Continuing from review to import
+
+The Review step ends with a dedicated full-width next-step panel below the candidate table. It shows the current number of candidates checked for import and provides a large **Import process** button. The button remains disabled until at least one candidate is checked, then opens the final page containing rename, existing-post and thumbnail options.

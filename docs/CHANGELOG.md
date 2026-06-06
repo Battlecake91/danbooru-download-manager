@@ -1,3 +1,10 @@
+## 1.3.172 - Prominent review-to-import transition
+
+- Replaced the small corner button with a dedicated full-width next-step panel below the candidate table.
+- Enlarged the **Import process** button and made it visually prominent.
+- Added a live selected-candidate summary directly above the button.
+- Keep the button disabled until at least one candidate is checked for import.
+
 ## 1.3.171 - Importer status-area layout cleanup
 
 - Moved the progress and log area into the Source step instead of displaying it below every workflow page.
