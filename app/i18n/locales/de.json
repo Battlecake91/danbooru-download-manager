@@ -266,7 +266,7 @@
   "import.rename_title": "Rename",
   "import.repair_hint": "Uses the selected folder above, finds saved files with the old category, and assigns them to the selected new category. Files are not moved.",
   "import.repair_title": "Repair import",
-  "import.scan.summary": "Prüfung abgeschlossen: {count} Dateien",
+  "import.scan.summary": "Scan abgeschlossen: {count} Dateien. Prüfe die Statistik und öffne anschließend die Kandidatenliste.",
   "import.service.action_imported": "imported",
   "import.service.action_updated": "updated",
   "import.service.action_updated_path_category": "updated (path/category overwritten)",
@@ -809,5 +809,15 @@
   "import.info.no_selected_visible_candidates": "Mit dem aktuellen Filter sind keine Kandidaten sichtbar.",
   "import.compare.status_match": "Passend",
   "import.compare.status_mismatch": "Nicht passend",
-  "import.compare.status_questionable": "Fragwürdig"
+  "import.compare.status_questionable": "Fragwürdig",
+  "import.button.review_results": "Scan-Ergebnisse prüfen",
+  "import.button.back_to_source": "Zurück zur Quelle",
+  "import.button.import_process": "Import-Prozess",
+  "import.button.back_to_review": "Zurück zur Prüfung",
+  "import.group.process": "Import-Prozess",
+  "import.label.selection": "Auswahl",
+  "import.info.scan_first": "Prüfe zuerst einen Ordner, bevor du die Kandidaten ansiehst.",
+  "import.scan.no_results": "Noch keine Scan-Ergebnisse vorhanden.",
+  "import.scan.statistics": "Scan abgeschlossen\nGeprüft: {scanned} | Match: {matched} | Fragwürdig: {questionable} | Mismatch: {mismatch} | Bereits bekannt: {already_known} | Abweichende Auflösung: {resolution_mismatch}",
+  "import.process.selection_summary": "{selected} von {total} geprüften Kandidaten sind für den Import ausgewählt."
 }

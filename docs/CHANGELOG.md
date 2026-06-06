@@ -1,3 +1,12 @@
+## 1.3.169 - Three-step importer workflow
+
+- Reorganized the importer into Source, Review and Import Process steps.
+- Limited Import Source to folder, category and subfolder settings.
+- Added a scan-completion summary with matched, questionable, mismatched, already-known and resolution-mismatch counts.
+- Added an explicit transition from scan statistics to the candidate review list.
+- Moved rename, existing-post and thumbnail actions to the final Import Process step.
+- Kept candidate filtering, comparison and selection in the dedicated Review step.
+
 ## 1.3.168 - Importer row selection and comparison controls
 
 - Changed **Mark all** to select every visible table row, matching Ctrl+A semantics without changing import checkboxes.

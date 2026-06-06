@@ -266,7 +266,7 @@
   "import.rename_title": "Rename",
   "import.repair_hint": "Uses the selected folder above, finds saved files with the old category, and assigns them to the selected new category. Files are not moved.",
   "import.repair_title": "Repair import",
-  "import.scan.summary": "Scan complete: {count} files",
+  "import.scan.summary": "Scan complete: {count} files. Review the statistics and continue to the candidate list.",
   "import.service.action_imported": "imported",
   "import.service.action_updated": "updated",
   "import.service.action_updated_path_category": "updated (path/category overwritten)",
@@ -809,5 +809,15 @@
   "import.info.no_selected_visible_candidates": "No candidates are visible with the current filter.",
   "import.compare.status_match": "Match",
   "import.compare.status_mismatch": "Mismatch",
-  "import.compare.status_questionable": "Questionable"
+  "import.compare.status_questionable": "Questionable",
+  "import.button.review_results": "Review scan results",
+  "import.button.back_to_source": "Back to source",
+  "import.button.import_process": "Import process",
+  "import.button.back_to_review": "Back to review",
+  "import.group.process": "Import process",
+  "import.label.selection": "Selection",
+  "import.info.scan_first": "Scan a folder before reviewing candidates.",
+  "import.scan.no_results": "No scan results yet.",
+  "import.scan.statistics": "Scan complete\nScanned: {scanned} | Match: {matched} | Questionable: {questionable} | Mismatch: {mismatch} | Already known: {already_known} | Resolution mismatch: {resolution_mismatch}",
+  "import.process.selection_summary": "{selected} of {total} scanned candidates selected for import."
 }

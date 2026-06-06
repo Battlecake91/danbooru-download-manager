@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -151,14 +152,12 @@ class ImportTab(QWidget):
         self.info_label.setWordWrap(True)
         self.main_layout.addWidget(self.info_label)
 
-        self.warning_label = QLabel(tr("import.warning_filename_id_md5", config=self.config))
-        self.warning_label.setWordWrap(True)
-        self.warning_label.setStyleSheet(
-            "QLabel { background: #fff4c2; color: #4f3600; border: 1px solid #d6a800; "
-            "border-radius: 6px; padding: 8px; font-weight: bold; }"
-        )
-        self.main_layout.addWidget(self.warning_label)
+        self.workflow_stack = QStackedWidget()
+        self.main_layout.addWidget(self.workflow_stack, stretch=1)
 
+        # Step 1: choose the source and scan it. Import actions deliberately stay out of this page.
+        self.source_page = QWidget()
+        source_layout = QVBoxLayout(self.source_page)
         self.import_group = QGroupBox(tr("import.group.source", config=self.config))
         self.import_layout = QFormLayout(self.import_group)
 
@@ -178,72 +177,52 @@ class ImportTab(QWidget):
         self.recursive_checkbox = QCheckBox(tr("import.checkbox.recursive", config=self.config))
         self.recursive_checkbox.setChecked(True)
         self.import_layout.addRow(tr("import.label.scan", config=self.config), self.recursive_checkbox)
+        source_layout.addWidget(self.import_group)
 
-        self.rename_after_import_checkbox = QCheckBox(tr("import.checkbox.rename_after_import", config=self.config))
-        self.rename_after_import_checkbox.setChecked(False)
-        self.import_layout.addRow(tr("import.label.rename", config=self.config), self.rename_after_import_checkbox)
+        self.warning_label = QLabel(tr("import.warning_filename_id_md5", config=self.config))
+        self.warning_label.setWordWrap(True)
+        self.warning_label.setStyleSheet(
+            "QLabel { background: #fff4c2; color: #4f3600; border: 1px solid #d6a800; "
+            "border-radius: 6px; padding: 8px; font-weight: bold; }"
+        )
+        source_layout.addWidget(self.warning_label)
 
-        self.update_existing_checkbox = QCheckBox(tr("import.checkbox.update_existing", config=self.config))
-        self.update_existing_checkbox.setChecked(True)
-        self.import_layout.addRow(tr("import.label.existing_posts", config=self.config), self.update_existing_checkbox)
-
-        self.fetch_thumbnails_checkbox = QCheckBox(tr("import.checkbox.fetch_thumbnails", config=self.config))
-        self.fetch_thumbnails_checkbox.setChecked(False)
-        self.import_layout.addRow(tr("import.label.thumbnails", config=self.config), self.fetch_thumbnails_checkbox)
-
-        self.rename_last_import_checkbox = QCheckBox(tr("import.checkbox.rename_last_import_only", config=self.config))
-        self.rename_last_import_checkbox.setChecked(True)
-        self.import_layout.addRow(tr("import.label.rename_scope", config=self.config), self.rename_last_import_checkbox)
-
-        self.repair_group = QGroupBox(tr("import.group.repair", config=self.config))
-        self.repair_layout = QFormLayout(self.repair_group)
-
-        self.old_category_combo = QComboBox()
-        self.old_category_combo.setMinimumWidth(260)
-        self.repair_layout.addRow(tr("import.label.wrongly_imported_as", config=self.config), self.old_category_combo)
-
-        self.repair_hint_label = QLabel(tr("import.repair_hint", config=self.config))
-        self.repair_hint_label.setWordWrap(True)
-        self.repair_layout.addRow(tr("import.label.note", config=self.config), self.repair_hint_label)
-
-        self.main_layout.addWidget(self.import_group)
-        self.main_layout.addWidget(self.repair_group)
-
-        button_row = QHBoxLayout()
+        source_buttons = QHBoxLayout()
         self.scan_button = QPushButton(tr("import.button.scan_folder", "Scan folder", config=self.config))
         self.scan_button.clicked.connect(self.start_scan)
-        button_row.addWidget(self.scan_button)
-
-        self.import_button = QPushButton(tr("import.button.import_selected", "Import selected", config=self.config))
-        self.import_button.clicked.connect(lambda: self.start_import())
-        self.import_button.setEnabled(False)
-        button_row.addWidget(self.import_button)
-
-        self.repair_button = QPushButton(tr("import.button.repair_category", config=self.config))
-        self.repair_button.clicked.connect(self.start_repair_category)
-        button_row.addWidget(self.repair_button)
-
-        self.rename_category_button = QPushButton(tr("import.button.rename_category", config=self.config))
-        self.rename_category_button.clicked.connect(self.start_rename_category)
-        button_row.addWidget(self.rename_category_button)
-
+        source_buttons.addWidget(self.scan_button)
         self.refresh_categories_button = QPushButton(tr("import.button.reload_categories", config=self.config))
         self.refresh_categories_button.clicked.connect(self.load_categories)
-        button_row.addWidget(self.refresh_categories_button)
-        button_row.addStretch(1)
-        self.main_layout.addLayout(button_row)
+        source_buttons.addWidget(self.refresh_categories_button)
+        source_buttons.addStretch(1)
+        self.review_results_button = QPushButton(
+            tr("import.button.review_results", "Review scan results", config=self.config)
+        )
+        self.review_results_button.clicked.connect(self.show_review_page)
+        self.review_results_button.setEnabled(False)
+        source_buttons.addWidget(self.review_results_button)
+        source_layout.addLayout(source_buttons)
 
+        self.scan_statistics_label = QLabel(
+            tr("import.scan.no_results", "No scan results yet.", config=self.config)
+        )
+        self.scan_statistics_label.setWordWrap(True)
+        self.scan_statistics_label.setStyleSheet(
+            "QLabel { background: palette(base); border: 1px solid palette(mid); "
+            "border-radius: 6px; padding: 10px; font-weight: bold; }"
+        )
+        source_layout.addWidget(self.scan_statistics_label)
+        source_layout.addStretch(1)
+        self.workflow_stack.addWidget(self.source_page)
+
+        # Step 2: inspect, filter and select candidates.
+        self.review_page = QWidget()
+        review_page_layout = QVBoxLayout(self.review_page)
         review_row = QHBoxLayout()
         review_row.addWidget(QLabel(tr("import.label.confidence_filter", "Show", config=self.config)))
-        self.confidence_high_checkbox = QCheckBox(
-            tr("import.filter.high", "High confidence", config=self.config)
-        )
-        self.confidence_questionable_checkbox = QCheckBox(
-            tr("import.filter.questionable", "Questionable", config=self.config)
-        )
-        self.confidence_mismatch_checkbox = QCheckBox(
-            tr("import.filter.mismatch", "Wrong ID / mismatch", config=self.config)
-        )
+        self.confidence_high_checkbox = QCheckBox(tr("import.filter.high", "High confidence", config=self.config))
+        self.confidence_questionable_checkbox = QCheckBox(tr("import.filter.questionable", "Questionable", config=self.config))
+        self.confidence_mismatch_checkbox = QCheckBox(tr("import.filter.mismatch", "Wrong ID / mismatch", config=self.config))
         for checkbox in (
             self.confidence_high_checkbox,
             self.confidence_questionable_checkbox,
@@ -262,8 +241,8 @@ class ImportTab(QWidget):
         self.import_all_button.clicked.connect(self.check_all_visible_candidates)
         self.import_all_button.setEnabled(False)
         review_row.addWidget(self.import_all_button)
-
         review_row.addStretch(1)
+
         self.compare_button = QPushButton(tr("import.button.compare_images", "Compare images", config=self.config))
         self.compare_button.clicked.connect(self.open_compare_viewer)
         self.compare_button.setEnabled(False)
@@ -276,13 +255,11 @@ class ImportTab(QWidget):
         self.open_remote_button.clicked.connect(self.open_selected_remote_image)
         self.open_remote_button.setEnabled(False)
         review_row.addWidget(self.open_remote_button)
-        self.replace_remote_button = QPushButton(
-            tr("import.button.replace_with_best", "Download best version", config=self.config)
-        )
+        self.replace_remote_button = QPushButton(tr("import.button.replace_with_best", "Download best version", config=self.config))
         self.replace_remote_button.clicked.connect(self.replace_selected_with_best_remote)
         self.replace_remote_button.setEnabled(False)
         review_row.addWidget(self.replace_remote_button)
-        self.main_layout.addLayout(review_row)
+        review_page_layout.addLayout(review_row)
 
         self.candidate_table = QTableWidget(0, 9)
         self.candidate_table.setHorizontalHeaderLabels([
@@ -301,6 +278,7 @@ class ImportTab(QWidget):
         self.candidate_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.candidate_table.setSortingEnabled(True)
         self.candidate_table.itemSelectionChanged.connect(self.update_candidate_open_buttons)
+        self.candidate_table.itemChanged.connect(self.update_process_selection_summary)
         self.candidate_table.itemDoubleClicked.connect(self.open_candidate_from_item)
         header = self.candidate_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -309,8 +287,92 @@ class ImportTab(QWidget):
         self.candidate_table.setIconSize(QSize(96, 96))
         self.candidate_table.verticalHeader().setDefaultSectionSize(104)
         self.candidate_table.setMinimumHeight(260)
-        self.main_layout.addWidget(self.candidate_table, stretch=1)
+        review_page_layout.addWidget(self.candidate_table, stretch=1)
 
+        review_navigation = QHBoxLayout()
+        self.back_to_source_button = QPushButton(
+            tr("import.button.back_to_source", "Back to source", config=self.config)
+        )
+        self.back_to_source_button.clicked.connect(self.show_source_page)
+        review_navigation.addWidget(self.back_to_source_button)
+        review_navigation.addStretch(1)
+        self.continue_process_button = QPushButton(
+            tr("import.button.import_process", "Import process", config=self.config)
+        )
+        self.continue_process_button.clicked.connect(self.show_process_page)
+        self.continue_process_button.setEnabled(False)
+        review_navigation.addWidget(self.continue_process_button)
+        review_page_layout.addLayout(review_navigation)
+        self.workflow_stack.addWidget(self.review_page)
+
+        # Step 3: decide what the actual import should do.
+        self.process_page = QWidget()
+        process_layout = QVBoxLayout(self.process_page)
+        self.process_group = QGroupBox(
+            tr("import.group.process", "Import process", config=self.config)
+        )
+        process_form = QFormLayout(self.process_group)
+
+        self.process_selection_label = QLabel()
+        self.process_selection_label.setWordWrap(True)
+        process_form.addRow(
+            tr("import.label.selection", "Selection", config=self.config),
+            self.process_selection_label,
+        )
+
+        self.rename_after_import_checkbox = QCheckBox(tr("import.checkbox.rename_after_import", config=self.config))
+        self.rename_after_import_checkbox.setChecked(False)
+        process_form.addRow(tr("import.label.rename", config=self.config), self.rename_after_import_checkbox)
+
+        self.update_existing_checkbox = QCheckBox(tr("import.checkbox.update_existing", config=self.config))
+        self.update_existing_checkbox.setChecked(True)
+        process_form.addRow(tr("import.label.existing_posts", config=self.config), self.update_existing_checkbox)
+
+        self.fetch_thumbnails_checkbox = QCheckBox(tr("import.checkbox.fetch_thumbnails", config=self.config))
+        self.fetch_thumbnails_checkbox.setChecked(False)
+        process_form.addRow(tr("import.label.thumbnails", config=self.config), self.fetch_thumbnails_checkbox)
+        process_layout.addWidget(self.process_group)
+
+        process_buttons = QHBoxLayout()
+        self.back_to_review_button = QPushButton(
+            tr("import.button.back_to_review", "Back to review", config=self.config)
+        )
+        self.back_to_review_button.clicked.connect(self.show_review_page)
+        process_buttons.addWidget(self.back_to_review_button)
+        process_buttons.addStretch(1)
+        self.import_button = QPushButton(tr("import.button.import_selected", "Import selected", config=self.config))
+        self.import_button.clicked.connect(lambda: self.start_import())
+        self.import_button.setEnabled(False)
+        process_buttons.addWidget(self.import_button)
+        process_layout.addLayout(process_buttons)
+
+        self.repair_group = QGroupBox(tr("import.group.repair", config=self.config))
+        self.repair_layout = QFormLayout(self.repair_group)
+        self.old_category_combo = QComboBox()
+        self.old_category_combo.setMinimumWidth(260)
+        self.repair_layout.addRow(tr("import.label.wrongly_imported_as", config=self.config), self.old_category_combo)
+        self.repair_hint_label = QLabel(tr("import.repair_hint", config=self.config))
+        self.repair_hint_label.setWordWrap(True)
+        self.repair_layout.addRow(tr("import.label.note", config=self.config), self.repair_hint_label)
+
+        self.rename_last_import_checkbox = QCheckBox(tr("import.checkbox.rename_last_import_only", config=self.config))
+        self.rename_last_import_checkbox.setChecked(True)
+        self.repair_layout.addRow(tr("import.label.rename_scope", config=self.config), self.rename_last_import_checkbox)
+
+        maintenance_buttons = QHBoxLayout()
+        self.repair_button = QPushButton(tr("import.button.repair_category", config=self.config))
+        self.repair_button.clicked.connect(self.start_repair_category)
+        maintenance_buttons.addWidget(self.repair_button)
+        self.rename_category_button = QPushButton(tr("import.button.rename_category", config=self.config))
+        self.rename_category_button.clicked.connect(self.start_rename_category)
+        maintenance_buttons.addWidget(self.rename_category_button)
+        maintenance_buttons.addStretch(1)
+        self.repair_layout.addRow(maintenance_buttons)
+        process_layout.addWidget(self.repair_group)
+        process_layout.addStretch(1)
+        self.workflow_stack.addWidget(self.process_page)
+
+        # Shared progress and log area for all workflow steps.
         self.progress_label = QLabel(tr("common.ready", "Ready.", config=self.config))
         self.progress_label.setWordWrap(True)
         self.main_layout.addWidget(self.progress_label)
@@ -321,16 +383,98 @@ class ImportTab(QWidget):
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(120)
+        self.log_text.setMinimumHeight(100)
         self.main_layout.addWidget(self.log_text)
 
         self.load_categories()
+        self.show_source_page()
 
     def choose_folder(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, tr("import.dialog.choose_folder.title", config=self.config), self.folder_edit.text().strip() or str(Path.home()))
         if selected:
             self.folder_edit.setText(selected)
             self.clear_scan_results()
+
+    def show_source_page(self) -> None:
+        self.workflow_stack.setCurrentWidget(self.source_page)
+
+    def show_review_page(self) -> None:
+        if not self.scan_candidates:
+            QMessageBox.information(
+                self,
+                tr("import.title", config=self.config),
+                tr("import.info.scan_first", "Scan a folder before reviewing candidates.", config=self.config),
+            )
+            return
+        self.workflow_stack.setCurrentWidget(self.review_page)
+        self.apply_candidate_filter()
+
+    def show_process_page(self) -> None:
+        if not self.selected_candidate_paths():
+            QMessageBox.information(
+                self,
+                tr("import.title", config=self.config),
+                tr("import.info.no_candidates_selected", "No import candidates selected.", config=self.config),
+            )
+            return
+        self.update_process_selection_summary()
+        self.workflow_stack.setCurrentWidget(self.process_page)
+
+    def update_process_selection_summary(self, *_args: object) -> None:
+        if not hasattr(self, "process_selection_label"):
+            return
+        selected = len(self.selected_candidate_paths()) if hasattr(self, "candidate_table") else 0
+        total = len(self.scan_candidates)
+        self.process_selection_label.setText(
+            tr(
+                "import.process.selection_summary",
+                "{selected} of {total} scanned candidates selected for import.",
+                config=self.config,
+                selected=selected,
+                total=total,
+            )
+        )
+        if hasattr(self, "continue_process_button"):
+            self.continue_process_button.setEnabled(self.thread is None and selected > 0)
+        if hasattr(self, "import_button"):
+            self.import_button.setEnabled(self.thread is None and selected > 0)
+
+    def update_scan_statistics(self) -> None:
+        candidates = self.scan_candidates
+        scanned = len(candidates)
+        matched = sum(1 for candidate in candidates if candidate.confidence == "high")
+        questionable = sum(1 for candidate in candidates if candidate.confidence == "questionable")
+        mismatch = sum(1 for candidate in candidates if candidate.confidence == "mismatch")
+        resolution_mismatch = sum(
+            1 for candidate in candidates if candidate.resolution_status == "mismatch"
+        )
+        already_known = 0
+        seen_post_ids: set[int] = set()
+        for candidate in candidates:
+            if not candidate.post_id or candidate.post_id in seen_post_ids:
+                continue
+            seen_post_ids.add(candidate.post_id)
+            try:
+                if self.db.get_post_detail(int(candidate.post_id)) is not None:
+                    already_known += 1
+            except Exception:
+                pass
+        self.scan_statistics_label.setText(
+            tr(
+                "import.scan.statistics",
+                "Scan complete\nScanned: {scanned} | Match: {matched} | Questionable: {questionable} | "
+                "Mismatch: {mismatch} | Already known: {already_known} | "
+                "Resolution mismatch: {resolution_mismatch}",
+                config=self.config,
+                scanned=scanned,
+                matched=matched,
+                questionable=questionable,
+                mismatch=mismatch,
+                already_known=already_known,
+                resolution_mismatch=resolution_mismatch,
+            )
+        )
+        self.review_results_button.setEnabled(self.thread is None and scanned > 0)
 
     def load_categories(self) -> None:
         current_id = self.current_category_id()
@@ -393,7 +537,9 @@ class ImportTab(QWidget):
         self.old_category_combo.setEnabled(enabled)
         self.repair_button.setEnabled(enabled)
         self.scan_button.setEnabled(enabled)
-        self.import_button.setEnabled(enabled and bool(self.scan_candidates))
+        self.review_results_button.setEnabled(enabled and bool(self.scan_candidates))
+        self.back_to_source_button.setEnabled(enabled)
+        self.back_to_review_button.setEnabled(enabled)
         if hasattr(self, "mark_all_button"):
             has_visible = bool(self.visible_candidate_paths())
             self.mark_all_button.setEnabled(enabled and has_visible)
@@ -405,6 +551,7 @@ class ImportTab(QWidget):
         self.update_candidate_open_buttons()
         self.rename_category_button.setEnabled(enabled)
         self.refresh_categories_button.setEnabled(enabled)
+        self.update_process_selection_summary()
 
     def start_scan(self) -> None:
         folder = self.folder_edit.text().strip()
@@ -450,12 +597,17 @@ class ImportTab(QWidget):
 
     def check_all_visible_candidates(self) -> None:
         """Check the import checkbox for every currently visible candidate."""
-        for row in range(self.candidate_table.rowCount()):
-            if self.candidate_table.isRowHidden(row):
-                continue
-            check_item = self.candidate_table.item(row, 0)
-            if check_item is not None:
-                check_item.setCheckState(Qt.Checked)
+        self.candidate_table.blockSignals(True)
+        try:
+            for row in range(self.candidate_table.rowCount()):
+                if self.candidate_table.isRowHidden(row):
+                    continue
+                check_item = self.candidate_table.item(row, 0)
+                if check_item is not None:
+                    check_item.setCheckState(Qt.Checked)
+        finally:
+            self.candidate_table.blockSignals(False)
+        self.update_process_selection_summary()
 
     def selected_candidate_paths(self) -> list[str]:
         paths: list[str] = []
@@ -703,8 +855,18 @@ class ImportTab(QWidget):
         if isinstance(result, ExistingFileScanResult):
             self.scan_candidates = list(result.candidates)
             self.populate_candidate_table()
-            self.progress_label.setText(tr("import.scan.summary", "Scan complete: {count} files", config=self.config, count=len(self.scan_candidates)))
-            self.import_button.setEnabled(bool(self.scan_candidates))
+            self.update_scan_statistics()
+            self.update_process_selection_summary()
+            self.progress_bar.setVisible(False)
+            self.progress_label.setText(
+                tr(
+                    "import.scan.summary",
+                    "Scan complete: {count} files. Review the statistics and continue to the candidate list.",
+                    config=self.config,
+                    count=len(self.scan_candidates),
+                )
+            )
+            self.show_source_page()
             return
         imported_ids = list(getattr(result, "imported_post_ids", []) or [])
         if imported_ids:
@@ -738,11 +900,22 @@ class ImportTab(QWidget):
             self.candidate_table.setRowCount(0)
         if hasattr(self, "import_button"):
             self.import_button.setEnabled(False)
+        if hasattr(self, "continue_process_button"):
+            self.continue_process_button.setEnabled(False)
+        if hasattr(self, "review_results_button"):
+            self.review_results_button.setEnabled(False)
+        if hasattr(self, "scan_statistics_label"):
+            self.scan_statistics_label.setText(
+                tr("import.scan.no_results", "No scan results yet.", config=self.config)
+            )
         if hasattr(self, "mark_all_button"):
             self.mark_all_button.setEnabled(False)
             self.import_all_button.setEnabled(False)
+        if hasattr(self, "process_selection_label"):
+            self.update_process_selection_summary()
 
     def populate_candidate_table(self) -> None:
+        self.candidate_table.blockSignals(True)
         self.candidate_table.setSortingEnabled(False)
         self.candidate_table.setRowCount(0)
         colors = {
@@ -831,7 +1004,9 @@ class ImportTab(QWidget):
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable)
                 self.candidate_table.setItem(row, column, item)
         self.candidate_table.setSortingEnabled(True)
+        self.candidate_table.blockSignals(False)
         self.apply_candidate_filter()
+        self.update_process_selection_summary()
 
     def selected_candidate_path_item(self) -> QTableWidgetItem | None:
         row = self.candidate_table.currentRow()
