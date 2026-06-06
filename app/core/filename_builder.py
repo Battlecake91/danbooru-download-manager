@@ -53,12 +53,36 @@ class FilenameBuilder:
         excluded = self.excluded_tags()
         diag(f"excluded_tags end count={len(excluded)}")
 
+        filtered_tags: dict[str, list[str]] = {
+            tag_type: [tag for tag in tags if tag not in excluded]
+            for tag_type, tags in raw_typed_tags.items()
+        }
+
+        metadata: dict[str, dict[str, Any]] = {}
+        if self.prioritize_filename_tags():
+            all_included_tags = [
+                tag
+                for tag_type in TAG_TYPE_ORDER
+                for tag in filtered_tags.get(tag_type, [])
+            ]
+            if all_included_tags:
+                diag(f"fetch_tag_metadata batch begin count={len(all_included_tags)}")
+                try:
+                    metadata = self.db.fetch_tag_metadata(all_included_tags)
+                    diag(f"fetch_tag_metadata batch end count={len(metadata)}")
+                except Exception as exc:
+                    diag(f"fetch_tag_metadata batch failed error={exc!r}")
+
         included_tags: dict[str, list[str]] = {}
         excluded_tags: dict[str, list[str]] = {}
         for tag_type, tags in raw_typed_tags.items():
-            included = [tag for tag in tags if tag not in excluded]
+            included = filtered_tags[tag_type]
             diag(f"prioritized_tags begin type={tag_type!r} count={len(included)}")
-            included_tags[tag_type] = self.prioritized_tags(included, diagnostic=diagnostic)
+            included_tags[tag_type] = self.prioritized_tags(
+                included,
+                metadata=metadata,
+                diagnostic=diagnostic,
+            )
             diag(f"prioritized_tags end type={tag_type!r}")
             excluded_tags[tag_type] = [tag for tag in tags if tag in excluded]
 
@@ -137,6 +161,7 @@ class FilenameBuilder:
     def prioritized_tags(
         self,
         tags: list[str],
+        metadata: dict[str, dict[str, Any]] | None = None,
         diagnostic: Callable[[str], None] | None = None,
     ) -> list[str]:
         """Return tags ordered for filename placeholders.
@@ -151,14 +176,15 @@ class FilenameBuilder:
         if not tags or not self.prioritize_filename_tags():
             return tags
 
-        if diagnostic is not None:
-            diagnostic(f"FILENAME fetch_tag_metadata begin count={len(tags)}")
-        try:
-            metadata = self.db.fetch_tag_metadata(tags)
+        if metadata is None:
             if diagnostic is not None:
-                diagnostic(f"FILENAME fetch_tag_metadata end count={len(metadata)}")
-        except Exception:
-            return tags
+                diagnostic(f"FILENAME fetch_tag_metadata fallback begin count={len(tags)}")
+            try:
+                metadata = self.db.fetch_tag_metadata(tags)
+                if diagnostic is not None:
+                    diagnostic(f"FILENAME fetch_tag_metadata fallback end count={len(metadata)}")
+            except Exception:
+                return tags
 
         indexed_tags = list(enumerate(tags))
 
