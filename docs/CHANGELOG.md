@@ -2,7 +2,28 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.192 — Current release
+## 1.3.193 — Current release
+
+### Fixed
+
+- Fixed the portable updater failing while waiting for the application process because Windows process output could be missing.
+- Replaced localized `tasklist` parsing with direct Windows process detection.
+- Prevented the portable updater from deleting `danbooru_saved`, application data, databases, thumbnails, logs or unrelated user files.
+- Made updater target handling accept both an installation directory and the application executable path.
+- Fixed slow Manual Score editing for Viewer tags by avoiding the full historical tag overview query.
+- Prevented Save, Reject and rating actions from blocking the Viewer while tag statistics are recalculated.
+- Kept filename preview generation on the lightweight stored tag metadata path introduced in 1.3.192.
+
+### Changed
+
+- Official and draft publishing now automatically use `docs/RELEASE_NOTES_<version>.md` for the current application version.
+- Publishing aborts with a clear error when the matching release-notes file is missing.
+
+See [`RELEASE_NOTES_1.3.193.md`](RELEASE_NOTES_1.3.193.md) for the complete release summary.
+
+---
+
+## 1.3.192
 
 ### Fixed
 
