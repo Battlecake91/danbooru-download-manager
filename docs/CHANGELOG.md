@@ -1,5 +1,12 @@
 ## 1.3.182
 
+
+## 1.3.184
+
+- Fixed repeated Fetch starts hanging after the Previewer had been opened.
+- Fetch and Import workers no longer rerun schema creation and migrations on every database connection.
+- Database schema initialization remains centralized at application startup.
+
 - Defers Preview refreshes triggered by Configuration saves until an active Fetch has finished.
 - Rejects synchronous GUI-thread database writes while a background writer owns the write queue.
 - Logs the rejected SQL operation and Python caller stack in `database_trace.log`.

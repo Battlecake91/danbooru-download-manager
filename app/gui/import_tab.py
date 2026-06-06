@@ -84,7 +84,6 @@ class ExistingFileImportWorker(QObject):
             database_file = Path(str(self.config["database_file"]))
             worker_db = Database(database_file)
             worker_db.connect()
-            worker_db.initialize_schema()
 
             service = ExistingFileImportService(self.config, worker_db, progress_callback=self.progress.emit)
             if self.mode == "scan":
