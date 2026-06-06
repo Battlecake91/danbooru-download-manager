@@ -1,6 +1,6 @@
 # Importer
 
-The importer allows Danbooru Download Manager `1.3.166` to take existing local image collections and register them inside the local database.
+The importer allows Danbooru Download Manager `1.3.167` to take existing local image collections and register them inside the local database.
 
 This is useful when images were downloaded before using the manager, when files were sorted manually, or when an older downloader setup should be migrated into the new workflow without losing the existing collection structure.
 
@@ -180,6 +180,6 @@ The comparison viewer can be maximized or minimized with the normal window contr
 
 ### Filtered review and bulk actions
 
-The comparison viewer now opens only candidates that are both checked for import and visible under the active confidence filters. Its large headings identify **Local file** and **Danbooru candidate**, with a prominent **Match**, **Mismatch** or **Questionable** badge between them.
+The comparison viewer now follows every candidate visible under the active confidence filters. Import checkboxes do not restrict comparison navigation, so a filtered **Wrong ID / mismatch** review works even when those rows were initially unchecked.
 
-Use **Mark all** to check every importable row in the current filtered view. Use **Import all** to check and immediately import all importable rows currently shown by the filter. Definite mismatches that are not importable remain excluded.
+Use **Mark all** or **Import all** to check every row in the current filtered view. Neither button starts the import. Importing still requires the separate **Import selected** action, which prevents a bulk-selection click from immediately changing files or the database.

@@ -806,7 +806,7 @@
   "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}",
   "import.button.mark_all": "Alle markieren",
   "import.button.import_all_visible": "Alle importieren",
-  "import.info.no_selected_visible_candidates": "Mit dem aktuellen Filter sind keine markierten Kandidaten sichtbar.",
+  "import.info.no_selected_visible_candidates": "Mit dem aktuellen Filter sind keine Kandidaten sichtbar.",
   "import.compare.status_match": "Passend",
   "import.compare.status_mismatch": "Nicht passend",
   "import.compare.status_questionable": "Fragwürdig"

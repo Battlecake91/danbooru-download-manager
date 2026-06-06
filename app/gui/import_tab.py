@@ -259,7 +259,7 @@ class ImportTab(QWidget):
         review_row.addWidget(self.mark_all_button)
 
         self.import_all_button = QPushButton(tr("import.button.import_all_visible", "Import all", config=self.config))
-        self.import_all_button.clicked.connect(lambda: self.start_import_all_visible())
+        self.import_all_button.clicked.connect(self.mark_all_visible_candidates)
         self.import_all_button.setEnabled(False)
         review_row.addWidget(self.import_all_button)
 
@@ -394,7 +394,7 @@ class ImportTab(QWidget):
         self.scan_button.setEnabled(enabled)
         self.import_button.setEnabled(enabled and bool(self.scan_candidates))
         if hasattr(self, "mark_all_button"):
-            has_visible = bool(self.visible_candidate_paths(importable_only=True))
+            has_visible = bool(self.visible_candidate_paths())
             self.mark_all_button.setEnabled(enabled and has_visible)
             self.import_all_button.setEnabled(enabled and has_visible)
         self.confidence_high_checkbox.setEnabled(enabled)
@@ -432,16 +432,13 @@ class ImportTab(QWidget):
         return paths
 
     def mark_all_visible_candidates(self) -> None:
+        """Check every candidate currently visible through the confidence filters."""
         for row in range(self.candidate_table.rowCount()):
             if self.candidate_table.isRowHidden(row):
                 continue
             check_item = self.candidate_table.item(row, 0)
-            if check_item and bool(check_item.flags() & Qt.ItemIsUserCheckable):
+            if check_item is not None:
                 check_item.setCheckState(Qt.Checked)
-
-    def start_import_all_visible(self) -> None:
-        self.mark_all_visible_candidates()
-        self.start_import(visible_only=True)
 
     def selected_candidate_paths(self) -> list[str]:
         paths: list[str] = []
@@ -813,8 +810,8 @@ class ImportTab(QWidget):
                     elif candidate.resolution_status == "match":
                         item.setBackground(QColor(185, 238, 195))
                         item.setForeground(QColor(0, 0, 0))
-                if not candidate.importable and column == 0:
-                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                if column == 0:
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable)
                 self.candidate_table.setItem(row, column, item)
         self.candidate_table.setSortingEnabled(True)
         self.apply_candidate_filter()
@@ -855,22 +852,20 @@ class ImportTab(QWidget):
         if selected_path_item is None:
             return
         selected_path = str(selected_path_item.data(Qt.UserRole) or selected_path_item.text())
-        visible_selected_paths = {
+        visible_paths = {
             str(self.candidate_table.item(row, 8).data(Qt.UserRole) or self.candidate_table.item(row, 8).text())
             for row in range(self.candidate_table.rowCount())
             if not self.candidate_table.isRowHidden(row)
-            and self.candidate_table.item(row, 0) is not None
             and self.candidate_table.item(row, 8) is not None
-            and self.candidate_table.item(row, 0).checkState() == Qt.Checked
         }
-        candidates = [candidate for candidate in self.scan_candidates if candidate.path in visible_selected_paths]
+        candidates = [candidate for candidate in self.scan_candidates if candidate.path in visible_paths]
         if not candidates:
             QMessageBox.information(
                 self,
                 tr("import.title", config=self.config),
                 tr(
                     "import.info.no_selected_visible_candidates",
-                    "No checked candidates are visible with the current filter.",
+                    "No candidates are visible with the current filter.",
                     config=self.config,
                 ),
             )
@@ -930,11 +925,11 @@ class ImportTab(QWidget):
             confidence = str(item.data(Qt.UserRole) or "") if item else ""
             self.candidate_table.setRowHidden(row, confidence not in visible_confidences)
 
-        has_visible_importable = bool(self.visible_candidate_paths(importable_only=True))
+        has_visible_candidates = bool(self.visible_candidate_paths())
         controls_enabled = self.thread is None
         if hasattr(self, "mark_all_button"):
-            self.mark_all_button.setEnabled(controls_enabled and has_visible_importable)
-            self.import_all_button.setEnabled(controls_enabled and has_visible_importable)
+            self.mark_all_button.setEnabled(controls_enabled and has_visible_candidates)
+            self.import_all_button.setEnabled(controls_enabled and has_visible_candidates)
         self.update_candidate_open_buttons()
 
     def on_failed(self, traceback_text: str) -> None:

@@ -1,3 +1,10 @@
+## 1.3.167 - Importer filtered selection fixes
+
+- Changed **Import all** to only check every candidate in the current filtered view instead of starting the import immediately.
+- Fixed **Mark all** for mismatch rows by keeping all candidate checkboxes user-checkable.
+- Changed comparison-viewer navigation to use the active confidence filter independently of import checkboxes.
+- Allowed filtered Wrong-ID candidates to be reviewed even when they are initially unchecked.
+
 ## 1.3.166 - Importer review selection workflow
 
 - Added a prominent Match, Mismatch or Questionable status badge between the local and Danbooru headings in the comparison viewer.
