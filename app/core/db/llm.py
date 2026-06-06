@@ -245,10 +245,43 @@ class DatabaseLlmMixin:
             SELECT
                 COUNT(*) AS total_posts,
                 SUM(CASE WHEN status = 'saved' THEN 1 ELSE 0 END) AS saved_posts,
-                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected_posts,
+                SUM(CASE
+                    WHEN status = 'rejected'
+                     AND NOT EXISTS (
+                        SELECT 1 FROM posts family_saved
+                        WHERE family_saved.status = 'saved'
+                          AND COALESCE(family_saved.parent_id, family_saved.id) =
+                              COALESCE(p.parent_id, p.id)
+                     )
+                    THEN 1 ELSE 0
+                END) AS rejected_posts,
                 SUM(CASE WHEN status = 'already_known' THEN 1 ELSE 0 END) AS already_known_posts,
-                AVG(CASE WHEN pr.stars IS NOT NULL THEN pr.stars END) AS avg_personal_rating,
-                COUNT(pr.stars) AS rated_posts
+                AVG(CASE
+                    WHEN pr.stars IS NOT NULL
+                     AND (
+                        p.status = 'saved'
+                        OR NOT EXISTS (
+                            SELECT 1 FROM posts family_saved
+                            WHERE family_saved.status = 'saved'
+                              AND COALESCE(family_saved.parent_id, family_saved.id) =
+                                  COALESCE(p.parent_id, p.id)
+                        )
+                     )
+                    THEN pr.stars
+                END) AS avg_personal_rating,
+                SUM(CASE
+                    WHEN pr.stars IS NOT NULL
+                     AND (
+                        p.status = 'saved'
+                        OR NOT EXISTS (
+                            SELECT 1 FROM posts family_saved
+                            WHERE family_saved.status = 'saved'
+                              AND COALESCE(family_saved.parent_id, family_saved.id) =
+                                  COALESCE(p.parent_id, p.id)
+                        )
+                     )
+                    THEN 1 ELSE 0
+                END) AS rated_posts
             FROM posts p
             LEFT JOIN post_reviews pr ON pr.post_id = p.id
             """
@@ -473,7 +506,15 @@ class DatabaseLlmMixin:
             examples["liked"] = self._fetch_llm_example_rows(
                 """
                 WHERE p.status = 'saved'
-                   OR COALESCE(pr.stars, 0) >= 8
+                   OR (
+                        COALESCE(pr.stars, 0) >= 8
+                        AND NOT EXISTS (
+                            SELECT 1 FROM posts family_saved
+                            WHERE family_saved.status = 'saved'
+                              AND COALESCE(family_saved.parent_id, family_saved.id) =
+                                  COALESCE(p.parent_id, p.id)
+                        )
+                   )
                 ORDER BY COALESCE(pr.stars, 0) DESC, p.saved_at DESC, p.id DESC
                 LIMIT ?
                 """,
@@ -484,8 +525,16 @@ class DatabaseLlmMixin:
         if negative_limit > 0:
             examples["rejected"] = self._fetch_llm_example_rows(
                 """
-                WHERE p.status = 'rejected'
-                   OR (pr.stars IS NOT NULL AND pr.stars <= 2)
+                WHERE (
+                        p.status = 'rejected'
+                        OR (pr.stars IS NOT NULL AND pr.stars <= 2)
+                      )
+                  AND NOT EXISTS (
+                        SELECT 1 FROM posts family_saved
+                        WHERE family_saved.status = 'saved'
+                          AND COALESCE(family_saved.parent_id, family_saved.id) =
+                              COALESCE(p.parent_id, p.id)
+                  )
                 ORDER BY
                     CASE WHEN p.status = 'rejected' THEN 0 ELSE 1 END,
                     COALESCE(pr.stars, 99) ASC,

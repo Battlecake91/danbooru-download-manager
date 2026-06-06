@@ -1,6 +1,4 @@
-move api-limit to config-tab
 less overweighted ui with advanced-options
-llm activating in fetch-tab
 configurable llm fetch limit
 database managed by one instance - if database is locked, it should wait for the request till unlocked and then save. f.e. while fetching changing the config should be possible
 importer should fetch thumbnails

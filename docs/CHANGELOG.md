@@ -4,6 +4,14 @@ This changelog summarizes the project history by larger development milestones i
 
 ---
 
+## 1.3.155 - Shared LLM switch and parent/child scoring isolation
+
+- Restored **Enable LLM integration** in Configuration → Scoring while keeping the same switch available in the Fetch tab.
+- Removed the obsolete **Saved Searches** information row from Configuration → Fetch.
+- Prevented rejected or separately rated siblings from a parent/child family from becoming negative preference signals once any post in that family has been saved.
+- Applied the family isolation consistently to local tag statistics, recommendation scores, LLM preference summaries and LLM positive/negative examples.
+- Kept the saved post itself as a positive signal; only the remaining posts in that family are ignored for preference learning.
+
 ## 1.3.154 - Fetch option ownership cleanup
 
 - Renamed `rating:s` to **Sensitive** in the Fetch tab.

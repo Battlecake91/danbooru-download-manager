@@ -161,3 +161,13 @@ The configuration can control provider settings and payload behavior. Depending 
 - privacy-oriented transformed tag data.
 
 LLM output should be treated as a suggestion, not as a final decision. Tiny machine oracle, tiny trust budget.
+
+## Saved-search extra tags
+
+`saved_search_extra_tags` is appended to every selected Danbooru saved-search query. It was originally intended for global additions such as a rating filter. In the current GUI workflow, the Fetch tab builds this value from the selected rating checkboxes for each run and preset, so the global default is normally overwritten.
+
+The **Enable LLM integration** master switch is shown both in Configuration → Scoring and in the Fetch tab. Both controls write the same `llm.enabled` setting; the Fetch-tab value is additionally stored with the selected fetch preset.
+
+## Parent/child preference isolation
+
+When one post from a Danbooru parent/child family is saved, the remaining posts in that family no longer count as rejected or separately rated preference examples. This prevents near-duplicate alternatives from creating false negative tag signals merely because one preferred variant was chosen. The saved post itself remains a positive signal.

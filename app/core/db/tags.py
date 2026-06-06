@@ -452,6 +452,16 @@ class DatabaseTagMixin:
                 LEFT JOIN fetch_excluded_tags xet ON xet.tag = pt.tag
             LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
             WHERE pt.tag IN ({placeholders})
+              AND (
+                    p.status = 'saved'
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM posts family_saved
+                        WHERE family_saved.status = 'saved'
+                          AND COALESCE(family_saved.parent_id, family_saved.id) =
+                              COALESCE(p.parent_id, p.id)
+                    )
+              )
             GROUP BY pt.tag
             """,
             clean_tags,
@@ -718,6 +728,16 @@ class DatabaseTagMixin:
             LEFT JOIN tag_scores ts ON ts.tag = pt.tag
             LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
             WHERE pt.tag IN ({placeholders})
+              AND (
+                    p.status = 'saved'
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM posts family_saved
+                        WHERE family_saved.status = 'saved'
+                          AND COALESCE(family_saved.parent_id, family_saved.id) =
+                              COALESCE(p.parent_id, p.id)
+                    )
+              )
             GROUP BY pt.tag
             """,
             clean_tags,
@@ -774,6 +794,16 @@ class DatabaseTagMixin:
             JOIN posts p ON p.id = pt.post_id
             LEFT JOIN tag_scores ts ON ts.tag = pt.tag
             LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
+            WHERE (
+                    p.status = 'saved'
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM posts family_saved
+                        WHERE family_saved.status = 'saved'
+                          AND COALESCE(family_saved.parent_id, family_saved.id) =
+                              COALESCE(p.parent_id, p.id)
+                    )
+            )
             GROUP BY pt.tag
             """
         ).fetchall()

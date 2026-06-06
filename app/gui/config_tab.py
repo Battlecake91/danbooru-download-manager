@@ -318,12 +318,6 @@ class ConfigTab(QWidget):
         self.show_api_key_checkbox = QCheckBox("Show API key")
         self.show_api_key_checkbox.toggled.connect(self.toggle_api_key_visibility)
 
-        self.legacy_saved_searches_label = QLabel(
-            "Saved searches are controlled through fetch presets in the new workflow. "
-            "The old global switch stays internally false so presets are not overwritten by legacy baggage."
-        )
-        self.legacy_saved_searches_label.setWordWrap(True)
-
         self.limit_spin = QSpinBox()
         self.limit_spin.setRange(1, 200)
         self.limit_spin.setValue(int(config.get("limit", 100)))
@@ -335,7 +329,6 @@ class ConfigTab(QWidget):
         self.fetch_form.addRow("", self.show_api_key_checkbox)
         self.fetch_form.addRow("Default search_tags:", self.search_tags_edit)
         self.fetch_form.addRow("Default saved_search_extra_tags:", self.saved_search_extra_tags_edit)
-        self.fetch_form.addRow("Saved Searches:", self.legacy_saved_searches_label)
         self.fetch_form.addRow("API page limit:", self.limit_spin)
 
         self.fetch_layout.addWidget(self.fetch_group)
@@ -527,6 +520,13 @@ class ConfigTab(QWidget):
         self.scoring_ignore_excluded_checkbox = QCheckBox("Ignore scoring exclusions")
         self.scoring_ignore_excluded_checkbox.setChecked(bool(scoring_config.get("ignore_scoring_excluded_tags", True)))
 
+        self.llm_enabled_checkbox = QCheckBox("Enable LLM integration")
+        self.llm_enabled_checkbox.setChecked(bool(llm_config.get("enabled", False)))
+        self.llm_enabled_checkbox.setToolTip(
+            "Master switch for LLM requests. The same setting is also shown in the Fetch tab "
+            "so it can be changed while preparing a fetch preset."
+        )
+
         self.llm_backend_combo = QComboBox()
         for value, label in [
             ("none", "No provider / build payload only"),
@@ -669,6 +669,7 @@ class ConfigTab(QWidget):
 
         self.scoring_llm_form.addRow("Scoring:", self.scoring_aliases_checkbox)
         self.scoring_llm_form.addRow("", self.scoring_ignore_excluded_checkbox)
+        self.scoring_llm_form.addRow("LLM:", self.llm_enabled_checkbox)
         self.scoring_llm_form.addRow("Backend:", self.llm_backend_combo)
         self.scoring_llm_form.addRow("Endpoint:", self.llm_endpoint_url_edit)
         self.scoring_llm_form.addRow("Model:", self.llm_model_edit)
@@ -1275,6 +1276,7 @@ class ConfigTab(QWidget):
         self.llm_model_edit.setText(str(self.runtime_value("llm.model", "") or ""))
         self.llm_api_key_edit.setText(str(self.runtime_value("llm.api_key", "") or ""))
         self.llm_timeout_spin.setValue(int(self.runtime_value("llm.request_timeout_seconds", 60)))
+        self.llm_enabled_checkbox.setChecked(bool(self.runtime_value("llm.enabled", False)))
         self.llm_run_after_fetch_checkbox.setChecked(bool(self.runtime_value("llm.run_after_fetch", False)))
         self.llm_skip_scored_checkbox.setChecked(bool(self.runtime_value("llm.skip_already_scored", True)))
         self.llm_max_posts_spin.setValue(int(self.runtime_value("llm.max_posts_per_request", 20)))
@@ -1359,6 +1361,7 @@ class ConfigTab(QWidget):
             "llm.model": self.llm_model_edit.text().strip(),
             "llm.api_key": self.llm_api_key_edit.text().strip(),
             "llm.request_timeout_seconds": int(self.llm_timeout_spin.value()),
+            "llm.enabled": self.llm_enabled_checkbox.isChecked(),
             "llm.run_after_fetch": self.llm_run_after_fetch_checkbox.isChecked(),
             "llm.skip_already_scored": self.llm_skip_scored_checkbox.isChecked(),
             "llm.after_fetch_statuses": ["new", "potential"],
