@@ -819,5 +819,14 @@
   "import.info.scan_first": "Prüfe zuerst einen Ordner, bevor du die Kandidaten ansiehst.",
   "import.scan.no_results": "Noch keine Scan-Ergebnisse vorhanden.",
   "import.scan.statistics": "Scan abgeschlossen\n\nGeprüft: {scanned}\nMatch: {matched}\nFragwürdig: {questionable}\nMismatch: {mismatch}\nBereits bekannt: {already_known}\nAbweichende Auflösung bei Matches: {resolution_mismatch}",
-  "import.process.selection_summary": "{selected} von {total} geprüften Kandidaten sind für den Import ausgewählt."
+  "import.process.selection_summary": "{selected} von {total} geprüften Kandidaten sind für den Import ausgewählt.",
+  "preview.advanced_filter": "Erweiterter Filter",
+  "preview.advanced_filter.tooltip": "Filtert Vorschau-Posts nach Bildauflösung. Leere Felder oder 0 bedeuten keine Begrenzung.",
+  "preview.resolution_filter.hint": "Auflösungsgrenzen in Pixeln. Leere Felder oder 0 bedeuten keine Begrenzung.",
+  "preview.resolution_filter.min_width": "Minimale Breite",
+  "preview.resolution_filter.max_width": "Maximale Breite",
+  "preview.resolution_filter.min_height": "Minimale Höhe",
+  "preview.resolution_filter.max_height": "Maximale Höhe",
+  "preview.resolution_filter.width_invalid": "Die maximale Breite muss größer oder gleich der minimalen Breite sein.",
+  "preview.resolution_filter.height_invalid": "Die maximale Höhe muss größer oder gleich der minimalen Höhe sein."
 }

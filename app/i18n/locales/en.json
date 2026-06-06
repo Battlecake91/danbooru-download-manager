@@ -819,5 +819,14 @@
   "import.info.scan_first": "Scan a folder before reviewing candidates.",
   "import.scan.no_results": "No scan results yet.",
   "import.scan.statistics": "Scan complete\n\nScanned: {scanned}\nMatch: {matched}\nQuestionable: {questionable}\nMismatch: {mismatch}\nAlready known: {already_known}\nResolution mismatch among matches: {resolution_mismatch}",
-  "import.process.selection_summary": "{selected} of {total} scanned candidates selected for import."
+  "import.process.selection_summary": "{selected} of {total} scanned candidates selected for import.",
+  "preview.advanced_filter": "Advanced Filter",
+  "preview.advanced_filter.tooltip": "Filter preview posts by image resolution. Empty fields or 0 mean no limit.",
+  "preview.resolution_filter.hint": "Resolution limits in pixels. Empty fields or 0 mean no limit.",
+  "preview.resolution_filter.min_width": "Minimum width",
+  "preview.resolution_filter.max_width": "Maximum width",
+  "preview.resolution_filter.min_height": "Minimum height",
+  "preview.resolution_filter.max_height": "Maximum height",
+  "preview.resolution_filter.width_invalid": "Maximum width must be greater than or equal to minimum width.",
+  "preview.resolution_filter.height_invalid": "Maximum height must be greater than or equal to minimum height."
 }

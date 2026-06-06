@@ -1,6 +1,5 @@
-Window-size sometimes gets buggy and forms are not shown correctly
+-Window-size sometimes gets buggy and forms are not shown correctly
 
 Sometimes even if a post has childs, it is not shown
-
--Post-ID from Konachan affects importer -> Importer finds Post-ID and renames the file after complete wrong tags. 
+ 
 

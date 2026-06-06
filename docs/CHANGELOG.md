@@ -1,3 +1,12 @@
+## 1.3.174 - Preview resolution filters
+
+- Added an **Advanced Filter** dialog to the Previewer.
+- Added minimum and maximum width and height filters.
+- Treat empty fields and zero as no limit.
+- Apply resolution limits directly in the database query before preview cards are loaded.
+- Exclude posts with unknown dimensions when a corresponding resolution limit is active.
+- Mark the Advanced Filter button while resolution limits are enabled.
+
 ## 1.3.173 - Reliable initial window layout
 
 - Recalculate nested tab and toolbar layouts after the main window receives its final screen geometry.
