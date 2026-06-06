@@ -66,12 +66,12 @@ class FilenameBuilder:
                 for tag in filtered_tags.get(tag_type, [])
             ]
             if all_included_tags:
-                diag(f"fetch_tag_metadata batch begin count={len(all_included_tags)}")
+                diag(f"fetch_tag_display_metadata batch begin count={len(all_included_tags)}")
                 try:
-                    metadata = self.db.fetch_tag_metadata(all_included_tags)
-                    diag(f"fetch_tag_metadata batch end count={len(metadata)}")
+                    metadata = self.db.fetch_tag_display_metadata(all_included_tags)
+                    diag(f"fetch_tag_display_metadata batch end count={len(metadata)}")
                 except Exception as exc:
-                    diag(f"fetch_tag_metadata batch failed error={exc!r}")
+                    diag(f"fetch_tag_display_metadata batch failed error={exc!r}")
 
         included_tags: dict[str, list[str]] = {}
         excluded_tags: dict[str, list[str]] = {}
@@ -178,11 +178,11 @@ class FilenameBuilder:
 
         if metadata is None:
             if diagnostic is not None:
-                diagnostic(f"FILENAME fetch_tag_metadata fallback begin count={len(tags)}")
+                diagnostic(f"FILENAME fetch_tag_display_metadata fallback begin count={len(tags)}")
             try:
-                metadata = self.db.fetch_tag_metadata(tags)
+                metadata = self.db.fetch_tag_display_metadata(tags)
                 if diagnostic is not None:
-                    diagnostic(f"FILENAME fetch_tag_metadata fallback end count={len(metadata)}")
+                    diagnostic(f"FILENAME fetch_tag_display_metadata fallback end count={len(metadata)}")
             except Exception:
                 return tags
 
