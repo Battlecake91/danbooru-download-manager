@@ -18,6 +18,7 @@ class FetchResult:
     seen_posts: int = 0
     inserted_posts: int = 0
     updated_posts: int = 0
+    fetch_excluded_posts: int = 0
     cached_thumbnails: int = 0
     target_unknown_per_query: int = 0
     target_unknown_total: int = 0
@@ -83,6 +84,7 @@ class PostImportService:
             planned_for_query = max_posts_per_query
 
         total_seen = 0
+        fetch_excluded_tags = self.db.fetch_excluded_tag_set()
 
         self.emit_progress(
             FetchProgress(
@@ -143,11 +145,16 @@ class PostImportService:
                         break
 
                     post_id = int(post["id"])
-                    post_result = self.store_post(post)
                     result.seen_posts += 1
-                    result.fetched_post_ids.append(post_id)
                     total_seen += 1
                     seen_for_query += 1
+
+                    if fetch_excluded_tags and self.post_matches_fetch_exclude(post, fetch_excluded_tags):
+                        result.fetch_excluded_posts += 1
+                        continue
+
+                    post_result = self.store_post(post)
+                    result.fetched_post_ids.append(post_id)
 
                     if post_result == "inserted":
                         result.inserted_posts += 1
@@ -202,6 +209,23 @@ class PostImportService:
             )
         )
         return result
+
+    @staticmethod
+    def post_matches_fetch_exclude(post: dict[str, Any], excluded_tags: set[str]) -> bool:
+        if not excluded_tags:
+            return False
+        fields = (
+            "tag_string",
+            "tag_string_general",
+            "tag_string_character",
+            "tag_string_copyright",
+            "tag_string_artist",
+            "tag_string_meta",
+        )
+        post_tags: set[str] = set()
+        for field_name in fields:
+            post_tags.update(split_tags(str(post.get(field_name) or "")))
+        return not post_tags.isdisjoint(excluded_tags)
 
     def get_status(self, post_id: int) -> str:
         row = self.db.execute("SELECT status FROM posts WHERE id = ?", (post_id,)).fetchone()

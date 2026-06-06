@@ -123,10 +123,10 @@ class StatusChipBar(QWidget):
 
 
 RATING_LABELS: dict[str, tuple[str, str]] = {
-    "g": ("general", "#64b5f6"),
-    "general": ("general", "#64b5f6"),
-    "s": ("safe", "#38d36a"),
-    "safe": ("safe", "#38d36a"),
+    "g": ("general", "#38d36a"),
+    "general": ("general", "#38d36a"),
+    "s": ("sensitive", "#ffd166"),
+    "sensitive": ("sensitive", "#ffd166"),
     "q": ("questionable", "#ffd166"),
     "questionable": ("questionable", "#ffd166"),
     "e": ("explicit", "#ff4d4d"),
@@ -1645,6 +1645,25 @@ class ImageViewerWindow(QMainWindow):
             )
             menu.addAction(remove_exclude_action)
 
+        fetch_state = self.fetch_exclude_state(frozen_tags)
+        if fetch_state in {"none", "mixed"}:
+            action = QAction(self.t("viewer.exclude_from_fetch", "Exclude from fetch"), menu)
+            action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+                    0, lambda: self.safe_tag_action(lambda: self.add_tags_to_fetch_exclude(t))
+                )
+            )
+            menu.addAction(action)
+        if fetch_state in {"all", "mixed"}:
+            action = QAction(self.t("viewer.remove_fetch_exclude", "Remove fetch exclude"), menu)
+            action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): QTimer.singleShot(
+                    0, lambda: self.safe_tag_action(lambda: self.remove_tags_from_fetch_exclude(t))
+                )
+            )
+            menu.addAction(action)
+
+        menu.addSeparator()
         scoring_menu = QMenu("Scoring / usage", menu)
         scoring_actions = [
             (
@@ -1787,6 +1806,37 @@ class ImageViewerWindow(QMainWindow):
         if count == len(tags):
             return "all"
         return "mixed"
+
+    def fetch_exclude_state(self, tags: list[str]) -> str:
+        excluded = self.db.fetch_excluded_tag_set()
+        count = sum(1 for tag in tags if tag in excluded)
+        if count == 0:
+            return "none"
+        if count == len(tags):
+            return "all"
+        return "mixed"
+
+    def add_tags_to_fetch_exclude(self, tags: list[str]) -> None:
+        for tag in tags:
+            self.db.add_fetch_excluded_tag(tag, "viewer-manual")
+        QMessageBox.information(
+            self,
+            self.t("viewer.fetch_exclude_title", "Fetch exclude"),
+            self.t("viewer.tags_excluded_from_fetch", "{count} tag(s) excluded from future fetches.", count=len(tags)),
+        )
+        if self.current_post_id is not None:
+            self.populate_tag_lists(self.current_post_id)
+
+    def remove_tags_from_fetch_exclude(self, tags: list[str]) -> None:
+        for tag in tags:
+            self.db.remove_fetch_excluded_tag(tag)
+        QMessageBox.information(
+            self,
+            self.t("viewer.fetch_exclude_title", "Fetch exclude"),
+            self.t("viewer.fetch_excludes_removed", "{count} fetch exclude(s) removed.", count=len(tags)),
+        )
+        if self.current_post_id is not None:
+            self.populate_tag_lists(self.current_post_id)
 
     def set_tag_scoring_flag(self, tags: list[str], flag_name: str, value: bool) -> None:
         allowed = {

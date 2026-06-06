@@ -4,6 +4,22 @@ This changelog summarizes the project history by larger development milestones i
 
 ---
 
+## 1.3.154 - Fetch option ownership cleanup
+
+- Renamed `rating:s` to **Sensitive** in the Fetch tab.
+- Moved the global Danbooru API page limit to Configuration → Fetch.
+- Kept per-run **Max posts per query** and **Max total posts** exclusively in the Fetch tab and fetch presets.
+- Moved **Enable LLM integration** from Configuration → Scoring to the Fetch tab so it can be stored per preset and per run.
+- Removed misleading global UI fields for per-run post limits.
+
+## 1.3.153 - Fetch tag blacklist and rating correction
+
+- Added a persistent **Fetch exclude** tag blacklist.
+- Added Viewer and Tag tab context actions to add or remove tags from future fetches.
+- Added a sortable **Fetch exclude** column to the Tag tab, including direct toggling.
+- Posts containing any fetch-excluded tag are skipped before database import and thumbnail caching.
+- Corrected Danbooru ratings: `general` is green and `sensitive` is yellow; `rating:s` is no longer labeled safe.
+
 ## 1.3.152 - First official release
 
 `1.3.152` is the first official release of Danbooru Download Manager.

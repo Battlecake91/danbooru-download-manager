@@ -358,7 +358,7 @@ class TagTab(QWidget):
         self.main_layout.addLayout(self.toolbar_layout)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(14)
+        self.table.setColumnCount(15)
         self.table.setHorizontalHeaderLabels(
             [
                 self.t("tags.table.tag", "Tag"),
@@ -369,6 +369,7 @@ class TagTab(QWidget):
                 self.t("tags.table.rejected", "Rejected"),
                 self.t("tags.table.alias", "Alias"),
                 self.t("tags.table.filename_exclude", "Filename exclude"),
+                self.t("tags.table.fetch_exclude", "Fetch exclude"),
                 self.t("tags.table.category_scoring_ignored", "Category scoring ignored"),
                 self.t("tags.table.preselection_ignored", "Preselection ignored"),
                 self.t("tags.table.llm_ignored", "LLM ignored"),
@@ -531,7 +532,7 @@ class TagTab(QWidget):
             )
         else:
             self._sort_column = column
-            self._sort_order = Qt.AscendingOrder if column in {0, 1, 6, 7, 8, 9, 10} else Qt.DescendingOrder
+            self._sort_order = Qt.AscendingOrder if column in {0, 1, 6, 7, 8, 9, 10, 11} else Qt.DescendingOrder
 
         self.apply_current_sort()
 
@@ -587,6 +588,7 @@ class TagTab(QWidget):
                 computed_score = row["computed_score"]
                 average_rating = row["average_rating"]
                 filename_excluded = bool(int(row["filename_excluded"] or 0))
+                fetch_excluded = bool(int(row["fetch_excluded"] or 0))
                 ignore_category_influence = bool(int(row["ignore_category_influence"] or 0))
                 ignore_recommendation_score = bool(int(row["ignore_recommendation_score"] or 0))
                 ignore_llm_input = bool(int(row["ignore_llm_input"] or 0))
@@ -600,6 +602,7 @@ class TagTab(QWidget):
                     (row["rejected_count"], row["rejected_count"], True),
                     (row["alias_tag"] or "", row["alias_tag"] or "", False),
                     (self.yes_text() if filename_excluded else "", 1 if filename_excluded else 0, False),
+                    (self.yes_text() if fetch_excluded else "", 1 if fetch_excluded else 0, False),
                     (self.yes_text() if ignore_category_influence else "", 1 if ignore_category_influence else 0, False),
                     (self.yes_text() if ignore_recommendation_score else "", 1 if ignore_recommendation_score else 0, False),
                     (self.yes_text() if ignore_llm_input else "", 1 if ignore_llm_input else 0, False),
@@ -615,7 +618,7 @@ class TagTab(QWidget):
                         sort_value=sort_value,
                         align_right=align_right,
                     )
-                    if column in {6, 11}:
+                    if column in {6, 12}:
                         table_item.setFlags(table_item.flags() | Qt.ItemIsEditable)
                     else:
                         table_item.setFlags(table_item.flags() & ~Qt.ItemIsEditable)
@@ -676,9 +679,10 @@ class TagTab(QWidget):
 
     FLAG_OPTION_COLUMNS = {
         7: "filename_excluded",
-        8: "ignore_category_influence",
-        9: "ignore_recommendation_score",
-        10: "ignore_llm_input",
+        8: "fetch_excluded",
+        9: "ignore_category_influence",
+        10: "ignore_recommendation_score",
+        11: "ignore_llm_input",
     }
 
     def is_yes_cell(self, row_index: int, column: int) -> bool:
@@ -708,6 +712,13 @@ class TagTab(QWidget):
                 self.add_tags_to_filename_exclude(tags)
             else:
                 self.remove_tags_from_filename_exclude(tags)
+            return
+
+        if column == 8:
+            if new_value:
+                self.add_tags_to_fetch_exclude(tags)
+            else:
+                self.remove_tags_from_fetch_exclude(tags)
             return
 
         kwargs = {
@@ -757,7 +768,7 @@ class TagTab(QWidget):
             return
 
         column = item.column()
-        if column not in {6, 11}:
+        if column not in {6, 12}:
             return
 
         tag = self.tag_from_item(item)
@@ -821,6 +832,36 @@ class TagTab(QWidget):
             self.table.blockSignals(False)
             self._suppress_item_changed = False
         self.log_message(f"Manual score updated locally for tag={tag!r}. No automatic full reload.")
+
+    def update_fetch_exclude_cells(self, tags: list[str], excluded: bool) -> None:
+        tag_set = set(tags)
+        value = self.yes_text() if excluded else ""
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row_index in range(self.table.rowCount()):
+                tag = self.tag_from_item(self.table.item(row_index, 0))
+                if tag not in tag_set:
+                    continue
+                self.set_table_cell_text(row_index, 8, str(tag), value, sort_value=1 if excluded else 0)
+                self.update_current_row_value_for_tag(str(tag), "fetch_excluded", 1 if excluded else 0)
+        finally:
+            self.table.setUpdatesEnabled(True)
+
+    def is_fetch_excluded_visible(self, tag: str) -> bool:
+        for row_index in range(self.table.rowCount()):
+            if self.tag_from_item(self.table.item(row_index, 0)) == tag:
+                return self.is_yes_cell(row_index, 8)
+        for row in self.current_rows:
+            try:
+                if str(row["tag"]) == tag:
+                    return bool(int(row["fetch_excluded"] or 0))
+            except Exception:
+                continue
+        return False
+
+    def fetch_exclude_state_for_tags(self, tags: list[str]) -> tuple[bool, bool]:
+        states = [self.is_fetch_excluded_visible(tag) for tag in tags]
+        return (any(states), all(states)) if states else (False, False)
 
     def update_filename_exclude_cells(self, tags: list[str], excluded: bool) -> None:
         tag_set = set(tags)
@@ -925,7 +966,7 @@ class TagTab(QWidget):
         item.setData(Qt.UserRole, tag)
         item.setText(text)
         item.setData(SortableTableWidgetItem.SORT_ROLE, text if sort_value is None else sort_value)
-        if column in {6, 11}:
+        if column in {6, 12}:
             item.setFlags(item.flags() | Qt.ItemIsEditable)
         else:
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
@@ -1126,6 +1167,28 @@ class TagTab(QWidget):
 
         menu.addSeparator()
 
+        any_fetch_excluded, all_fetch_excluded = self.fetch_exclude_state_for_tags(frozen_tags)
+        if not all_fetch_excluded:
+            action = QAction(self.t("tags.menu.exclude_from_fetch", "Exclude from fetch"), menu)
+            action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                    lambda: self.add_tags_to_fetch_exclude([tag for tag in t if not self.is_fetch_excluded_visible(tag)]),
+                    self.t("tags.action.add_fetch_exclude", "Add tags to fetch exclude"),
+                )
+            )
+            menu.addAction(action)
+        if any_fetch_excluded:
+            action = QAction(self.t("tags.menu.remove_fetch_exclude", "Remove fetch exclude"), menu)
+            action.triggered.connect(
+                lambda checked=False, t=list(frozen_tags): self.schedule_safe(
+                    lambda: self.remove_tags_from_fetch_exclude([tag for tag in t if self.is_fetch_excluded_visible(tag)]),
+                    self.t("tags.action.remove_fetch_exclude", "Remove tags from fetch exclude"),
+                )
+            )
+            menu.addAction(action)
+
+        menu.addSeparator()
+
         scoring_menu = QMenu(self.t("tags.menu.scoring_usage", "Scoring / usage"), menu)
 
         category_ignore_action = QAction(self.t("tags.menu.ignore_category_hint", "Ignore category hint"), menu)
@@ -1293,6 +1356,18 @@ class TagTab(QWidget):
         # Do not show a QMessageBox here. Modal boxes inside context-menu follow-up actions
         # are a wonderful way to summon Qt ghosts.
         self.log_message(f"Category updated: {len(tags)} tag(s) -> {category_name}/{rule_type}")
+
+    def add_tags_to_fetch_exclude(self, tags: list[str]) -> None:
+        clean_tags = [tag.strip() for tag in tags if tag.strip()]
+        for tag in clean_tags:
+            self.db.add_fetch_excluded_tag(tag, "manual")
+        self.update_fetch_exclude_cells(clean_tags, excluded=True)
+
+    def remove_tags_from_fetch_exclude(self, tags: list[str]) -> None:
+        clean_tags = [tag.strip() for tag in tags if tag.strip()]
+        for tag in clean_tags:
+            self.db.remove_fetch_excluded_tag(tag)
+        self.update_fetch_exclude_cells(clean_tags, excluded=False)
 
     def add_tags_to_filename_exclude(self, tags: list[str]) -> None:
         if not tags:

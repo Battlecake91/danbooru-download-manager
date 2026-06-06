@@ -144,9 +144,13 @@ Tags can be displayed as raw Danbooru text or as structured tag groups.
 
 ---
 
+### Fetch configuration ownership
+
+The global **API page limit** is configured under **Configuration → Fetch**. Per-run limits such as **Max posts per query** and **Max total posts** belong only to the Fetch tab and its presets; they are intentionally not duplicated as global configuration fields.
+
 ## 🤖 LLM settings
 
-LLM integration is experimental in `1.3.152`.
+LLM integration is experimental. Provider settings and payload behavior remain under **Configuration → Scoring**. The actual **Enable LLM integration** switch is in the Fetch tab and is stored per fetch preset/run.
 
 The configuration can control provider settings and payload behavior. Depending on the setup, payloads may use:
 

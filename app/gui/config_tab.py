@@ -329,16 +329,6 @@ class ConfigTab(QWidget):
         self.limit_spin.setValue(int(config.get("limit", 100)))
         self.limit_spin.setKeyboardTracking(False)
 
-        self.max_posts_per_query_spin = QSpinBox()
-        self.max_posts_per_query_spin.setRange(1, 100000)
-        self.max_posts_per_query_spin.setValue(int(config.get("max_posts_per_query", 500)))
-        self.max_posts_per_query_spin.setKeyboardTracking(False)
-
-        self.max_total_posts_spin = QSpinBox()
-        self.max_total_posts_spin.setRange(1, 100000)
-        self.max_total_posts_spin.setValue(int(config.get("max_total_posts", 1000)))
-        self.max_total_posts_spin.setKeyboardTracking(False)
-
         self.fetch_form.addRow("base_url:", self.base_url_edit)
         self.fetch_form.addRow("username:", self.username_edit)
         self.fetch_form.addRow("api_key:", self.api_key_edit)
@@ -346,9 +336,7 @@ class ConfigTab(QWidget):
         self.fetch_form.addRow("Default search_tags:", self.search_tags_edit)
         self.fetch_form.addRow("Default saved_search_extra_tags:", self.saved_search_extra_tags_edit)
         self.fetch_form.addRow("Saved Searches:", self.legacy_saved_searches_label)
-        self.fetch_form.addRow("limit:", self.limit_spin)
-        self.fetch_form.addRow("max_posts_per_query:", self.max_posts_per_query_spin)
-        self.fetch_form.addRow("max_total_posts:", self.max_total_posts_spin)
+        self.fetch_form.addRow("API page limit:", self.limit_spin)
 
         self.fetch_layout.addWidget(self.fetch_group)
 
@@ -539,9 +527,6 @@ class ConfigTab(QWidget):
         self.scoring_ignore_excluded_checkbox = QCheckBox("Ignore scoring exclusions")
         self.scoring_ignore_excluded_checkbox.setChecked(bool(scoring_config.get("ignore_scoring_excluded_tags", True)))
 
-        self.llm_enabled_checkbox = QCheckBox("Enable LLM integration")
-        self.llm_enabled_checkbox.setChecked(bool(llm_config.get("enabled", False)))
-
         self.llm_backend_combo = QComboBox()
         for value, label in [
             ("none", "No provider / build payload only"),
@@ -684,7 +669,6 @@ class ConfigTab(QWidget):
 
         self.scoring_llm_form.addRow("Scoring:", self.scoring_aliases_checkbox)
         self.scoring_llm_form.addRow("", self.scoring_ignore_excluded_checkbox)
-        self.scoring_llm_form.addRow("LLM:", self.llm_enabled_checkbox)
         self.scoring_llm_form.addRow("Backend:", self.llm_backend_combo)
         self.scoring_llm_form.addRow("Endpoint:", self.llm_endpoint_url_edit)
         self.scoring_llm_form.addRow("Model:", self.llm_model_edit)
@@ -1249,8 +1233,6 @@ class ConfigTab(QWidget):
         self.search_tags_edit.setText(str(self.runtime_value("search_tags", "order:id_desc")))
         self.saved_search_extra_tags_edit.setText(str(self.runtime_value("saved_search_extra_tags", "")))
         self.limit_spin.setValue(int(self.runtime_value("limit", 100)))
-        self.max_posts_per_query_spin.setValue(int(self.runtime_value("max_posts_per_query", 500)))
-        self.max_total_posts_spin.setValue(int(self.runtime_value("max_total_posts", 1000)))
 
         thumbnail_size = int(self.runtime_value("gui.thumbnail_size", 340))
         self.thumbnail_size_spin.setValue(thumbnail_size)
@@ -1286,7 +1268,6 @@ class ConfigTab(QWidget):
 
         self.scoring_aliases_checkbox.setChecked(bool(self.runtime_value("scoring.use_aliases_for_scoring", True)))
         self.scoring_ignore_excluded_checkbox.setChecked(bool(self.runtime_value("scoring.ignore_scoring_excluded_tags", True)))
-        self.llm_enabled_checkbox.setChecked(bool(self.runtime_value("llm.enabled", False)))
         backend_index = self.llm_backend_combo.findData(str(self.runtime_value("llm.backend", "none")))
         if backend_index >= 0:
             self.llm_backend_combo.setCurrentIndex(backend_index)
@@ -1352,8 +1333,6 @@ class ConfigTab(QWidget):
             "saved_search_extra_tags": self.saved_search_extra_tags_edit.text().strip(),
             "use_saved_searches": False,
             "limit": int(self.limit_spin.value()),
-            "max_posts_per_query": int(self.max_posts_per_query_spin.value()),
-            "max_total_posts": int(self.max_total_posts_spin.value()),
 
             "gui.thumbnail_size": int(self.thumbnail_size_spin.value()),
             "gui.thumbnail_size_min": int(self.thumbnail_min_spin.value()),
@@ -1375,7 +1354,6 @@ class ConfigTab(QWidget):
 
             "scoring.use_aliases_for_scoring": self.scoring_aliases_checkbox.isChecked(),
             "scoring.ignore_scoring_excluded_tags": self.scoring_ignore_excluded_checkbox.isChecked(),
-            "llm.enabled": self.llm_enabled_checkbox.isChecked(),
             "llm.backend": str(self.llm_backend_combo.currentData()),
             "llm.endpoint_url": self.llm_endpoint_url_edit.text().strip(),
             "llm.model": self.llm_model_edit.text().strip(),

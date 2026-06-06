@@ -741,5 +741,16 @@
   "viewer.use_all_auto_scores_again": "Use for All Automatic Scores Again",
   "viewer.use_category_hint_again": "Use Category Hint Again",
   "viewer.window_title": "Danbooru Manager - Viewer",
-  "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}"
+  "viewer.window_title_post": "Danbooru Manager - Viewer - {post_id}",
+  "tags.table.fetch_exclude": "Fetch exclude",
+  "tags.menu.exclude_from_fetch": "Exclude from fetch",
+  "tags.menu.remove_fetch_exclude": "Remove fetch exclude",
+  "tags.action.add_fetch_exclude": "Add tags to fetch exclude",
+  "tags.action.remove_fetch_exclude": "Remove tags from fetch exclude",
+  "viewer.exclude_from_fetch": "Exclude from fetch",
+  "viewer.remove_fetch_exclude": "Remove fetch exclude",
+  "viewer.fetch_exclude_title": "Fetch exclude",
+  "viewer.tags_excluded_from_fetch": "{count} tag(s) excluded from future fetches.",
+  "viewer.fetch_excludes_removed": "{count} fetch exclude(s) removed.",
+  "fetch.summary.fetch_excluded": "Fetch-excluded"
 }

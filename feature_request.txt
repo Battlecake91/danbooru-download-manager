@@ -1,0 +1,6 @@
+Filter for resolution (min / max width and heigth)
+Better documentation which type of API key is necessary
+Better error messages for danbooru-api-errors (what's wrong? + error message from danbooru)
+When accepting a picture from a pool -> rejected pool members doesn't affect the scoring
+Tooltips for options
+List View

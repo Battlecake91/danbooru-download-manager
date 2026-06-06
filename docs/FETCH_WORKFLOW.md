@@ -34,9 +34,9 @@ When Danbooru credentials are configured, the application can load Danbooru save
 
 ### Rating filters
 
-The Fetch tab can include or exclude rating groups depending on the current configuration.
+The Fetch tab can include or exclude Danbooru rating groups. `rating:g` is **General**, while `rating:s` is **Sensitive**, not safe.
 
-Supported Danbooru rating classes depend on the Danbooru API data returned for each post.
+The Fetch tab also contains **Enable LLM integration**. Its state is stored with the current fetch preset so LLM processing can be enabled per run.
 
 ---
 
@@ -44,14 +44,13 @@ Supported Danbooru rating classes depend on the Danbooru API data returned for e
 
 Fetch runs can be limited so the application does not process too much at once.
 
-Common limits include:
+The Fetch tab stores these per-run values in each fetch preset:
 
 - maximum posts per query,
 - maximum total posts,
-- minimum unknown posts per query,
-- thumbnail loading behavior,
-- known/unknown post handling,
-- status filters.
+- minimum unknown posts per query.
+
+The Danbooru API page limit is a global transport setting under **Configuration → Fetch** and is not stored in fetch presets.
 
 Known posts can be skipped, updated or reused depending on the current settings. Unknown posts are added to the local database with tags, metadata and thumbnail information.
 

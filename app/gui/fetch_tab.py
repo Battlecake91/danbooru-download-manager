@@ -34,7 +34,7 @@ from app.services.post_import_service import FetchProgress, PostImportService
 
 RATING_FILTERS: list[tuple[str, str]] = [
     ("g", "General"),
-    ("s", "Safe"),
+    ("s", "Sensitive"),
     ("q", "Questionable"),
     ("e", "Explicit"),
 ]
@@ -378,11 +378,19 @@ class FetchTab(QWidget):
         self.options_group = QGroupBox(tr("fetch.options.group", config=self.config))
         self.options_layout = QFormLayout(self.options_group)
 
-        self.limit_spin = QSpinBox()
-        self.limit_spin.setRange(1, 200)
-        self.limit_spin.setValue(int(config.get("limit", 100)))
-        self.limit_spin.setKeyboardTracking(False)
-        self.options_layout.addRow(tr("fetch.options.api_limit", config=self.config), self.limit_spin)
+        llm_config = config.get("llm", {}) or {}
+        self.llm_enabled_checkbox = QCheckBox(
+            tr("fetch.options.enable_llm", "Enable LLM integration", config=self.config)
+        )
+        self.llm_enabled_checkbox.setChecked(bool(llm_config.get("enabled", False)))
+        self.llm_enabled_checkbox.setToolTip(
+            tr(
+                "fetch.options.enable_llm_tip",
+                "Run the configured LLM integration for posts fetched by this run.",
+                config=self.config,
+            )
+        )
+        self.options_layout.addRow("", self.llm_enabled_checkbox)
 
         self.max_posts_per_query_spin = QSpinBox()
         self.max_posts_per_query_spin.setRange(1, 100000)
@@ -544,10 +552,10 @@ class FetchTab(QWidget):
             "saved_search_labels": self.saved_search_label_edit.text().strip(),
             "saved_search_queries": self.saved_search_query_edit.text().strip(),
             "rating_states": self.rating_states(),
-            "limit": int(self.limit_spin.value()),
             "max_posts_per_query": int(self.max_posts_per_query_spin.value()),
             "min_unknown_posts_per_query": int(self.min_unknown_per_query_spin.value()),
             "max_total_posts": int(self.max_total_posts_spin.value()),
+            "llm_enabled": self.llm_enabled_checkbox.isChecked(),
         }
 
     def apply_payload(self, payload: dict[str, Any]) -> None:
@@ -564,12 +572,18 @@ class FetchTab(QWidget):
         if isinstance(states, dict):
             self.set_rating_states({str(k): str(v) for k, v in states.items()})
 
-        self.limit_spin.setValue(int(payload.get("limit") or self.config.get("limit", 100)))
-        self.max_posts_per_query_spin.setValue(int(payload.get("max_posts_per_query") or self.config.get("max_posts_per_query", 200)))
+        self.max_posts_per_query_spin.setValue(
+            int(payload.get("max_posts_per_query") or self.config.get("max_posts_per_query", 200))
+        )
         self.min_unknown_per_query_spin.setValue(
             int(payload.get("min_unknown_posts_per_query") or self.config.get("min_unknown_posts_per_query", 0) or 0)
         )
-        self.max_total_posts_spin.setValue(int(payload.get("max_total_posts") or self.config.get("max_total_posts", 500)))
+        self.max_total_posts_spin.setValue(
+            int(payload.get("max_total_posts") or self.config.get("max_total_posts", 500))
+        )
+        self.llm_enabled_checkbox.setChecked(
+            bool(payload.get("llm_enabled", (self.config.get("llm", {}) or {}).get("enabled", False)))
+        )
         self.on_source_mode_changed()
 
     def save_current_preset(self) -> None:
@@ -644,10 +658,10 @@ class FetchTab(QWidget):
     def build_fetch_config(self) -> dict[str, Any]:
         fetch_config = copy.deepcopy(self.config)
 
-        fetch_config["limit"] = int(self.limit_spin.value())
         fetch_config["max_posts_per_query"] = int(self.max_posts_per_query_spin.value())
         fetch_config["min_unknown_posts_per_query"] = int(self.min_unknown_per_query_spin.value())
         fetch_config["max_total_posts"] = int(self.max_total_posts_spin.value())
+        fetch_config.setdefault("llm", {})["enabled"] = self.llm_enabled_checkbox.isChecked()
 
         mode = self.selected_source_mode()
         rating_clause = self.build_rating_clause()
@@ -770,6 +784,7 @@ class FetchTab(QWidget):
         inserted_posts = int(getattr(result, "inserted_posts", 0) or 0)
         known_posts = int(getattr(result, "updated_posts", 0) or 0)
         cached_thumbnails = int(getattr(result, "cached_thumbnails", 0) or 0)
+        fetch_excluded_posts = int(getattr(result, "fetch_excluded_posts", 0) or 0)
         target_unknown_per_query = int(getattr(result, "target_unknown_per_query", 0) or 0)
         target_unknown_total = int(getattr(result, "target_unknown_total", 0) or 0)
 
@@ -792,6 +807,7 @@ class FetchTab(QWidget):
             f"  {tr('fetch.summary.posts_checked', 'Posts checked', config=self.config)}: {seen_posts}",
             new_unknown_line,
             f"  {tr('fetch.summary.known_updated', 'Known updated', config=self.config)}: {known_posts}",
+            f"  {tr('fetch.summary.fetch_excluded', 'Fetch-excluded', config=self.config)}: {fetch_excluded_posts}",
             f"  {tr('fetch.summary.thumbnails', 'Thumbnails', config=self.config)}: {cached_thumbnails}",
         ]
 

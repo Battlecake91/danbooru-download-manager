@@ -133,6 +133,11 @@ class DatabaseSchemaMixin:
             reason TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS fetch_excluded_tags (
+            tag TEXT PRIMARY KEY,
+            reason TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS tag_aliases (
             original_tag TEXT PRIMARY KEY,
             alias_tag TEXT NOT NULL
@@ -348,6 +353,7 @@ class DatabaseSchemaMixin:
         self.execute("CREATE INDEX IF NOT EXISTS idx_tag_scores_tag ON tag_scores(tag)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_tag_aliases_original ON tag_aliases(original_tag)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_filename_excluded_tags_tag ON filename_excluded_tags(tag)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_fetch_excluded_tags_tag ON fetch_excluded_tags(tag)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_danbooru_tags_category_count ON danbooru_tags(category, post_count DESC)")
         self.execute("CREATE INDEX IF NOT EXISTS idx_danbooru_tags_name_count ON danbooru_tags(name, post_count DESC)")
 

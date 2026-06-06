@@ -117,12 +117,14 @@ class DatabaseTagMixin:
                     COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
                     COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input,
                     COALESCE(ta.alias_tag, dta.consequent_name, '') AS alias_tag,
-                    CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded
+                    CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
+                    CASE WHEN xet.tag IS NULL THEN 0 ELSE 1 END AS fetch_excluded
                 FROM merged
                 LEFT JOIN tag_scores ts ON ts.tag = merged.tag
                 LEFT JOIN tag_aliases ta ON ta.original_tag = merged.tag
                 LEFT JOIN danbooru_tag_aliases dta ON dta.antecedent_name = merged.tag AND LOWER(COALESCE(dta.status, 'active')) IN ('active', 'approved')
                 LEFT JOIN filename_excluded_tags fet ON fet.tag = merged.tag
+                LEFT JOIN fetch_excluded_tags xet ON xet.tag = merged.tag
                 {where_sql}
                 ORDER BY post_count DESC, merged.tag ASC
                 LIMIT ?
@@ -258,12 +260,14 @@ class DatabaseTagMixin:
                     COUNT(DISTINCT pt.post_id) AS post_count,
                     ta.alias_tag AS alias_tag,
                     CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
+                    CASE WHEN xet.tag IS NULL THEN 0 ELSE 1 END AS fetch_excluded,
                     COALESCE(ts.ignore_category_influence, 0) AS ignore_category_influence,
                     COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
                     COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input
                 FROM post_tags pt
                 LEFT JOIN tag_aliases ta ON ta.original_tag = pt.tag
                 LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+                LEFT JOIN fetch_excluded_tags xet ON xet.tag = pt.tag
                 LEFT JOIN tag_scores ts ON ts.tag = pt.tag
                 WHERE {" AND ".join(where_parts)}
                 GROUP BY pt.tag
@@ -381,6 +385,11 @@ class DatabaseTagMixin:
             clean_tags,
         ).fetchall()
         filename_excluded = {str(row["tag"] or "") for row in excluded_rows}
+        fetch_excluded_rows = self.execute(
+            f"SELECT tag FROM fetch_excluded_tags WHERE tag IN ({placeholders})",
+            clean_tags,
+        ).fetchall()
+        fetch_excluded = {str(row["tag"] or "") for row in fetch_excluded_rows}
 
         identities = self.build_tag_identities(clean_tags)
         result: dict[str, dict[str, Any]] = {}
@@ -404,6 +413,7 @@ class DatabaseTagMixin:
                 "ignore_recommendation_score": bool(row["ignore_recommendation_score"]) if row is not None else False,
                 "ignore_llm_input": bool(row["ignore_llm_input"]) if row is not None else False,
                 "filename_excluded": tag in filename_excluded,
+                "fetch_excluded": tag in fetch_excluded,
                 "average_rating": row["average_rating"] if row is not None else None,
                 "rating_count": 0,
                 "saved_count": 0,
@@ -429,6 +439,7 @@ class DatabaseTagMixin:
                 COALESCE(ts.ignore_recommendation_score, 0) AS ignore_recommendation_score,
                 COALESCE(ts.ignore_llm_input, 0) AS ignore_llm_input,
                 CASE WHEN fet.tag IS NULL THEN 0 ELSE 1 END AS filename_excluded,
+                    CASE WHEN xet.tag IS NULL THEN 0 ELSE 1 END AS fetch_excluded,
                 COALESCE(ts.average_rating, AVG(pr.stars)) AS average_rating,
                 COUNT(pr.stars) AS rating_count,
                 SUM(CASE WHEN p.status = 'saved' THEN 1 ELSE 0 END) AS saved_count,
@@ -438,6 +449,7 @@ class DatabaseTagMixin:
             JOIN posts p ON p.id = pt.post_id
             LEFT JOIN tag_scores ts ON ts.tag = pt.tag
             LEFT JOIN filename_excluded_tags fet ON fet.tag = pt.tag
+                LEFT JOIN fetch_excluded_tags xet ON xet.tag = pt.tag
             LEFT JOIN post_reviews pr ON pr.post_id = pt.post_id AND pr.stars IS NOT NULL
             WHERE pt.tag IN ({placeholders})
             GROUP BY pt.tag
@@ -474,6 +486,7 @@ class DatabaseTagMixin:
                 "ignore_recommendation_score": bool(row["ignore_recommendation_score"]),
                 "ignore_llm_input": bool(row["ignore_llm_input"]),
                 "filename_excluded": bool(row["filename_excluded"]),
+                "fetch_excluded": bool(row["fetch_excluded"]),
                 "average_rating": row["average_rating"],
                 "rating_count": int(row["rating_count"] or 0),
                 "saved_count": saved_count,
@@ -527,6 +540,28 @@ class DatabaseTagMixin:
 
     def filename_excluded_tag_set(self) -> set[str]:
         rows = self.execute("SELECT tag FROM filename_excluded_tags").fetchall()
+        return {str(row["tag"]) for row in rows}
+
+    def add_fetch_excluded_tag(self, tag: str, reason: str = "manual") -> None:
+        clean_tag = normalize_tag_token(tag)
+        if not clean_tag:
+            return
+        self.execute(
+            """
+            INSERT INTO fetch_excluded_tags (tag, reason)
+            VALUES (?, ?)
+            ON CONFLICT(tag) DO UPDATE SET reason = excluded.reason
+            """,
+            (clean_tag, reason),
+        )
+        self.commit()
+
+    def remove_fetch_excluded_tag(self, tag: str) -> None:
+        self.execute("DELETE FROM fetch_excluded_tags WHERE tag = ?", (normalize_tag_token(tag),))
+        self.commit()
+
+    def fetch_excluded_tag_set(self) -> set[str]:
+        rows = self.execute("SELECT tag FROM fetch_excluded_tags").fetchall()
         return {str(row["tag"]) for row in rows}
 
     def set_tag_alias(self, tag: str, alias: str) -> None:
