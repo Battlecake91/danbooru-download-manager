@@ -9,7 +9,9 @@ In Danbooru Download Manager `1.3.152`, Fetch normally loads post metadata and t
 
 ### Advanced resolution filter
 
-The Previewer provides an **Advanced Filter** for image dimensions. You can set minimum and maximum width and height values in pixels. A blank field or `0` disables that individual limit. Posts without known dimensions are hidden when the corresponding dimension filter is active.
+The Fetch tab provides an **Advanced Filter** for original image dimensions. You can set minimum and maximum width and height values in pixels. A value of `0` disables that individual limit. The limits are stored with the fetch preset.
+
+Posts outside the configured range are rejected before they are written to the database or cached as thumbnails. Posts without a known width or height are also rejected when a limit for that dimension is active.
 
 ## 🔎 Search modes
 

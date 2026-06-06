@@ -1,3 +1,12 @@
+## 1.3.175
+
+### Fetch resolution filtering
+
+- Moved the advanced resolution filter from Previewer to Fetch.
+- Added preset-specific minimum and maximum width and height limits.
+- Posts outside the configured dimensions are skipped before database storage and thumbnail caching.
+- Added resolution-excluded counts to the fetch summary.
+
 ## 1.3.174 - Preview resolution filters
 
 - Added an **Advanced Filter** dialog to the Previewer.

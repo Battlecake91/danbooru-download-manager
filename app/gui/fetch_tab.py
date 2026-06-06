@@ -8,10 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot, QStringListModel, QTimer
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QCompleter,
+    QDialog,
+    QDialogButtonBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -299,6 +302,12 @@ class FetchTab(QWidget):
         self.suggestion_thread: QThread | None = None
         self.suggestion_worker: TagSuggestionWorker | None = None
         self.pending_suggestion_token: str | None = None
+        self.resolution_filters: dict[str, int] = {
+            "min_width": 0,
+            "max_width": 0,
+            "min_height": 0,
+            "max_height": 0,
+        }
 
         self.main_layout = QVBoxLayout(self)
 
@@ -411,6 +420,14 @@ class FetchTab(QWidget):
         self.max_total_posts_spin.setValue(int(config.get("max_total_posts", 500)))
         self.max_total_posts_spin.setKeyboardTracking(False)
         self.options_layout.addRow(tr("fetch.options.max_total", config=self.config), self.max_total_posts_spin)
+
+        self.advanced_filter_button = QPushButton()
+        self.advanced_filter_button.clicked.connect(self.open_advanced_filter_dialog)
+        self.options_layout.addRow(
+            tr("fetch.advanced_filter.resolution", "Resolution filter:", config=self.config),
+            self.advanced_filter_button,
+        )
+        self.update_advanced_filter_button()
 
         self.main_layout.addWidget(self.options_group)
 
@@ -556,6 +573,7 @@ class FetchTab(QWidget):
             "min_unknown_posts_per_query": int(self.min_unknown_per_query_spin.value()),
             "max_total_posts": int(self.max_total_posts_spin.value()),
             "llm_enabled": self.llm_enabled_checkbox.isChecked(),
+            "resolution_filters": dict(self.resolution_filters),
         }
 
     def apply_payload(self, payload: dict[str, Any]) -> None:
@@ -581,6 +599,20 @@ class FetchTab(QWidget):
         self.max_total_posts_spin.setValue(
             int(payload.get("max_total_posts") or self.config.get("max_total_posts", 500))
         )
+        saved_resolution_filters = payload.get("resolution_filters", {})
+        if isinstance(saved_resolution_filters, dict):
+            self.resolution_filters = {
+                key: max(0, int(saved_resolution_filters.get(key, 0) or 0))
+                for key in ("min_width", "max_width", "min_height", "max_height")
+            }
+        else:
+            self.resolution_filters = {
+                "min_width": 0,
+                "max_width": 0,
+                "min_height": 0,
+                "max_height": 0,
+            }
+        self.update_advanced_filter_button()
         self.llm_enabled_checkbox.setChecked(
             bool(payload.get("llm_enabled", (self.config.get("llm", {}) or {}).get("enabled", False)))
         )
@@ -662,6 +694,7 @@ class FetchTab(QWidget):
         fetch_config["min_unknown_posts_per_query"] = int(self.min_unknown_per_query_spin.value())
         fetch_config["max_total_posts"] = int(self.max_total_posts_spin.value())
         fetch_config.setdefault("llm", {})["enabled"] = self.llm_enabled_checkbox.isChecked()
+        fetch_config["resolution_filters"] = dict(self.resolution_filters)
 
         mode = self.selected_source_mode()
         rating_clause = self.build_rating_clause()
@@ -692,6 +725,94 @@ class FetchTab(QWidget):
         fetch_config["saved_search_extra_tags"] = rating_clause
 
         return fetch_config
+
+    def resolution_filter_active(self) -> bool:
+        return any(int(value or 0) > 0 for value in self.resolution_filters.values())
+
+    def update_advanced_filter_button(self) -> None:
+        label = tr("fetch.advanced_filter", "Advanced Filter", config=self.config)
+        if self.resolution_filter_active():
+            label += " *"
+        self.advanced_filter_button.setText(label)
+        self.advanced_filter_button.setToolTip(
+            tr(
+                "fetch.advanced_filter.tooltip",
+                "Exclude posts by original image resolution before they are stored or downloaded. Empty values or 0 mean no limit.",
+                config=self.config,
+            )
+        )
+
+    def open_advanced_filter_dialog(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("fetch.advanced_filter", "Advanced Filter", config=self.config))
+        dialog.setModal(True)
+
+        layout = QVBoxLayout(dialog)
+        hint = QLabel(
+            tr(
+                "fetch.resolution_filter.hint",
+                "Only posts within these original-image dimensions are fetched. Empty values or 0 mean no limit.",
+                config=self.config,
+            )
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        form = QFormLayout()
+        edits: dict[str, QLineEdit] = {}
+        labels = {
+            "min_width": tr("fetch.resolution_filter.min_width", "Minimum width", config=self.config),
+            "max_width": tr("fetch.resolution_filter.max_width", "Maximum width", config=self.config),
+            "min_height": tr("fetch.resolution_filter.min_height", "Minimum height", config=self.config),
+            "max_height": tr("fetch.resolution_filter.max_height", "Maximum height", config=self.config),
+        }
+        validator = QIntValidator(0, 1_000_000, dialog)
+        for key in ("min_width", "max_width", "min_height", "max_height"):
+            edit = QLineEdit()
+            edit.setValidator(validator)
+            edit.setPlaceholderText("0")
+            current = int(self.resolution_filters.get(key, 0) or 0)
+            edit.setText(str(current) if current > 0 else "")
+            edits[key] = edit
+            form.addRow(labels[key] + ":", edit)
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.Reset)
+        buttons.button(QDialogButtonBox.Reset).clicked.connect(
+            lambda: [edit.clear() for edit in edits.values()]
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        new_filters = {
+            key: max(0, int(edit.text().strip() or 0))
+            for key, edit in edits.items()
+        }
+        min_width = new_filters["min_width"]
+        max_width = new_filters["max_width"]
+        min_height = new_filters["min_height"]
+        max_height = new_filters["max_height"]
+        if max_width and min_width and max_width < min_width:
+            QMessageBox.warning(
+                self,
+                tr("fetch.advanced_filter", "Advanced Filter", config=self.config),
+                tr("fetch.resolution_filter.width_invalid", "Maximum width must be greater than or equal to minimum width.", config=self.config),
+            )
+            return
+        if max_height and min_height and max_height < min_height:
+            QMessageBox.warning(
+                self,
+                tr("fetch.advanced_filter", "Advanced Filter", config=self.config),
+                tr("fetch.resolution_filter.height_invalid", "Maximum height must be greater than or equal to minimum height.", config=self.config),
+            )
+            return
+
+        self.resolution_filters = new_filters
+        self.update_advanced_filter_button()
 
     def start_fetch(self) -> None:
         if self.thread is not None:
@@ -785,6 +906,7 @@ class FetchTab(QWidget):
         known_posts = int(getattr(result, "updated_posts", 0) or 0)
         cached_thumbnails = int(getattr(result, "cached_thumbnails", 0) or 0)
         fetch_excluded_posts = int(getattr(result, "fetch_excluded_posts", 0) or 0)
+        resolution_excluded_posts = int(getattr(result, "resolution_excluded_posts", 0) or 0)
         target_unknown_per_query = int(getattr(result, "target_unknown_per_query", 0) or 0)
         target_unknown_total = int(getattr(result, "target_unknown_total", 0) or 0)
 
@@ -808,6 +930,7 @@ class FetchTab(QWidget):
             new_unknown_line,
             f"  {tr('fetch.summary.known_updated', 'Known updated', config=self.config)}: {known_posts}",
             f"  {tr('fetch.summary.fetch_excluded', 'Fetch-excluded', config=self.config)}: {fetch_excluded_posts}",
+            f"  {tr('fetch.summary.resolution_excluded', 'Resolution-excluded', config=self.config)}: {resolution_excluded_posts}",
             f"  {tr('fetch.summary.thumbnails', 'Thumbnails', config=self.config)}: {cached_thumbnails}",
         ]
 

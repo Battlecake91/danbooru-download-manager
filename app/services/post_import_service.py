@@ -19,6 +19,7 @@ class FetchResult:
     inserted_posts: int = 0
     updated_posts: int = 0
     fetch_excluded_posts: int = 0
+    resolution_excluded_posts: int = 0
     cached_thumbnails: int = 0
     target_unknown_per_query: int = 0
     target_unknown_total: int = 0
@@ -153,6 +154,10 @@ class PostImportService:
                         result.fetch_excluded_posts += 1
                         continue
 
+                    if not self.post_matches_resolution_filter(post):
+                        result.resolution_excluded_posts += 1
+                        continue
+
                     post_result = self.store_post(post)
                     result.fetched_post_ids.append(post_id)
 
@@ -226,6 +231,37 @@ class PostImportService:
         for field_name in fields:
             post_tags.update(split_tags(str(post.get(field_name) or "")))
         return not post_tags.isdisjoint(excluded_tags)
+
+    def post_matches_resolution_filter(self, post: dict[str, Any]) -> bool:
+        filters = self.config.get("resolution_filters", {}) or {}
+        if not isinstance(filters, dict):
+            return True
+
+        min_width = max(0, int(filters.get("min_width", 0) or 0))
+        max_width = max(0, int(filters.get("max_width", 0) or 0))
+        min_height = max(0, int(filters.get("min_height", 0) or 0))
+        max_height = max(0, int(filters.get("max_height", 0) or 0))
+        if not any((min_width, max_width, min_height, max_height)):
+            return True
+
+        width = int(post.get("image_width") or 0)
+        height = int(post.get("image_height") or 0)
+
+        # Active limits require Danbooru to provide the corresponding dimension.
+        # Unknown is not secretly 4K, despite databases occasionally acting optimistic.
+        if (min_width or max_width) and width <= 0:
+            return False
+        if (min_height or max_height) and height <= 0:
+            return False
+        if min_width and width < min_width:
+            return False
+        if max_width and width > max_width:
+            return False
+        if min_height and height < min_height:
+            return False
+        if max_height and height > max_height:
+            return False
+        return True
 
     def get_status(self, post_id: int) -> str:
         row = self.db.execute("SELECT status FROM posts WHERE id = ?", (post_id,)).fetchone()

@@ -196,14 +196,6 @@ class PreviewWindow(QMainWindow):
         self._has_loaded_once = False
         self._filters_dirty = True
 
-        gui_config = config.get("gui", {}) or {}
-        self.resolution_filters: dict[str, int] = {
-            "min_width": max(0, int(gui_config.get("preview_min_width", 0) or 0)),
-            "max_width": max(0, int(gui_config.get("preview_max_width", 0) or 0)),
-            "min_height": max(0, int(gui_config.get("preview_min_height", 0) or 0)),
-            "max_height": max(0, int(gui_config.get("preview_max_height", 0) or 0)),
-        }
-
         self.status_checkboxes: dict[str, QCheckBox] = {}
         self.category_rule_cache: list[dict[str, Any]] = []
         self.suggestion_thread: QThread | None = None
@@ -326,12 +318,6 @@ class PreviewWindow(QMainWindow):
         self.clear_search_button = QPushButton(tr("common.clear", "Clear", config=self.config))
         self.clear_search_button.clicked.connect(self.clear_search)
         self.toolbar_filters.addWidget(self.clear_search_button)
-
-        self.toolbar_filters.addSeparator()
-        self.advanced_filter_button = QPushButton()
-        self.advanced_filter_button.clicked.connect(self.open_advanced_filter_dialog)
-        self.toolbar_filters.addWidget(self.advanced_filter_button)
-        self.update_advanced_filter_button()
 
         self.addToolBarBreak(Qt.TopToolBarArea)
         self.toolbar_sort = QToolBar(tr("preview.toolbar.sort", "Preview Sorting", config=self.config))
@@ -1054,107 +1040,6 @@ class PreviewWindow(QMainWindow):
         text = self.search_edit.text().strip()
         return text or None
 
-    def resolution_filter_active(self) -> bool:
-        return any(int(value or 0) > 0 for value in self.resolution_filters.values())
-
-    def update_advanced_filter_button(self) -> None:
-        active = self.resolution_filter_active()
-        label = tr("preview.advanced_filter", "Advanced Filter", config=self.config)
-        if active:
-            label += " *"
-        self.advanced_filter_button.setText(label)
-        self.advanced_filter_button.setToolTip(
-            tr(
-                "preview.advanced_filter.tooltip",
-                "Filter preview posts by image resolution. Empty fields or 0 mean no limit.",
-                config=self.config,
-            )
-        )
-
-    @staticmethod
-    def _resolution_value_from_edit(edit: QLineEdit) -> int:
-        text = edit.text().strip()
-        if not text:
-            return 0
-        try:
-            return max(0, int(text))
-        except ValueError:
-            return 0
-
-    def open_advanced_filter_dialog(self) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle(tr("preview.advanced_filter", "Advanced Filter", config=self.config))
-        dialog.setModal(True)
-
-        layout = QVBoxLayout(dialog)
-        hint = QLabel(
-            tr(
-                "preview.resolution_filter.hint",
-                "Resolution limits in pixels. Empty fields or 0 mean no limit.",
-                config=self.config,
-            )
-        )
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-
-        form = QFormLayout()
-        edits: dict[str, QLineEdit] = {}
-        labels = {
-            "min_width": tr("preview.resolution_filter.min_width", "Minimum width", config=self.config),
-            "max_width": tr("preview.resolution_filter.max_width", "Maximum width", config=self.config),
-            "min_height": tr("preview.resolution_filter.min_height", "Minimum height", config=self.config),
-            "max_height": tr("preview.resolution_filter.max_height", "Maximum height", config=self.config),
-        }
-        validator = QIntValidator(0, 1_000_000, dialog)
-        for key in ("min_width", "max_width", "min_height", "max_height"):
-            edit = QLineEdit()
-            edit.setValidator(validator)
-            edit.setPlaceholderText("0")
-            current = int(self.resolution_filters.get(key, 0) or 0)
-            edit.setText(str(current) if current > 0 else "")
-            edits[key] = edit
-            form.addRow(labels[key] + ":", edit)
-        layout.addLayout(form)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel | QDialogButtonBox.Reset)
-        reset_button = buttons.button(QDialogButtonBox.Reset)
-        reset_button.setText(tr("common.reset", "Reset", config=self.config))
-        reset_button.clicked.connect(lambda: [edit.clear() for edit in edits.values()])
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-
-        if dialog.exec() != QDialog.Accepted:
-            return
-
-        new_filters = {key: self._resolution_value_from_edit(edit) for key, edit in edits.items()}
-        min_width = new_filters["min_width"]
-        max_width = new_filters["max_width"]
-        min_height = new_filters["min_height"]
-        max_height = new_filters["max_height"]
-        if max_width and min_width and max_width < min_width:
-            QMessageBox.warning(
-                self,
-                tr("preview.advanced_filter", "Advanced Filter", config=self.config),
-                tr("preview.resolution_filter.width_invalid", "Maximum width must be greater than or equal to minimum width.", config=self.config),
-            )
-            return
-        if max_height and min_height and max_height < min_height:
-            QMessageBox.warning(
-                self,
-                tr("preview.advanced_filter", "Advanced Filter", config=self.config),
-                tr("preview.resolution_filter.height_invalid", "Maximum height must be greater than or equal to minimum height.", config=self.config),
-            )
-            return
-
-        self.resolution_filters = new_filters
-        gui_config = self.config.setdefault("gui", {})
-        if isinstance(gui_config, dict):
-            for key, value in new_filters.items():
-                gui_config[f"preview_{key}"] = value
-        self.update_advanced_filter_button()
-        self.on_active_filter_changed()
-
     def clear_search(self) -> None:
         self.search_edit.clear()
         self.reload_posts()
@@ -1188,7 +1073,6 @@ class PreviewWindow(QMainWindow):
             base_total = self.count_preview_posts_by_statuses(
                 statuses=statuses,
                 text_filter=text_filter,
-                resolution_filters=self.resolution_filters,
             )
 
             python_filtered_or_sorted = (
@@ -1213,7 +1097,6 @@ class PreviewWindow(QMainWindow):
                 limit=internal_limit,
                 offset=self.current_offset,
                 sort_key=sort_key,
-                resolution_filters=self.resolution_filters,
             )
             enriched = self.enrich_preview_rows_with_categories(candidates)
             filtered = [
