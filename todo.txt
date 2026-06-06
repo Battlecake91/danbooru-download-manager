@@ -3,3 +3,5 @@
 - Expand task-oriented documentation and Help-tab guidance.
 - Improve Danbooru API error reporting.
 - Add optional list-oriented views for large result sets.
+- Performance fixes - Previewer sometimes hang up the window while loading very long
+- Pages in Previewer as it is very unperformant to see more than 100 pictures

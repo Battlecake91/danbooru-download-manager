@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
-import faulthandler
 import os
-import threading
 import time
-import traceback
 import webbrowser
 from pathlib import Path
 from typing import Any, Callable
@@ -100,7 +97,6 @@ class StatusChipBar(QWidget):
 
         for status in ("new", "potential", "rejected", "saved"):
             label = StatusChip(status, STATUS_LABELS.get(status, status))
-            label.setObjectName(f"statusChip_{status}")
             label.clicked.connect(self.status_clicked.emit)
             self._labels[status] = label
             layout.addWidget(label)
@@ -112,7 +108,6 @@ class StatusChipBar(QWidget):
 
     def set_status(self, active_status: str | None) -> None:
         self.active_status = active_status or "new"
-        print(f"[VIEWER-DIAG] StatusChipBar.set_status raw={active_status!r} normalized={self.active_status!r}", flush=True)
         for status, label in self._labels.items():
             color = STATUS_COLORS.get(status, "#888888")
             if status == self.active_status:
@@ -303,9 +298,6 @@ class ImageViewerWindow(QMainWindow):
         self.auto_advance_after_reject = bool(viewer_config.get("auto_advance_after_reject", True))
         self.viewer_perf_config = viewer_config.get("performance", {}) or {}
         self.viewer_perf_log_path = Path(config.get("work_dir", ".")) / "logs" / "viewer_performance.log"
-        self.viewer_diagnostic_log_path = Path(config.get("work_dir", ".")) / "logs" / "viewer_diagnostics.log"
-        self._viewer_load_generation = 0
-        self._viewer_load_active = False
 
         self.setWindowTitle(self.t("viewer.window_title", "Danbooru Manager - Viewer"))
         self.setWindowIcon(ensure_app_icon(config))
@@ -707,36 +699,6 @@ class ImageViewerWindow(QMainWindow):
             pass
         print(line, flush=True)
 
-    def write_viewer_diagnostic(self, message: str) -> None:
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        thread = threading.current_thread()
-        line = f"[{timestamp}] [thread={thread.name}:{thread.ident}] {message}"
-        try:
-            self.viewer_diagnostic_log_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.viewer_diagnostic_log_path.open("a", encoding="utf-8") as handle:
-                handle.write(line + "\n")
-        except Exception:
-            pass
-        print(f"[VIEWER-DIAG] {line}", flush=True)
-
-    def schedule_viewer_hang_dump(self, generation: int, post_id: int) -> None:
-        def dump_if_still_active() -> None:
-            if not self._viewer_load_active or generation != self._viewer_load_generation:
-                return
-            self.write_viewer_diagnostic(
-                f"HANG WATCHDOG fired generation={generation} post_id={post_id}; dumping all Python threads"
-            )
-            try:
-                self.viewer_diagnostic_log_path.parent.mkdir(parents=True, exist_ok=True)
-                with self.viewer_diagnostic_log_path.open("a", encoding="utf-8") as handle:
-                    handle.write("\n--- PYTHON THREAD DUMP ---\n")
-                    faulthandler.dump_traceback(file=handle, all_threads=True)
-                    handle.write("--- END PYTHON THREAD DUMP ---\n\n")
-            except Exception:
-                self.write_viewer_diagnostic("Watchdog dump failed:\n" + traceback.format_exc())
-
-        QTimer.singleShot(5000, dump_if_still_active)
-
     def load_current_post(self) -> None:
         perf_enabled = self.viewer_performance_enabled()
         metrics: dict[str, float] | None = {} if perf_enabled else None
@@ -744,39 +706,19 @@ class ImageViewerWindow(QMainWindow):
 
         post_id = self.current_post_id_value()
         if post_id is None:
-            self.write_viewer_diagnostic("load_current_post aborted: no current post id")
             return
-
-        self._viewer_load_generation += 1
-        load_generation = self._viewer_load_generation
-        if self._viewer_load_active:
-            self.write_viewer_diagnostic(
-                f"REENTRANT load_current_post generation={load_generation} post_id={post_id}"
-            )
-        self._viewer_load_active = True
-        self.write_viewer_diagnostic(
-            f"BEGIN load_current_post generation={load_generation} post_id={post_id} "
-            f"index={self.current_index} visible_posts={len(self.post_ids)}"
-        )
-        self.schedule_viewer_hang_dump(load_generation, post_id)
 
         self.current_post_id = post_id
         self.last_saved_path = None
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic(f"STEP get_post_detail begin post_id={post_id}")
         row = self.db.get_post_detail(post_id)
-        self.write_viewer_diagnostic(f"STEP get_post_detail end post_id={post_id} found={row is not None}")
         self.perf_add(metrics, "get_post_detail", started_at)
         if row is None:
-            self._viewer_load_active = False
-            self.write_viewer_diagnostic(f"END load_current_post missing row post_id={post_id}")
             return
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic(f"STEP get_related_posts begin post_id={post_id}")
         related = self.db.get_related_posts(post_id)
-        self.write_viewer_diagnostic(f"STEP get_related_posts end post_id={post_id} count={len(related)}")
         self.perf_add(metrics, "get_related_posts", started_at)
 
         related_total_count = len(related)
@@ -837,14 +779,7 @@ class ImageViewerWindow(QMainWindow):
             self.related_list.hide()
 
         status = row["status"] or "new"
-        self.write_viewer_diagnostic(
-            f"ROW values post_id={post_id} status={status!r} rating={row['rating']!r} "
-            f"score={row['score']!r} stars={row['stars']!r} "
-            f"parent_id={row['parent_id']!r} final_file_path={row['final_file_path']!r}"
-        )
-        self.write_viewer_diagnostic(f"STEP status_chips begin status={status!r}")
         self.status_chips.set_status(status)
-        self.write_viewer_diagnostic(f"STEP status_chips end status={status!r}")
         self.final_save_button.setEnabled(True)
         local_current_path = self.local_path_for_post(post_id)
         self.open_local_image_button.setEnabled(local_current_path is not None)
@@ -856,23 +791,15 @@ class ImageViewerWindow(QMainWindow):
         self.perf_add(metrics, "header_status_rating", started_at)
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("STEP update_related_posts begin")
         self.update_related_posts(post_id, related)
-        self.write_viewer_diagnostic("STEP update_related_posts end")
         self.perf_add(metrics, "update_related_posts", started_at)
 
-        self.write_viewer_diagnostic("STEP update_category_controls begin")
         self.update_category_controls(post_id, metrics)
-        self.write_viewer_diagnostic("STEP update_category_controls end")
 
-        self.write_viewer_diagnostic("STEP populate_tag_lists begin")
         self.populate_tag_lists(post_id, metrics)
-        self.write_viewer_diagnostic("STEP populate_tag_lists end")
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("STEP ensure_image_path begin")
         image_path = self.ensure_image_path(post_id, row)
-        self.write_viewer_diagnostic(f"STEP ensure_image_path end path={str(image_path)!r}")
         self.perf_add(metrics, "ensure_image_path", started_at)
         if image_path:
             started_at = time.perf_counter()
@@ -888,26 +815,16 @@ class ImageViewerWindow(QMainWindow):
             self.image_label.setText(self.t("viewer.no_local_image_download_failed", "No local image file and download failed."))
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("STEP refresh_image begin")
         self.refresh_image()
-        self.write_viewer_diagnostic("STEP refresh_image end")
         self.perf_add(metrics, "refresh_image", started_at)
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("STEP schedule_next_image_prefetch begin")
         self.schedule_next_image_prefetch()
-        self.write_viewer_diagnostic("STEP schedule_next_image_prefetch end")
         self.perf_add(metrics, "prefetch_schedule", started_at)
 
         if metrics is not None:
             metrics["total"] = (time.perf_counter() - total_started_at) * 1000.0
             self.write_viewer_performance_log(post_id, metrics)
-
-        self._viewer_load_active = False
-        elapsed_ms = (time.perf_counter() - total_started_at) * 1000.0
-        self.write_viewer_diagnostic(
-            f"END load_current_post generation={load_generation} post_id={post_id} elapsed={elapsed_ms:.1f}ms"
-        )
 
     def populate_tag_lists(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
         self.tags_widget.show_loading_message(self.t("viewer.tags_loading", "Loading tags…"))
@@ -1134,44 +1051,31 @@ class ImageViewerWindow(QMainWindow):
         os.startfile(folder)
 
     def update_category_controls(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
-        self.write_viewer_diagnostic(f"CATEGORY begin post_id={post_id}")
-
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("CATEGORY suggest_category begin")
         suggested = self.final_save_service.suggest_category(post_id)
-        self.write_viewer_diagnostic(f"CATEGORY suggest_category end name={suggested.name!r}")
         self.perf_add(metrics, "category_suggest", started_at)
         self.suggested_category_name = suggested.name
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("CATEGORY get_assigned_category_for_post begin")
         assigned = self.db.get_assigned_category_for_post(post_id)
-        self.write_viewer_diagnostic(f"CATEGORY get_assigned_category_for_post end found={assigned is not None}")
         self.perf_add(metrics, "category_assigned", started_at)
         assigned_name = str(assigned["name"]) if assigned is not None else None
         assigned_source = str(assigned["assignment_source"] or "manual") if assigned is not None else None
 
-        self.write_viewer_diagnostic("CATEGORY combo blockSignals/clear begin")
         self.category_combo.blockSignals(True)
         self.category_combo.clear()
-        self.write_viewer_diagnostic("CATEGORY combo blockSignals/clear end")
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("CATEGORY category_influence_for_post begin")
         influences = self.final_save_service.category_engine.category_influence_for_post(post_id)
-        self.write_viewer_diagnostic(f"CATEGORY category_influence_for_post end count={len(influences)}")
         self.perf_add(metrics, "category_influence", started_at)
         self.category_influence_by_name = {entry.name: entry.score for entry in influences}
         top_influence_name = influences[0].name if influences else None
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("CATEGORY list_categories begin")
         categories = self.final_save_service.list_categories()
-        self.write_viewer_diagnostic(f"CATEGORY list_categories end count={len(categories)}")
         self.perf_add(metrics, "category_list", started_at)
 
         started_at = time.perf_counter()
-        self.write_viewer_diagnostic("CATEGORY combo population begin")
         for category in categories:
             label = category.name
             suffixes: list[str] = []
@@ -1183,20 +1087,15 @@ class ImageViewerWindow(QMainWindow):
                 suffixes.append(self.t("viewer.category_suffix_assigned", "assigned"))
             if suffixes:
                 label = f"{category.name}  ← {', '.join(suffixes)}"
-            self.write_viewer_diagnostic(f"CATEGORY combo addItem name={category.name!r}")
             self.category_combo.addItem(label, category.name)
 
-        self.write_viewer_diagnostic("CATEGORY combo selection begin")
         target_name = assigned_name or suggested.name
         target_index = self.category_combo.findData(target_name)
         if target_index >= 0:
             self.category_combo.setCurrentIndex(target_index)
-        self.write_viewer_diagnostic(f"CATEGORY combo selection end target={target_name!r} index={target_index}")
 
         self.category_combo.blockSignals(False)
-        self.write_viewer_diagnostic("CATEGORY combo signals restored")
 
-        self.write_viewer_diagnostic("CATEGORY label update begin")
         if assigned_name:
             self.category_label.setText(self.t("viewer.category_assigned_source", "Category: assigned ({source})", source=assigned_source))
         else:
@@ -1204,13 +1103,8 @@ class ImageViewerWindow(QMainWindow):
             if top_influence_name and top_influence_name != suggested.name:
                 influence_text = self.t("viewer.category_tag_hint_append", " | tag hint: {name}", name=top_influence_name)
             self.category_label.setText(self.t("viewer.category_suggestion", "Category: suggestion {name}{hint}", name=suggested.name, hint=influence_text))
-        self.write_viewer_diagnostic("CATEGORY label update end")
         self.perf_add(metrics, "category_combo_ui", started_at)
-
-        self.write_viewer_diagnostic("CATEGORY update_final_path_preview begin")
         self.update_final_path_preview(metrics)
-        self.write_viewer_diagnostic("CATEGORY update_final_path_preview end")
-        self.write_viewer_diagnostic(f"CATEGORY end post_id={post_id}")
 
     def selected_category(self) -> CategoryMatch | None:
         name = self.category_combo.currentData()
@@ -1248,11 +1142,7 @@ class ImageViewerWindow(QMainWindow):
 
         category = self.selected_category()
         started_at = time.perf_counter()
-        preview = self.final_save_service.final_path_preview_details(
-            self.current_post_id,
-            category,
-            diagnostic=self.write_viewer_diagnostic,
-        )
+        preview = self.final_save_service.final_path_preview_details(self.current_post_id, category)
         self.perf_add(metrics, "final_path_preview", started_at)
 
         if preview:
@@ -2027,14 +1917,13 @@ class ImageViewerWindow(QMainWindow):
 
     def edit_tag_score(self, tag: str) -> None:
         current_value = 0.0
-        rows = self.db.fetch_tag_overview(search_text=tag, limit=100)
-        for row in rows:
-            if str(row["tag"]) == tag and str(row["manual_score"]) not in {"", "None"}:
-                try:
-                    current_value = float(row["manual_score"])
-                except ValueError:
-                    current_value = 0.0
-                break
+        metadata = self.db.fetch_tag_display_metadata([tag]).get(tag, {})
+        manual_score = metadata.get("manual_score")
+        if manual_score is not None:
+            try:
+                current_value = float(manual_score)
+            except (TypeError, ValueError):
+                current_value = 0.0
 
         value, ok = QInputDialog.getDouble(
             self,
