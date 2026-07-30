@@ -2,7 +2,21 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.194 - Current release
+## 1.3.195 - Current release
+
+### Fixed
+
+- Added Linux Qt runtime libraries to the reusable test workflow so tag-pushed releases can pass the Ubuntu PySide6 import tests before building binaries.
+
+### Changed
+
+- Versioned the workflow/UI improvements from 1.3.194 as the published 1.3.195 release after the Linux CI pre-release failure.
+
+See [`RELEASE_NOTES_1.3.195.md`](RELEASE_NOTES_1.3.195.md) for the complete release summary.
+
+---
+
+## 1.3.194
 
 ### Added
 

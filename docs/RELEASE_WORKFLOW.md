@@ -29,9 +29,9 @@ It builds Windows and Ubuntu artifacts. Enable the `onefile` input to test the s
 Create and push a version tag:
 
 ```bash
-git tag -a v1.3.194 -m "Release v1.3.194"
+git tag -a v1.3.195 -m "Release v1.3.195"
 git push origin master
-git push origin v1.3.194
+git push origin v1.3.195
 ```
 
 Pushing a `v*` tag starts the `Release` workflow. It runs the test matrix, builds Windows and Ubuntu ZIPs in both portable and onefile modes, then uploads all ZIPs to the GitHub release.
