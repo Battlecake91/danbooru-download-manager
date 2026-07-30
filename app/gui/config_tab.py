@@ -321,6 +321,13 @@ class ConfigTab(QWidget):
         self.active_thumbnail_dir_edit = QLineEdit(str(config.get("active_thumbnail_dir", config.get("thumbnail_dir", "./danbooru_manager_data/thumbnails/active"))))
         self.saved_thumbnail_dir_edit = QLineEdit(str(config.get("saved_thumbnail_dir", "./danbooru_manager_data/thumbnails/saved")))
         self.rejected_thumbnail_dir_edit = QLineEdit(str(config.get("rejected_thumbnail_dir", "./danbooru_manager_data/thumbnails/rejected")))
+        self.work_dir_edit.setToolTip("Base directory for runtime data such as logs, thumbnails and local app files.")
+        self.database_file_edit.setToolTip("SQLite database file. Keep this outside the bundled executable.")
+        self.default_output_dir_edit.setToolTip("Final destination for saved posts.")
+        self.original_cache_dir_edit.setToolTip("Temporary cache for original files before final save.")
+        self.active_thumbnail_dir_edit.setToolTip("Thumbnail cache used for active/new/potential posts.")
+        self.saved_thumbnail_dir_edit.setToolTip("Thumbnail cache for posts already saved to the library.")
+        self.rejected_thumbnail_dir_edit.setToolTip("Thumbnail cache for rejected posts retained for review/audit.")
 
         self.general_form.addRow("work_dir:", self.work_dir_edit)
         self.general_form.addRow("database_file:", self.database_file_edit)
@@ -353,13 +360,18 @@ class ConfigTab(QWidget):
         self.base_url_edit = QLineEdit(str(config.get("base_url", "https://danbooru.donmai.us")))
         self.search_tags_edit = QLineEdit(str(config.get("search_tags", "order:id_desc")))
         self.saved_search_extra_tags_edit = QLineEdit(str(config.get("saved_search_extra_tags", "")))
+        self.base_url_edit.setToolTip("Danbooru instance base URL. Usually https://danbooru.donmai.us.")
+        self.search_tags_edit.setToolTip("Default manual Danbooru query. The app adds a stable order when no order: tag is present.")
+        self.saved_search_extra_tags_edit.setToolTip("Tags appended to every selected Danbooru saved search query.")
 
         self.username_edit = QLineEdit(str(config.get("username") or ""))
         self.username_edit.setPlaceholderText("Danbooru username, optional")
+        self.username_edit.setToolTip("Optional Danbooru username. Required together with an API key for saved searches.")
 
         self.api_key_edit = QLineEdit(str(config.get("api_key") or ""))
         self.api_key_edit.setPlaceholderText("Danbooru API key, optional")
         self.api_key_edit.setEchoMode(QLineEdit.Password)
+        self.api_key_edit.setToolTip("Optional Danbooru API key. Stored locally in SQLite and required for saved-search access.")
 
         self.show_api_key_checkbox = QCheckBox("Show API key")
         self.show_api_key_checkbox.toggled.connect(self.toggle_api_key_visibility)
@@ -368,6 +380,7 @@ class ConfigTab(QWidget):
         self.limit_spin.setRange(1, 200)
         self.limit_spin.setValue(int(config.get("limit", 100)))
         self.limit_spin.setKeyboardTracking(False)
+        self.limit_spin.setToolTip("Danbooru API page size per request. Higher values reduce requests but make each response heavier.")
 
         self.fetch_form.addRow("base_url:", self.base_url_edit)
         self.fetch_form.addRow("username:", self.username_edit)
@@ -398,12 +411,14 @@ class ConfigTab(QWidget):
         if preset_index >= 0:
             self.thumbnail_preset_combo.setCurrentIndex(preset_index)
         self.thumbnail_preset_combo.currentIndexChanged.connect(self.on_thumbnail_preset_changed)
+        self.thumbnail_preset_combo.setToolTip("Quick presets for Preview thumbnail size. Custom keeps the exact value below.")
 
         self.thumbnail_size_spin = QSpinBox()
         self.thumbnail_size_spin.setRange(80, 1200)
         self.thumbnail_size_spin.setValue(current_thumbnail_size)
         self.thumbnail_size_spin.setKeyboardTracking(False)
         self.thumbnail_size_spin.valueChanged.connect(self.update_thumbnail_preview)
+        self.thumbnail_size_spin.setToolTip("Default thumbnail size in the Preview grid.")
 
         self.thumbnail_preview_host = QWidget()
         self.thumbnail_preview_host_layout = QVBoxLayout(self.thumbnail_preview_host)
@@ -418,17 +433,20 @@ class ConfigTab(QWidget):
         self.thumbnail_min_spin.setRange(50, 1200)
         self.thumbnail_min_spin.setValue(int(gui_config.get("thumbnail_size_min", 120)))
         self.thumbnail_min_spin.setKeyboardTracking(False)
+        self.thumbnail_min_spin.setToolTip("Lower bound for the Preview toolbar thumbnail-size control.")
 
         self.thumbnail_max_spin = QSpinBox()
         self.thumbnail_max_spin.setRange(80, 2000)
         self.thumbnail_max_spin.setValue(int(gui_config.get("thumbnail_size_max", 700)))
         self.thumbnail_max_spin.setKeyboardTracking(False)
+        self.thumbnail_max_spin.setToolTip("Upper bound for the Preview toolbar thumbnail-size control.")
 
         self.card_width_extra_spin = QSpinBox()
         self.card_width_extra_spin.setRange(0, 500)
         self.card_width_extra_spin.setValue(int(gui_config.get("card_width_extra", 100)))
         self.card_width_extra_spin.setKeyboardTracking(False)
         self.card_width_extra_spin.valueChanged.connect(self.update_thumbnail_preview)
+        self.card_width_extra_spin.setToolTip("Extra horizontal room for text on Preview cards.")
 
         self.viewer_default_view_combo = QComboBox()
         for value, label in [
@@ -445,12 +463,34 @@ class ConfigTab(QWidget):
         index = self.viewer_default_view_combo.findData(default_view)
         if index >= 0:
             self.viewer_default_view_combo.setCurrentIndex(index)
+        self.viewer_default_view_combo.setToolTip("Default result set opened by Preview/Viewer workflows.")
 
         self.auto_advance_after_save_checkbox = QCheckBox("Auto-advance after saving")
         self.auto_advance_after_save_checkbox.setChecked(bool(viewer_config.get("auto_advance_after_save", True)))
+        self.auto_advance_after_save_checkbox.setToolTip("After saving in Viewer, move to the next post automatically.")
 
         self.auto_advance_after_reject_checkbox = QCheckBox("Auto-advance after rejecting")
         self.auto_advance_after_reject_checkbox.setChecked(bool(viewer_config.get("auto_advance_after_reject", True)))
+        self.auto_advance_after_reject_checkbox.setToolTip("After rejecting in Viewer, move to the next post automatically.")
+
+        self.viewer_strip_previous_spin = QSpinBox()
+        self.viewer_strip_previous_spin.setRange(0, 25)
+        self.viewer_strip_previous_spin.setValue(int(viewer_config.get("preview_strip_previous_count", 3)))
+        self.viewer_strip_previous_spin.setKeyboardTracking(False)
+        self.viewer_strip_previous_spin.setToolTip("Number of previous posts shown under the image in the Viewer preview strip.")
+
+        self.viewer_strip_next_spin = QSpinBox()
+        self.viewer_strip_next_spin.setRange(0, 25)
+        self.viewer_strip_next_spin.setValue(int(viewer_config.get("preview_strip_next_count", 3)))
+        self.viewer_strip_next_spin.setKeyboardTracking(False)
+        self.viewer_strip_next_spin.setToolTip("Number of next posts shown under the image in the Viewer preview strip.")
+
+        self.viewer_strip_thumbnail_size_spin = QSpinBox()
+        self.viewer_strip_thumbnail_size_spin.setRange(48, 320)
+        self.viewer_strip_thumbnail_size_spin.setValue(int(viewer_config.get("preview_strip_thumbnail_size", 96)))
+        self.viewer_strip_thumbnail_size_spin.setSuffix(" px")
+        self.viewer_strip_thumbnail_size_spin.setKeyboardTracking(False)
+        self.viewer_strip_thumbnail_size_spin.setToolTip("Thumbnail size used by the Viewer preview strip under the image.")
 
         preview_card_config = gui_config.get("preview_card", {}) or {}
         self.preview_card_group = QGroupBox("Preview card contents")
@@ -507,6 +547,9 @@ class ConfigTab(QWidget):
         self.gui_form.addRow("default_view:", self.viewer_default_view_combo)
         self.gui_form.addRow("", self.auto_advance_after_save_checkbox)
         self.gui_form.addRow("", self.auto_advance_after_reject_checkbox)
+        self.gui_form.addRow("Viewer strip previous:", self.viewer_strip_previous_spin)
+        self.gui_form.addRow("Viewer strip next:", self.viewer_strip_next_spin)
+        self.gui_form.addRow("Viewer strip thumbnail:", self.viewer_strip_thumbnail_size_spin)
 
         self.gui_layout.addWidget(self.gui_group)
 
@@ -516,21 +559,25 @@ class ConfigTab(QWidget):
         filename_config = config.get("filename", {}) or {}
 
         self.filename_pattern_edit = QLineEdit(str(filename_config.get("pattern", "%artists%_%characters%_%general%_%postid%")))
+        self.filename_pattern_edit.setToolTip("Filename pattern used when saving final files. Placeholders are listed below.")
 
         self.filename_tags_count_spin = QSpinBox()
         self.filename_tags_count_spin.setRange(0, 100)
         self.filename_tags_count_spin.setValue(int(filename_config.get("tags_count", 8)))
         self.filename_tags_count_spin.setKeyboardTracking(False)
+        self.filename_tags_count_spin.setToolTip("Maximum number of tags inserted by tag placeholders such as %general% or %tags%.")
 
         self.filename_max_length_spin = QSpinBox()
         self.filename_max_length_spin.setRange(32, 255)
         self.filename_max_length_spin.setValue(int(filename_config.get("max_length", 180)))
         self.filename_max_length_spin.setKeyboardTracking(False)
+        self.filename_max_length_spin.setToolTip("Maximum filename length after sanitizing and truncation.")
 
         self.filename_hash_length_spin = QSpinBox()
         self.filename_hash_length_spin.setRange(1, 40)
         self.filename_hash_length_spin.setValue(int(filename_config.get("hash_length", 8)))
         self.filename_hash_length_spin.setKeyboardTracking(False)
+        self.filename_hash_length_spin.setToolTip("Length of the stable hash fragment used by %hash%.")
 
         self.filename_tag_order_combo = QComboBox()
         self.filename_tag_order_combo.addItem("Original / previous order", False)
@@ -538,6 +585,7 @@ class ConfigTab(QWidget):
         tag_order_index = self.filename_tag_order_combo.findData(bool(filename_config.get("sort_tags_by_average_rating", False)))
         if tag_order_index >= 0:
             self.filename_tag_order_combo.setCurrentIndex(tag_order_index)
+        self.filename_tag_order_combo.setToolTip("Controls whether filename tags keep source order or prefer higher personal tag scores.")
 
         filename_help = QLabel(
             "Placeholders: %artist%/%artists%, %character%/%characters%, "
@@ -562,9 +610,11 @@ class ConfigTab(QWidget):
 
         self.scoring_aliases_checkbox = QCheckBox("Merge aliases for scoring")
         self.scoring_aliases_checkbox.setChecked(bool(scoring_config.get("use_aliases_for_scoring", True)))
+        self.scoring_aliases_checkbox.setToolTip("Treat aliases/canonical tags as the same signal when computing recommendations.")
 
         self.scoring_ignore_excluded_checkbox = QCheckBox("Ignore scoring exclusions")
         self.scoring_ignore_excluded_checkbox.setChecked(bool(scoring_config.get("ignore_scoring_excluded_tags", True)))
+        self.scoring_ignore_excluded_checkbox.setToolTip("Exclude tags marked as scoring-excluded from automatic scoring and score-derived statistics.")
 
         self.llm_enabled_checkbox = QCheckBox("Enable LLM integration")
         self.llm_enabled_checkbox.setChecked(bool(llm_config.get("enabled", False)))
@@ -583,12 +633,15 @@ class ConfigTab(QWidget):
         backend_index = self.llm_backend_combo.findData(str(llm_config.get("backend", "none")))
         if backend_index >= 0:
             self.llm_backend_combo.setCurrentIndex(backend_index)
+        self.llm_backend_combo.setToolTip("Select whether payloads are only built for debugging or sent to an OpenAI-compatible/local endpoint.")
 
         self.llm_endpoint_url_edit = QLineEdit(str(llm_config.get("endpoint_url", "") or ""))
         self.llm_endpoint_url_edit.setPlaceholderText("e.g. http://localhost:11434/... or an OpenAI-compatible /chat/completions endpoint")
+        self.llm_endpoint_url_edit.setToolTip("Endpoint used by the selected LLM backend. Leave empty when only building debug payloads.")
 
         self.llm_model_edit = QLineEdit(str(llm_config.get("model", "") or ""))
         self.llm_model_edit.setPlaceholderText("Model name, e.g. a locally configured model identifier")
+        self.llm_model_edit.setToolTip("Model identifier sent in LLM payloads.")
 
         self.llm_api_key_edit = QLineEdit(str(llm_config.get("api_key", "") or ""))
         self.llm_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -606,6 +659,7 @@ class ConfigTab(QWidget):
         self.llm_timeout_spin.setValue(int(llm_config.get("request_timeout_seconds", 60)))
         self.llm_timeout_spin.setSuffix(" s")
         self.llm_timeout_spin.setKeyboardTracking(False)
+        self.llm_timeout_spin.setToolTip("Network timeout for one LLM request.")
 
         self.llm_run_after_fetch_checkbox = QCheckBox("Preselect as batch after fetch")
         self.llm_run_after_fetch_checkbox.setChecked(bool(llm_config.get("run_after_fetch", False)))
@@ -624,44 +678,53 @@ class ConfigTab(QWidget):
         self.llm_max_posts_spin.setRange(1, 200)
         self.llm_max_posts_spin.setValue(int(llm_config.get("max_posts_per_request", 20)))
         self.llm_max_posts_spin.setKeyboardTracking(False)
+        self.llm_max_posts_spin.setToolTip("Maximum posts grouped into one LLM request.")
 
         self.llm_max_tags_spin = QSpinBox()
         self.llm_max_tags_spin.setRange(1, 500)
         self.llm_max_tags_spin.setValue(int(llm_config.get("max_tags_per_post", 80)))
         self.llm_max_tags_spin.setKeyboardTracking(False)
+        self.llm_max_tags_spin.setToolTip("Maximum tags sent per post after filtering and privacy conversion.")
 
         self.llm_include_preference_context_checkbox = QCheckBox("Send previous ratings as preference context")
         self.llm_include_preference_context_checkbox.setChecked(bool(llm_config.get("include_preference_context", True)))
+        self.llm_include_preference_context_checkbox.setToolTip("Send accepted/rejected tag history to help the LLM match your taste.")
 
         self.llm_max_preference_tags_spin = QSpinBox()
         self.llm_max_preference_tags_spin.setRange(0, 1000)
         self.llm_max_preference_tags_spin.setValue(int(llm_config.get("max_preference_tags", 80)))
         self.llm_max_preference_tags_spin.setKeyboardTracking(False)
+        self.llm_max_preference_tags_spin.setToolTip("Maximum historical preference tags included in the LLM context.")
 
         self.llm_max_positive_examples_spin = QSpinBox()
         self.llm_max_positive_examples_spin.setRange(0, 100)
         self.llm_max_positive_examples_spin.setValue(int(llm_config.get("max_positive_examples", 8)))
         self.llm_max_positive_examples_spin.setKeyboardTracking(False)
+        self.llm_max_positive_examples_spin.setToolTip("Maximum saved examples sent as positive guidance.")
 
         self.llm_max_negative_examples_spin = QSpinBox()
         self.llm_max_negative_examples_spin.setRange(0, 100)
         self.llm_max_negative_examples_spin.setValue(int(llm_config.get("max_negative_examples", 8)))
         self.llm_max_negative_examples_spin.setKeyboardTracking(False)
+        self.llm_max_negative_examples_spin.setToolTip("Maximum rejected examples sent as negative guidance.")
 
         self.llm_max_category_examples_spin = QSpinBox()
         self.llm_max_category_examples_spin.setRange(0, 50)
         self.llm_max_category_examples_spin.setValue(int(llm_config.get("max_category_examples", 3)))
         self.llm_max_category_examples_spin.setKeyboardTracking(False)
+        self.llm_max_category_examples_spin.setToolTip("Maximum examples per category included for category hints.")
 
         self.llm_max_example_tags_spin = QSpinBox()
         self.llm_max_example_tags_spin.setRange(1, 200)
         self.llm_max_example_tags_spin.setValue(int(llm_config.get("max_example_tags", 30)))
         self.llm_max_example_tags_spin.setKeyboardTracking(False)
+        self.llm_max_example_tags_spin.setToolTip("Maximum tags copied from each example post.")
 
         self.llm_system_prompt_edit = QTextEdit()
         self.llm_system_prompt_edit.setPlainText(str(llm_config.get("system_prompt", "") or ""))
         self.llm_system_prompt_edit.setPlaceholderText("Leave empty for the default prompt. Expects a short JSON decision per post.")
         self.llm_system_prompt_edit.setMinimumHeight(90)
+        self.llm_system_prompt_edit.setToolTip("Optional custom system prompt. Leave empty to use the app default.")
 
         self.llm_tag_export_mode_combo = QComboBox()
         for value, label in [
@@ -673,13 +736,16 @@ class ConfigTab(QWidget):
         mode_index = self.llm_tag_export_mode_combo.findData(str(llm_config.get("tag_export_mode", "hashed_alias")))
         if mode_index >= 0:
             self.llm_tag_export_mode_combo.setCurrentIndex(mode_index)
+        self.llm_tag_export_mode_combo.setToolTip("Controls whether LLM input uses original tags, aliases or salted hashes.")
 
         self.llm_hash_prefix_edit = QLineEdit(str(llm_config.get("hash_prefix", "tag_")))
+        self.llm_hash_prefix_edit.setToolTip("Prefix used for hashed tag tokens in privacy mode.")
 
         self.llm_hash_length_spin = QSpinBox()
         self.llm_hash_length_spin.setRange(4, 64)
         self.llm_hash_length_spin.setValue(int(llm_config.get("hash_length", 12)))
         self.llm_hash_length_spin.setKeyboardTracking(False)
+        self.llm_hash_length_spin.setToolTip("Length of hashed tag tokens. Longer values reduce collisions.")
 
         self.llm_category_export_mode_combo = QComboBox()
         for value, label in [
@@ -690,19 +756,24 @@ class ConfigTab(QWidget):
         category_mode_index = self.llm_category_export_mode_combo.findData(str(llm_config.get("category_export_mode", "hashed")))
         if category_mode_index >= 0:
             self.llm_category_export_mode_combo.setCurrentIndex(category_mode_index)
+        self.llm_category_export_mode_combo.setToolTip("Controls whether category names are sent as plain text or hashed tokens.")
 
         self.llm_category_hash_prefix_edit = QLineEdit(str(llm_config.get("category_hash_prefix", "cat_")))
+        self.llm_category_hash_prefix_edit.setToolTip("Prefix used for hashed category tokens.")
 
         self.llm_category_hash_length_spin = QSpinBox()
         self.llm_category_hash_length_spin.setRange(4, 64)
         self.llm_category_hash_length_spin.setValue(int(llm_config.get("category_hash_length", llm_config.get("hash_length", 12))))
         self.llm_category_hash_length_spin.setKeyboardTracking(False)
+        self.llm_category_hash_length_spin.setToolTip("Length of hashed category tokens.")
 
         self.llm_include_category_legend_checkbox = QCheckBox("Send category legend to LLM (less private)")
         self.llm_include_category_legend_checkbox.setChecked(bool(llm_config.get("include_category_legend", False)))
+        self.llm_include_category_legend_checkbox.setToolTip("When enabled, category token mappings are included in the prompt. More useful, less private.")
 
         self.llm_include_legend_checkbox = QCheckBox("Send tag legend to LLM (less private)")
         self.llm_include_legend_checkbox.setChecked(bool(llm_config.get("include_tag_legend", False)))
+        self.llm_include_legend_checkbox.setToolTip("When enabled, tag token mappings are included in the prompt. More useful, less private.")
 
         llm_help = QLabel(
             "LLM debug tools are collected here: sample payload and last fetch payloads. "
@@ -766,11 +837,13 @@ class ConfigTab(QWidget):
         self.worklist_statuses_edit = QLineEdit(
             ", ".join(str(v) for v in workflow_config.get("worklist_statuses", ["new", "potential"]))
         )
+        self.worklist_statuses_edit.setToolTip("Comma-separated statuses shown in the default worklist view.")
 
         self.rejected_retention_spin = QSpinBox()
         self.rejected_retention_spin.setRange(1, 3650)
         self.rejected_retention_spin.setValue(int(workflow_config.get("rejected_thumbnail_retention_days", 7)))
         self.rejected_retention_spin.setKeyboardTracking(False)
+        self.rejected_retention_spin.setToolTip("How many days rejected thumbnails are retained before maintenance can remove them.")
 
         self.workflow_form.addRow("worklist_statuses:", self.worklist_statuses_edit)
         self.workflow_form.addRow("rejected_thumbnail_retention_days:", self.rejected_retention_spin)
@@ -785,8 +858,10 @@ class ConfigTab(QWidget):
         self.preview_sample_post_id_spin.setValue(int(config.get("gui", {}).get("preview_sample_post_id", config.get("preview_sample_post_id", 1)) or 1))
         self.preview_sample_post_id_spin.setKeyboardTracking(False)
         self.preview_sample_post_id_spin.valueChanged.connect(self.on_preview_sample_post_id_changed)
+        self.preview_sample_post_id_spin.setToolTip("Danbooru post ID used to render Config preview cards and sample LLM payloads.")
 
         self.preview_sample_fetch_button = QPushButton("Load/update sample post")
+        self.preview_sample_fetch_button.setToolTip("Fetches this one post from Danbooru so Config previews can use real data.")
         self.preview_sample_fetch_button.clicked.connect(self.fetch_preview_sample_post)
 
         self.preview_sample_status_label = QLabel(
@@ -1304,6 +1379,9 @@ class ConfigTab(QWidget):
 
         self.auto_advance_after_save_checkbox.setChecked(bool(self.runtime_value("viewer.auto_advance_after_save", True)))
         self.auto_advance_after_reject_checkbox.setChecked(bool(self.runtime_value("viewer.auto_advance_after_reject", True)))
+        self.viewer_strip_previous_spin.setValue(int(self.runtime_value("viewer.preview_strip_previous_count", 3)))
+        self.viewer_strip_next_spin.setValue(int(self.runtime_value("viewer.preview_strip_next_count", 3)))
+        self.viewer_strip_thumbnail_size_spin.setValue(int(self.runtime_value("viewer.preview_strip_thumbnail_size", 96)))
 
         self.filename_pattern_edit.setText(str(self.runtime_value("filename.pattern", "%artists%_%characters%_%general%_%postid%")))
         self.filename_tags_count_spin.setValue(int(self.runtime_value("filename.tags_count", 8)))
@@ -1393,6 +1471,9 @@ class ConfigTab(QWidget):
             "viewer.default_view": str(self.viewer_default_view_combo.currentData()),
             "viewer.auto_advance_after_save": self.auto_advance_after_save_checkbox.isChecked(),
             "viewer.auto_advance_after_reject": self.auto_advance_after_reject_checkbox.isChecked(),
+            "viewer.preview_strip_previous_count": int(self.viewer_strip_previous_spin.value()),
+            "viewer.preview_strip_next_count": int(self.viewer_strip_next_spin.value()),
+            "viewer.preview_strip_thumbnail_size": int(self.viewer_strip_thumbnail_size_spin.value()),
 
             "filename.pattern": self.filename_pattern_edit.text().strip() or "%artists%_%characters%_%general%_%postid%",
             "filename.tags_count": int(self.filename_tags_count_spin.value()),

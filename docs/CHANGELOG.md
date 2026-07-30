@@ -2,7 +2,33 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.193 — Current release
+## 1.3.194 - Current release
+
+### Added
+
+- Added a configurable Viewer preview strip below the main image, centered on the active post.
+- Added Fetch-tab controls for enabling fetch-excluded tags and editing the excluded-tag list in a dialog.
+- Added an option for whether fetch-excluded posts count toward Fetch limits.
+- Added `Rejected %` in the Tag tab while keeping scoring-excluded tags out of that percentage.
+- Expanded the Help tab with task-oriented Quick start, Fetch, Preview & Viewer, Tags & Scoring, and Builds & Tests pages.
+- Added contextual tooltips for advanced Config, Fetch, Preview and Category controls.
+
+### Fixed
+
+- Fixed Preview/Fetch layout state that could make the window grow wider than all monitors after switching tabs.
+- Kept Preview thumbnails constrained to the viewport after returning from Fetch.
+- Guarded Tag-tab column updates with named column constants to avoid silent UI-column drift.
+
+### Changed
+
+- Updated the active roadmap to park the optional list-oriented view until the intended UX is clearer.
+- Added regression and feature-guard tests for Fetch exclude controls, Viewer strip behavior, Tag-tab statistics, Help/tooltip guidance and Preview layout.
+
+See [`RELEASE_NOTES_1.3.194.md`](RELEASE_NOTES_1.3.194.md) for the complete release summary.
+
+---
+
+## 1.3.193
 
 ### Fixed
 

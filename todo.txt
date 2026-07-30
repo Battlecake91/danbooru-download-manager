@@ -1,7 +1,35 @@
+Active roadmap
+
+In progress
+- Viewer preview strip / parent-child visual context.
+  - Added first configurable visual thumbnail strip under the main image.
+  - Shows previous/current/next posts from the Viewer list.
+  - Adds parent/child context when available and not already shown in the list.
+  - Verify with real parent/child examples, especially known edge cases 11568247 and 11723727.
+- Fetch-tab controls for fetch-excluded tags.
+  - Fetch tab now has Activate Tag-exclude checkbox.
+  - Excluded Tags button opens a management dialog with list, add, remove selected and refresh actions.
+- Fetch-excluded limit counting.
+  - Added setting to control whether fetch-excluded posts consume max total / per-query fetch limits.
+- Tag-tab rejected percentage.
+  - Add rejected percentage next to saved/rejected counts.
+  - Scoring-excluded tags stay out of this percentage and show no reject-rate value.
+- Tooltip and Help-tab guidance.
+  - Add contextual tooltips for advanced Config, Fetch, Preview and Category controls.
+  - Replace Help-tab placeholder with task-oriented guides.
+
+Next
+- Add Preview status statistics for the active result/filter.
+
+Later
+- Add optional list-oriented library/results view for large result sets.
+- Polish next/previous preview strip in Viewer.
+- Add configurable LLM post limits based on preselection score.
+- Improve LLM provider and payload validation.
 - Continue simplifying advanced UI areas without hiding useful controls.
-- Add configurable limits for LLM processing after Fetch.
-- Expand task-oriented documentation and Help-tab guidance.
-- Improve Danbooru API error reporting.
-- Add optional list-oriented views for large result sets.
-- Performance fixes - Previewer sometimes hang up the window while loading very long
-- Pages in Previewer as it is very unperformant to see more than 100 pictures
+- Improve Danbooru API error reporting, including server response details.
+- Document required Danbooru API credentials and permissions more clearly.
+
+Performance watchlist
+- Previewer should remain responsive with large databases and result sets.
+- Large result sets should prefer paging/list-oriented views over rendering too many cards.

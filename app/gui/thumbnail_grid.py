@@ -236,9 +236,13 @@ class ThumbnailGrid(QScrollArea):
         self.anchor_index: int = -1
 
         self.setWidgetResizable(True)
+        self.setSizeAdjustPolicy(QScrollArea.AdjustIgnored)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setFocusPolicy(Qt.StrongFocus)
 
         self.container = QWidget()
+        self.container.setMinimumWidth(0)
+        self.container.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.MinimumExpanding)
         self.layout = QGridLayout(self.container)
         self.layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.layout.setSpacing(10)
@@ -358,6 +362,7 @@ class ThumbnailGrid(QScrollArea):
     def resizeEvent(self, event) -> None:  # noqa: ANN001
         super().resizeEvent(event)
         self.update_columns()
+        self.sync_container_geometry()
 
     def update_columns(self) -> None:
         width = max(1, self.viewport().width())
@@ -373,6 +378,14 @@ class ThumbnailGrid(QScrollArea):
                 self.layout.addWidget(self.empty_label, 0, 0, 1, max(1, self.columns))
             else:
                 self.relayout()
+        self.sync_container_geometry()
+
+    def sync_container_geometry(self) -> None:
+        width = max(1, self.viewport().width())
+        if self.container.width() != width:
+            self.container.resize(width, self.container.height())
+        self.container.setMinimumWidth(0)
+        self.container.updateGeometry()
 
     def set_thumbnail_size(self, size: int) -> None:
         if size == self.thumbnail_size:
@@ -493,7 +506,7 @@ class ThumbnailGrid(QScrollArea):
 
         self.update_columns()
         self.refresh_selection_styles()
-        self.container.adjustSize()
+        self.sync_container_geometry()
         self.container.updateGeometry()
         self.viewport().update()
         self.updateGeometry()
@@ -531,6 +544,7 @@ class ThumbnailGrid(QScrollArea):
             col = index % self.columns
             self.layout.addWidget(card, row, col)
         self.setUpdatesEnabled(was_updates_enabled)
+        self.sync_container_geometry()
 
     def visible_post_ids(self) -> list[int]:
         ids: list[int] = []

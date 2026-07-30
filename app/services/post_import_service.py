@@ -91,7 +91,8 @@ class PostImportService:
             planned_for_query = max_posts_per_query
 
         total_seen = 0
-        fetch_excluded_tags = self.db.fetch_excluded_tag_set()
+        fetch_excluded_tags = self.db.fetch_excluded_tag_set() if bool(self.config.get("fetch_exclude_enabled", True)) else set()
+        fetch_excluded_posts_count_toward_limits = bool(self.config.get("fetch_excluded_posts_count_toward_limits", True))
         self.emit_progress(
             FetchProgress(
                 query_total=len(queries),
@@ -157,6 +158,9 @@ class PostImportService:
 
                     if fetch_excluded_tags and self.post_matches_fetch_exclude(post, fetch_excluded_tags):
                         result.fetch_excluded_posts += 1
+                        if not fetch_excluded_posts_count_toward_limits:
+                            total_seen = max(0, total_seen - 1)
+                            seen_for_query = max(0, seen_for_query - 1)
                         continue
 
                     if not self.post_matches_resolution_filter(post):

@@ -12,6 +12,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "saved_search_labels": [],
     "saved_search_queries": [],
     "saved_search_extra_tags": "",
+    "fetch_exclude_enabled": True,
+    "fetch_excluded_posts_count_toward_limits": True,
     "limit": 100,
     "max_posts_per_query": 200,
     "max_total_posts": 500,
@@ -47,6 +49,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "fit_to_window": True,
         "auto_advance_after_save": True,
         "auto_advance_after_reject": True,
+        "preview_strip_previous_count": 3,
+        "preview_strip_next_count": 3,
+        "preview_strip_thumbnail_size": 96,
     },
     "gui": {
         "thumbnail_size": 340,

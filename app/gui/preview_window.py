@@ -224,6 +224,7 @@ class PreviewWindow(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.toolbar_actions)
 
         self.reload_button = QPushButton(tr("preview.reload", "Reload", config=self.config))
+        self.reload_button.setToolTip(tr("preview.reload.tooltip", "Reload the current Preview result using the selected filters.", config=self.config))
         self.reload_button.clicked.connect(self.reload_posts)
         self.toolbar_actions.addWidget(self.reload_button)
 
@@ -272,6 +273,13 @@ class PreviewWindow(QMainWindow):
 
         for status in STATUS_ORDER:
             checkbox = QCheckBox(preview_status_label(self.config, status))
+            checkbox.setToolTip(
+                tr(
+                    "preview.status.checkbox.tooltip",
+                    "Toggle whether posts with this status are visible in the current Preview result.",
+                    config=self.config,
+                )
+            )
             checkbox.setChecked(status in DEFAULT_VISIBLE_STATUSES)
             checkbox.stateChanged.connect(self.on_status_checkbox_changed)
             self.status_checkboxes[status] = checkbox
@@ -312,6 +320,13 @@ class PreviewWindow(QMainWindow):
         self.toolbar_filters.addWidget(QLabel(tr("common.search.label", "Search: ", config=self.config)))
         self.search_edit = TagQueryLineEdit()
         self.search_edit.setPlaceholderText(tr("preview.search.placeholder", "Search exact tags, e.g. brown_eyes -red_hair", config=self.config))
+        self.search_edit.setToolTip(
+            tr(
+                "preview.search.tooltip",
+                "Exact tag search. Prefix a tag with '-' to exclude it; quoted text is supported.",
+                config=self.config,
+            )
+        )
         self.search_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.search_edit.returnPressed.connect(self.reload_posts)
         self.search_edit.setMinimumWidth(160)
@@ -319,10 +334,12 @@ class PreviewWindow(QMainWindow):
         self.toolbar_filters.addWidget(self.search_edit)
 
         self.search_button = QPushButton(tr("common.search", "Search", config=self.config))
+        self.search_button.setToolTip(tr("preview.search_button.tooltip", "Apply the current tag search.", config=self.config))
         self.search_button.clicked.connect(self.reload_posts)
         self.toolbar_filters.addWidget(self.search_button)
 
         self.clear_search_button = QPushButton(tr("common.clear", "Clear", config=self.config))
+        self.clear_search_button.setToolTip(tr("preview.clear_search.tooltip", "Clear the tag search and reload.", config=self.config))
         self.clear_search_button.clicked.connect(self.clear_search)
         self.toolbar_filters.addWidget(self.clear_search_button)
 
@@ -497,7 +514,7 @@ class PreviewWindow(QMainWindow):
         self.grid.update_columns()
         if self.grid.items:
             self.grid.relayout()
-        self.grid.container.adjustSize()
+        self.grid.sync_container_geometry()
         self.grid.container.updateGeometry()
         self.grid.viewport().update()
         self.grid.updateGeometry()

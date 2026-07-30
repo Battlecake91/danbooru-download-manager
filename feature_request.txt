@@ -1,12 +1,33 @@
-- Better documentation for required Danbooru API credentials and permissions
-- More descriptive Danbooru API error messages, including the server response
-- Tooltips and contextual help for advanced options
-- Optional list-oriented library view
-- Additional quality-of-life improvements
-- More LLM provider and payload validation
-- forbidden tags should be allow through context-menu
-- stacked view for childs / parents or preview in viewer)
-- activate/deactivate filtered tags in fetch tab
-- stats in previewer for how many rejected / saved etc pictures
-- Tag-stats how many rejected posts for each tag
-- Preview in Viewer (next x-pictures, last x-pictures under the pic)
+Priority feature requests
+
+1. Stacked / visual parent-child view in Viewer.
+   - First pass: show a configurable Viewer preview strip under the main image.
+   - The strip shows previous/current/next posts from the Viewer list and adds parent/child context when available.
+   - Follow-up: improve remote-only handling and edge cases where Danbooru parent/child data is incomplete.
+2. Activate/deactivate filtered tags in Fetch tab.
+   - Fetch-excluded tags should be editable from the Fetch workflow, not only from Viewer/Tag tab.
+3. Configure whether forbidden tags count toward Fetch limits.
+   - Example: 100 fetched posts with 5 forbidden-tag posts should optionally count as 95.
+4. Optional list-oriented library view for large result sets.
+   - Covers the older "optional list-oriented library view" and "list-oriented views for large result sets" requests.
+   - Paused until the intended UX is clearer.
+5. Preview statistics.
+   - Show how many posts are rejected, saved, already known, new, potential, etc. for the current Preview filter.
+6. Tag statistics.
+   - Show how many rejected/saved/etc. posts each tag appears in.
+   - First follow-up: Tag tab shows rejected percentage; scoring-excluded tags are not included in this score.
+7. Preview strip in Viewer.
+   - First pass is included in item 1.
+   - Follow-up: polish remote thumbnails, sizing, and keyboard/navigation affordances.
+8. Configurable limits for LLM processing after Fetch.
+   - Only send posts with preselection score >= x.
+   - Add provider and payload validation.
+9. Tooltips and contextual help for advanced options.
+   - First pass: advanced Config, Fetch, Preview and Category controls have contextual tooltips.
+10. Continue simplifying advanced UI areas without hiding useful controls.
+11. Expand task-oriented documentation and Help-tab guidance.
+   - First pass: Help tab contains Quick start, Fetch, Preview & Viewer, Tags & Scoring, and Builds & Tests guides.
+12. Improve Danbooru API error reporting.
+   - Include descriptive messages and server response details where safe/useful.
+13. Better documentation for required Danbooru API credentials and permissions.
+14. Additional quality-of-life improvements.

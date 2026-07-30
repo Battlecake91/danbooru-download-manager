@@ -7,7 +7,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, QRectF, Signal, QTimer
+from PySide6.QtCore import Qt, QRectF, QSize, Signal, QTimer
 from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -120,6 +121,85 @@ class StatusChipBar(QWidget):
                     f"QLabel {{ background: transparent; color: {color}; border: 2px solid {color}; "
                     "border-radius: 5px; padding: 2px 8px; font-weight: bold; }}"
                 )
+
+
+class RelatedPreviewTile(QFrame):
+    clicked = Signal(int)
+
+    def __init__(self, post_id: int, label: str, row: Any, thumbnail_size: int, *, active: bool) -> None:
+        super().__init__()
+        self.post_id = int(post_id)
+        self.thumbnail_size = max(48, min(320, int(thumbnail_size)))
+        tile_width = self.thumbnail_size + 12
+        tile_height = self.thumbnail_size + 42
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(tile_width, tile_height)
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setStyleSheet(
+            "QFrame { background: #2b3a24; border: 2px solid #78d26b; border-radius: 6px; }"
+            if active
+            else "QFrame { background: #202020; border: 1px solid #555555; border-radius: 6px; }"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(4)
+
+        thumbnail = QLabel()
+        thumbnail.setAlignment(Qt.AlignCenter)
+        thumbnail.setFixedSize(QSize(self.thumbnail_size, self.thumbnail_size))
+        thumbnail.setStyleSheet("QLabel { background: #151515; border: none; color: #aaaaaa; }")
+        pixmap = self.load_preview_pixmap(row)
+        if pixmap is not None and not pixmap.isNull():
+            thumbnail.setPixmap(pixmap)
+        else:
+            thumbnail.setText("no preview")
+        layout.addWidget(thumbnail)
+
+        caption = QLabel(label)
+        caption.setAlignment(Qt.AlignCenter)
+        caption.setWordWrap(True)
+        caption.setStyleSheet("QLabel { border: none; color: #eeeeee; font-size: 11px; }")
+        layout.addWidget(caption)
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.post_id)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    @staticmethod
+    def value(row: Any, key: str) -> Any:
+        try:
+            return row[key]
+        except Exception:
+            if isinstance(row, dict):
+                return row.get(key)
+        return None
+
+    def load_preview_pixmap(self, row: Any) -> QPixmap | None:
+        for key in ("thumbnail_path", "rejected_thumbnail_path", "final_file_path", "original_cache_path", "original_path"):
+            value = self.value(row, key)
+            if not value:
+                continue
+            path = Path(str(value))
+            if not path.exists() or not path.is_file():
+                continue
+            pixmap = QPixmap(str(path))
+            if pixmap.isNull():
+                continue
+            return pixmap.scaled(self.thumbnail_size, self.thumbnail_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        return None
+
+
+def make_preview_strip_placeholder_tile(thumbnail_size: int) -> QFrame:
+    thumbnail_size = max(48, min(320, int(thumbnail_size)))
+    tile = QFrame()
+    tile.setFixedSize(thumbnail_size + 12, thumbnail_size + 42)
+    tile.setStyleSheet("QFrame { background: transparent; border: none; }")
+    tile.setEnabled(False)
+    return tile
 
 
 RATING_LABELS: dict[str, tuple[str, str]] = {
@@ -389,6 +469,21 @@ class ImageViewerWindow(QMainWindow):
         self.image_panel_layout.setContentsMargins(0, 0, 0, 0)
         self.image_panel_layout.setSpacing(4)
         self.image_panel_layout.addWidget(self.scroll_area, stretch=1)
+
+        self.related_strip_area = QScrollArea()
+        self.related_strip_area.setWidgetResizable(True)
+        self.related_strip_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.related_strip_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.related_strip_area.setFixedHeight(self.preview_strip_area_height())
+        self.related_strip_area.setFocusPolicy(Qt.NoFocus)
+        self.related_strip_area.setStyleSheet("QScrollArea { background: #151515; border: none; }")
+        self.related_strip_container = QWidget()
+        self.related_strip_layout = QHBoxLayout(self.related_strip_container)
+        self.related_strip_layout.setContentsMargins(4, 4, 4, 4)
+        self.related_strip_layout.setSpacing(6)
+        self.related_strip_area.setWidget(self.related_strip_container)
+        self.related_strip_area.hide()
+        self.image_panel_layout.addWidget(self.related_strip_area, stretch=0)
 
         self.below_image_controls = QHBoxLayout()
         self.below_image_controls.setContentsMargins(0, 0, 0, 0)
@@ -791,7 +886,7 @@ class ImageViewerWindow(QMainWindow):
         self.perf_add(metrics, "header_status_rating", started_at)
 
         started_at = time.perf_counter()
-        self.update_related_posts(post_id, related)
+        self.update_related_posts(post_id, related, current_row=row)
         self.perf_add(metrics, "update_related_posts", started_at)
 
         self.update_category_controls(post_id, metrics)
@@ -867,7 +962,16 @@ class ImageViewerWindow(QMainWindow):
         self.related_label.setVisible(self.related_list_expanded)
         self.related_list.setVisible(self.related_list_expanded)
 
-    def update_related_posts(self, post_id: int, related: list[Any] | None = None) -> None:
+    @staticmethod
+    def row_value(row: Any, key: str, default: Any = None) -> Any:
+        try:
+            return row[key]
+        except Exception:
+            if isinstance(row, dict):
+                return row.get(key, default)
+            return default
+
+    def update_related_posts(self, post_id: int, related: list[Any] | None = None, current_row: Any | None = None) -> None:
         self.related_list.clear()
 
         if related is None:
@@ -911,6 +1015,113 @@ class ImageViewerWindow(QMainWindow):
             item = QListWidgetItem(self.t("viewer.no_known_related_posts", "No known parent/child posts"))
             item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
             self.related_list.addItem(item)
+
+        self.update_related_preview_strip(post_id, current_row, related)
+
+    def clear_related_preview_strip(self) -> None:
+        while self.related_strip_layout.count():
+            item = self.related_strip_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+
+    def update_related_preview_strip(self, post_id: int, current_row: Any | None, related: list[Any]) -> None:
+        self.clear_related_preview_strip()
+        if current_row is None:
+            self.related_strip_area.hide()
+            return
+
+        viewer_config = self.config.get("viewer", {}) or {}
+        previous_count = max(0, int(viewer_config.get("preview_strip_previous_count", 3) or 0))
+        next_count = max(0, int(viewer_config.get("preview_strip_next_count", 3) or 0))
+        thumbnail_size = self.preview_strip_thumbnail_size()
+        self.related_strip_area.setFixedHeight(self.preview_strip_area_height())
+        balanced_side_count = max(previous_count, next_count)
+        previous_entries: list[tuple[str, int, Any, bool]] = []
+        next_entries: list[tuple[str, int, Any, bool]] = []
+
+        for index in range(max(0, self.current_index - previous_count), self.current_index):
+            strip_post_id = int(self.post_ids[index])
+            row = self.db.get_post_detail(strip_post_id)
+            if row is not None:
+                previous_entries.append((self.t("viewer.strip_previous", "Previous"), strip_post_id, row, False))
+
+        for index in range(self.current_index + 1, min(len(self.post_ids), self.current_index + next_count + 1)):
+            strip_post_id = int(self.post_ids[index])
+            row = self.db.get_post_detail(strip_post_id)
+            if row is not None:
+                next_entries.append((self.t("viewer.strip_next", "Next"), strip_post_id, row, False))
+
+        active_entry = (self.t("viewer.strip_current", "Current"), int(post_id), current_row, True)
+
+        if balanced_side_count <= 0 and not previous_entries and not next_entries:
+            self.related_strip_area.hide()
+            return
+
+        self.related_strip_layout.addStretch(1)
+
+        for _ in range(max(0, balanced_side_count - len(previous_entries))):
+            self.related_strip_layout.addWidget(make_preview_strip_placeholder_tile(thumbnail_size))
+
+        for relation_label, related_id, row, active in previous_entries:
+            self.add_preview_strip_tile(relation_label, related_id, row, active, thumbnail_size)
+
+        active_tile = self.add_preview_strip_tile(*active_entry, thumbnail_size)
+
+        for relation_label, related_id, row, active in next_entries:
+            self.add_preview_strip_tile(relation_label, related_id, row, active, thumbnail_size)
+
+        for _ in range(max(0, balanced_side_count - len(next_entries))):
+            self.related_strip_layout.addWidget(make_preview_strip_placeholder_tile(thumbnail_size))
+
+        self.related_strip_layout.addStretch(1)
+        self.related_strip_area.show()
+        QTimer.singleShot(0, lambda tile=active_tile: self.center_preview_strip_on_tile(tile))
+
+    def preview_strip_thumbnail_size(self) -> int:
+        viewer_config = self.config.get("viewer", {}) or {}
+        return max(48, min(320, int(viewer_config.get("preview_strip_thumbnail_size", 96) or 96)))
+
+    def preview_strip_area_height(self) -> int:
+        return self.preview_strip_thumbnail_size() + 60
+
+    def add_preview_strip_tile(self, relation_label: str, related_id: int, row: Any, active: bool, thumbnail_size: int) -> RelatedPreviewTile:
+        status = str(self.row_value(row, "status", "-") or "-")
+        label = f"{relation_label}\n{related_id}\n{status}"
+        tile = RelatedPreviewTile(related_id, label, row, thumbnail_size, active=active)
+        tile.setToolTip(
+            self.t(
+                "viewer.preview_strip_tooltip",
+                "Click to open this post in the current Viewer.",
+            )
+        )
+        tile.clicked.connect(self.open_related_preview_post)
+        self.related_strip_layout.addWidget(tile)
+        return tile
+
+    def center_preview_strip_on_tile(self, tile: RelatedPreviewTile) -> None:
+        if tile.parent() is None or not tile.isVisible():
+            return
+
+        bar = self.related_strip_area.horizontalScrollBar()
+        viewport_width = max(1, self.related_strip_area.viewport().width())
+        target = int(tile.x() + (tile.width() / 2) - (viewport_width / 2))
+        bar.setValue(max(bar.minimum(), min(bar.maximum(), target)))
+
+    def open_related_preview_post(self, post_id: int) -> None:
+        post_id = int(post_id)
+        if post_id == self.current_post_id:
+            return
+
+        if post_id in self.post_ids:
+            self.current_index = self.post_ids.index(post_id)
+        else:
+            insert_index = min(len(self.post_ids), self.current_index + 1)
+            self.post_ids.insert(insert_index, post_id)
+            self.current_index = insert_index
+
+        self.load_current_post()
 
     def local_path_for_post(self, post_id: int) -> Path | None:
         row = self.db.get_post_detail(post_id)

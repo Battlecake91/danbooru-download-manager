@@ -32,6 +32,20 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
         self.assertTrue(PostImportService.post_matches_fetch_exclude(post, {"solo"}))
         self.assertFalse(PostImportService.post_matches_fetch_exclude(post, {"missing"}))
 
+    def test_fetch_tab_fetch_exclude_input_parser_normalizes_tags(self) -> None:
+        from app.gui.fetch_tab import parse_fetch_exclude_tag_input
+
+        self.assertEqual(
+            parse_fetch_exclude_tag_input(" solo, blue_eyes;solo  rating:e "),
+            ["solo", "blue_eyes", "rating:e"],
+        )
+
+    def test_fetch_excluded_limit_setting_is_defaulted(self) -> None:
+        from app.core.config import DEFAULT_CONFIG
+
+        self.assertTrue(DEFAULT_CONFIG["fetch_exclude_enabled"])
+        self.assertTrue(DEFAULT_CONFIG["fetch_excluded_posts_count_toward_limits"])
+
     @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
     def test_resolution_filter_treats_unknown_dimensions_as_reject_when_limit_is_active(self) -> None:
         from app.services.post_import_service import PostImportService

@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.database import Database
+from app.core.db.common import calculate_rejected_percent
 from app.i18n.i18n import tr
 
 
@@ -305,6 +306,23 @@ class TagTab(QWidget):
     - Long-running/hanging operations write watchdog stack dumps.
     """
 
+    COL_TAG = 0
+    COL_TYPE = 1
+    COL_POSTS = 2
+    COL_OPEN = 3
+    COL_SAVED = 4
+    COL_REJECTED = 5
+    COL_REJECTED_PERCENT = 6
+    COL_ALIAS = 7
+    COL_FILENAME_EXCLUDE = 8
+    COL_FETCH_EXCLUDE = 9
+    COL_CATEGORY_IGNORED = 10
+    COL_PRESELECTION_IGNORED = 11
+    COL_LLM_IGNORED = 12
+    COL_MANUAL_SCORE = 13
+    COL_COMPUTED_SCORE = 14
+    COL_AVERAGE_STARS = 15
+
     def __init__(self, config: dict[str, Any], db: Database) -> None:
         super().__init__()
 
@@ -358,7 +376,7 @@ class TagTab(QWidget):
         self.main_layout.addLayout(self.toolbar_layout)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(15)
+        self.table.setColumnCount(16)
         self.table.setHorizontalHeaderLabels(
             [
                 self.t("tags.table.tag", "Tag"),
@@ -367,6 +385,7 @@ class TagTab(QWidget):
                 self.t("tags.table.open", "Open"),
                 self.t("tags.table.saved", "Saved"),
                 self.t("tags.table.rejected", "Rejected"),
+                self.t("tags.table.rejected_percent", "Rejected %"),
                 self.t("tags.table.alias", "Alias"),
                 self.t("tags.table.filename_exclude", "Filename exclude"),
                 self.t("tags.table.fetch_exclude", "Fetch exclude"),
@@ -399,7 +418,7 @@ class TagTab(QWidget):
 
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col in range(1, 14):
+        for col in range(1, self.table.columnCount()):
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         header.setSectionsClickable(True)
         header.setSortIndicatorShown(True)
@@ -532,7 +551,17 @@ class TagTab(QWidget):
             )
         else:
             self._sort_column = column
-            self._sort_order = Qt.AscendingOrder if column in {0, 1, 6, 7, 8, 9, 10, 11} else Qt.DescendingOrder
+            text_or_flag_columns = {
+                self.COL_TAG,
+                self.COL_TYPE,
+                self.COL_ALIAS,
+                self.COL_FILENAME_EXCLUDE,
+                self.COL_FETCH_EXCLUDE,
+                self.COL_CATEGORY_IGNORED,
+                self.COL_PRESELECTION_IGNORED,
+                self.COL_LLM_IGNORED,
+            }
+            self._sort_order = Qt.AscendingOrder if column in text_or_flag_columns else Qt.DescendingOrder
 
         self.apply_current_sort()
 
@@ -587,6 +616,14 @@ class TagTab(QWidget):
                 manual_score = row["manual_score"]
                 computed_score = row["computed_score"]
                 average_rating = row["average_rating"]
+                saved_count = int(row["saved_count"] or 0)
+                rejected_count = int(row["rejected_count"] or 0)
+                scoring_excluded = bool(int(row["scoring_excluded"] or 0))
+                rejected_percent = calculate_rejected_percent(
+                    saved_count=saved_count,
+                    rejected_count=rejected_count,
+                    scoring_excluded=scoring_excluded,
+                )
                 filename_excluded = bool(int(row["filename_excluded"] or 0))
                 fetch_excluded = bool(int(row["fetch_excluded"] or 0))
                 ignore_category_influence = bool(int(row["ignore_category_influence"] or 0))
@@ -598,8 +635,13 @@ class TagTab(QWidget):
                     (row["tag_type"], row["tag_type"], False),
                     (row["post_count"], row["post_count"], True),
                     (row["open_count"], row["open_count"], True),
-                    (row["saved_count"], row["saved_count"], True),
-                    (row["rejected_count"], row["rejected_count"], True),
+                    (saved_count, saved_count, True),
+                    (rejected_count, rejected_count, True),
+                    (
+                        "" if rejected_percent is None else f"{rejected_percent:.1f}%",
+                        rejected_percent if rejected_percent is not None else -1,
+                        True,
+                    ),
                     (row["alias_tag"] or "", row["alias_tag"] or "", False),
                     (self.yes_text() if filename_excluded else "", 1 if filename_excluded else 0, False),
                     (self.yes_text() if fetch_excluded else "", 1 if fetch_excluded else 0, False),
@@ -618,7 +660,7 @@ class TagTab(QWidget):
                         sort_value=sort_value,
                         align_right=align_right,
                     )
-                    if column in {6, 12}:
+                    if column in {self.COL_ALIAS, self.COL_MANUAL_SCORE}:
                         table_item.setFlags(table_item.flags() | Qt.ItemIsEditable)
                     else:
                         table_item.setFlags(table_item.flags() & ~Qt.ItemIsEditable)
@@ -678,11 +720,11 @@ class TagTab(QWidget):
         return str(tag) if tag else None
 
     FLAG_OPTION_COLUMNS = {
-        7: "filename_excluded",
-        8: "fetch_excluded",
-        9: "ignore_category_influence",
-        10: "ignore_recommendation_score",
-        11: "ignore_llm_input",
+        COL_FILENAME_EXCLUDE: "filename_excluded",
+        COL_FETCH_EXCLUDE: "fetch_excluded",
+        COL_CATEGORY_IGNORED: "ignore_category_influence",
+        COL_PRESELECTION_IGNORED: "ignore_recommendation_score",
+        COL_LLM_IGNORED: "ignore_llm_input",
     }
 
     def is_yes_cell(self, row_index: int, column: int) -> bool:
@@ -707,14 +749,14 @@ class TagTab(QWidget):
         selected = self.selected_tags()
         tags = selected if tag in selected and len(selected) > 1 else [tag]
 
-        if column == 7:
+        if column == self.COL_FILENAME_EXCLUDE:
             if new_value:
                 self.add_tags_to_filename_exclude(tags)
             else:
                 self.remove_tags_from_filename_exclude(tags)
             return
 
-        if column == 8:
+        if column == self.COL_FETCH_EXCLUDE:
             if new_value:
                 self.add_tags_to_fetch_exclude(tags)
             else:
@@ -768,14 +810,14 @@ class TagTab(QWidget):
             return
 
         column = item.column()
-        if column not in {6, 12}:
+        if column not in {self.COL_ALIAS, self.COL_MANUAL_SCORE}:
             return
 
         tag = self.tag_from_item(item)
         if not tag:
             return
 
-        if column == 6:
+        if column == self.COL_ALIAS:
             alias = item.text().strip()
             self.log_message(f"db.set_tag_alias: begin tag={tag!r}")
             self.db.set_tag_alias(tag, alias)
@@ -842,7 +884,7 @@ class TagTab(QWidget):
                 tag = self.tag_from_item(self.table.item(row_index, 0))
                 if tag not in tag_set:
                     continue
-                self.set_table_cell_text(row_index, 8, str(tag), value, sort_value=1 if excluded else 0)
+                self.set_table_cell_text(row_index, self.COL_FETCH_EXCLUDE, str(tag), value, sort_value=1 if excluded else 0)
                 self.update_current_row_value_for_tag(str(tag), "fetch_excluded", 1 if excluded else 0)
         finally:
             self.table.setUpdatesEnabled(True)
@@ -850,7 +892,7 @@ class TagTab(QWidget):
     def is_fetch_excluded_visible(self, tag: str) -> bool:
         for row_index in range(self.table.rowCount()):
             if self.tag_from_item(self.table.item(row_index, 0)) == tag:
-                return self.is_yes_cell(row_index, 8)
+                return self.is_yes_cell(row_index, self.COL_FETCH_EXCLUDE)
         for row in self.current_rows:
             try:
                 if str(row["tag"]) == tag:
@@ -875,11 +917,11 @@ class TagTab(QWidget):
                 if tag not in tag_set:
                     continue
 
-                item = self.table.item(row_index, 7)
+                item = self.table.item(row_index, self.COL_FILENAME_EXCLUDE)
                 if item is None:
                     item = QTableWidgetItem()
                     item.setData(Qt.UserRole, tag)
-                    self.table.setItem(row_index, 7, item)
+                    self.table.setItem(row_index, self.COL_FILENAME_EXCLUDE, item)
                 item.setData(Qt.UserRole, tag)
                 item.setText(value)
                 item.setData(SortableTableWidgetItem.SORT_ROLE, 1 if excluded else 0)
@@ -898,7 +940,7 @@ class TagTab(QWidget):
             if self.tag_from_item(tag_item) != tag:
                 continue
 
-            exclude_item = self.table.item(row_index, 7)
+            exclude_item = self.table.item(row_index, self.COL_FILENAME_EXCLUDE)
             if exclude_item is None:
                 return False
 
@@ -966,7 +1008,7 @@ class TagTab(QWidget):
         item.setData(Qt.UserRole, tag)
         item.setText(text)
         item.setData(SortableTableWidgetItem.SORT_ROLE, text if sort_value is None else sort_value)
-        if column in {6, 12}:
+        if column in {self.COL_ALIAS, self.COL_MANUAL_SCORE}:
             item.setFlags(item.flags() | Qt.ItemIsEditable)
         else:
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
@@ -985,7 +1027,7 @@ class TagTab(QWidget):
                     continue
 
                 self.update_current_row_value_for_tag(tag, "alias_tag", alias)
-                self.set_table_cell_text(row_index, 6, tag, alias)
+                self.set_table_cell_text(row_index, self.COL_ALIAS, tag, alias)
                 return
         finally:
             self._suppress_item_changed = False
@@ -1007,7 +1049,7 @@ class TagTab(QWidget):
                     continue
 
                 self.update_current_row_value_for_tag(tag, "manual_score", score if score is not None else "")
-                self.set_table_cell_text(row_index, 11, tag, score_text, align_right=True, sort_value=sort_value)
+                self.set_table_cell_text(row_index, self.COL_MANUAL_SCORE, tag, score_text, align_right=True, sort_value=sort_value)
                 return
         finally:
             self._suppress_item_changed = False
@@ -1024,9 +1066,9 @@ class TagTab(QWidget):
     ) -> None:
         tag_set = set(tags)
         flag_columns = {
-            "ignore_category_influence": (8, ignore_category_influence),
-            "ignore_recommendation_score": (9, ignore_recommendation_score),
-            "ignore_llm_input": (10, ignore_llm_input),
+            "ignore_category_influence": (self.COL_CATEGORY_IGNORED, ignore_category_influence),
+            "ignore_recommendation_score": (self.COL_PRESELECTION_IGNORED, ignore_recommendation_score),
+            "ignore_llm_input": (self.COL_LLM_IGNORED, ignore_llm_input),
         }
 
         self.table.setUpdatesEnabled(False)
@@ -1400,7 +1442,7 @@ class TagTab(QWidget):
         self.safe(lambda: self.remove_tags_from_filename_exclude(self.selected_tags()), self.t("tags.action.remove_selected_exclude", "Remove selected tags from exclude list"))
 
     def edit_alias_for_item(self, item: QTableWidgetItem) -> None:
-        if item is None or item.column() != 6:
+        if item is None or item.column() != self.COL_ALIAS:
             return
         tag = self.tag_from_item(item)
         if tag:
@@ -1474,7 +1516,7 @@ class TagTab(QWidget):
                     continue
 
                 self.update_current_row_value_for_tag(str(tag), "alias_tag", alias)
-                self.set_table_cell_text(row_index, 6, str(tag), alias)
+                self.set_table_cell_text(row_index, self.COL_ALIAS, str(tag), alias)
         finally:
             self._suppress_item_changed = False
             self.table.blockSignals(False)

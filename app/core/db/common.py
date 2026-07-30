@@ -103,6 +103,23 @@ def calculate_computed_tag_score(
     return round(clamp_number(star_signal + accept_signal, -5.0, 5.0), 2)
 
 
+def calculate_rejected_percent(
+    *,
+    saved_count: int,
+    rejected_count: int,
+    scoring_excluded: bool = False,
+) -> float | None:
+    """Return rejected/(saved+rejected) as percent, unless the tag is score-excluded."""
+    if scoring_excluded:
+        return None
+
+    total = int(saved_count or 0) + int(rejected_count or 0)
+    if total <= 0:
+        return None
+
+    return round((float(rejected_count or 0) / float(total)) * 100.0, 1)
+
+
 def normalize_categories(raw_categories: Any) -> list[dict[str, Any]]:
     if raw_categories is None:
         return []

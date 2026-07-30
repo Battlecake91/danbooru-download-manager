@@ -213,9 +213,11 @@ class CategoryTab(QWidget):
 
         self.priority_buttons = QHBoxLayout()
         self.category_up_button = QPushButton(self.t("category.button.move_up", "↑ Move category up"))
+        self.category_up_button.setToolTip(self.t("category.move_up_tooltip", "Move the category earlier in priority. Earlier matching categories win."))
         self.category_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_category(-1)))
         self.priority_buttons.addWidget(self.category_up_button)
         self.category_down_button = QPushButton(self.t("category.button.move_down", "↓ Move category down"))
+        self.category_down_button.setToolTip(self.t("category.move_down_tooltip", "Move the category later in priority."))
         self.category_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_category(1)))
         self.priority_buttons.addWidget(self.category_down_button)
         self.left_layout.addLayout(self.priority_buttons)
@@ -224,14 +226,17 @@ class CategoryTab(QWidget):
         self.category_action_buttons.setSpacing(4)
 
         self.add_category_button = QPushButton(self.t("category.button.add_category", "Add category"))
+        self.add_category_button.setToolTip(self.t("category.add_tooltip", "Create a new category and select it for editing."))
         self.add_category_button.clicked.connect(lambda: self.safe(self.add_category))
         self.category_action_buttons.addWidget(self.add_category_button)
 
         self.save_category_button = QPushButton(self.t("category.button.save_category", "Save category"))
+        self.save_category_button.setToolTip(self.t("category.save_tooltip", "Save name, folder, output path and hotkey for the selected category."))
         self.save_category_button.clicked.connect(lambda: self.safe(self.save_selected_category))
         self.category_action_buttons.addWidget(self.save_category_button)
 
         self.delete_category_button = QPushButton(self.t("category.button.delete_category", "Delete category"))
+        self.delete_category_button.setToolTip(self.t("category.delete_tooltip", "Delete the selected category and its rules. Posts are not deleted."))
         self.delete_category_button.clicked.connect(lambda: self.safe(self.delete_selected_category))
         self.category_action_buttons.addWidget(self.delete_category_button)
 
@@ -250,24 +255,29 @@ class CategoryTab(QWidget):
 
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText(self.t("category.placeholder.name", "e.g. Favorites"))
+        self.name_edit.setToolTip(self.t("category.name_tooltip", "Display name used in the UI and category matching."))
         self.details_layout.addRow(self.t("common.name", "Name"), self.name_edit)
 
         self.folder_edit = QLineEdit()
         self.folder_edit.setPlaceholderText(self.t("category.placeholder.folder", "Folder name, empty = name"))
+        self.folder_edit.setToolTip(self.t("category.folder_tooltip", "Folder name used when saving posts into this category. Empty uses the category name."))
         self.details_layout.addRow(self.t("category.label.folder", "Folder"), self.folder_edit)
 
         self.output_path_edit = QLineEdit()
         self.output_path_edit.setPlaceholderText(self.t("category.placeholder.output_path", "Optional output path for this category only"))
+        self.output_path_edit.setToolTip(self.t("category.output_path_tooltip", "Optional category-specific output directory. Empty uses the global output directory."))
         self.details_layout.addRow(self.t("category.label.output_path", "Output path"), self.output_path_edit)
 
         self.hotkey_edit = QLineEdit()
         self.hotkey_edit.setPlaceholderText(self.t("category.placeholder.hotkey", "Optional, e.g. F"))
         self.hotkey_edit.setMaxLength(24)
+        self.hotkey_edit.setToolTip(self.t("category.hotkey_tooltip", "Optional Viewer hotkey for assigning this category."))
         self.details_layout.addRow(self.t("category.label.hotkey", "Hotkey"), self.hotkey_edit)
 
         self.sort_order_edit = QLineEdit()
         self.sort_order_edit.setPlaceholderText(self.t("category.placeholder.position", "Set through the category list on the left"))
         self.sort_order_edit.setReadOnly(True)
+        self.sort_order_edit.setToolTip(self.t("category.position_tooltip", "Read-only priority position. Use the move buttons on the left."))
         self.details_layout.addRow(self.t("category.label.position", "Position"), self.sort_order_edit)
 
         self.right_layout.addWidget(self.details_box)
@@ -287,22 +297,27 @@ class CategoryTab(QWidget):
 
         self.group_buttons = QHBoxLayout()
         self.add_group_button = QPushButton(self.t("category.button.add_include_rule", "+ Include rule"))
+        self.add_group_button.setToolTip(self.t("category.add_include_tooltip", "Add an alternative include rule for this category."))
         self.add_group_button.clicked.connect(lambda: self.safe(self.add_group_row))
         self.group_buttons.addWidget(self.add_group_button)
 
         self.delete_group_button = QPushButton(self.t("category.button.delete_include_rule", "Delete include rule"))
+        self.delete_group_button.setToolTip(self.t("category.delete_include_tooltip", "Delete selected include rule rows."))
         self.delete_group_button.clicked.connect(lambda: self.safe(self.delete_selected_group_rows))
         self.group_buttons.addWidget(self.delete_group_button)
 
         self.move_group_up_button = QPushButton(self.t("category.button.move_include_up", "↑ Include rule"))
+        self.move_group_up_button.setToolTip(self.t("category.move_include_up_tooltip", "Move selected include rules up in the rule list."))
         self.move_group_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.groups_table, -1)))
         self.group_buttons.addWidget(self.move_group_up_button)
 
         self.move_group_down_button = QPushButton(self.t("category.button.move_include_down", "↓ Include rule"))
+        self.move_group_down_button.setToolTip(self.t("category.move_include_down_tooltip", "Move selected include rules down in the rule list."))
         self.move_group_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.groups_table, 1)))
         self.group_buttons.addWidget(self.move_group_down_button)
 
         self.save_groups_button = QPushButton(self.t("category.button.save_rules", "Save rules"))
+        self.save_groups_button.setToolTip(self.t("category.save_rules_tooltip", "Save include rules and global conditions for the selected category."))
         self.save_groups_button.clicked.connect(lambda: self.safe(self.save_rule_groups))
         self.group_buttons.addWidget(self.save_groups_button)
 
@@ -312,6 +327,7 @@ class CategoryTab(QWidget):
         self.new_group_row = QHBoxLayout()
         self.new_group_edit = QLineEdit()
         self.new_group_edit.setPlaceholderText(self.t("category.placeholder.new_include_rule", "New include rule, e.g. maid apron -comic"))
+        self.new_group_edit.setToolTip(self.t("category.new_include_tooltip", "Enter required tags separated by spaces. Prefix a tag with '-' to block it."))
         self.new_group_edit.returnPressed.connect(lambda: self.safe(self.add_group_from_input))
         self.new_group_row.addWidget(self.new_group_edit, stretch=1)
 
@@ -344,18 +360,22 @@ class CategoryTab(QWidget):
 
         self.global_buttons = QHBoxLayout()
         self.add_global_button = QPushButton(self.t("category.button.add_global_condition", "+ Global condition"))
+        self.add_global_button.setToolTip(self.t("category.add_global_tooltip", "Add a condition that is combined with every include rule."))
         self.add_global_button.clicked.connect(lambda: self.safe(self.add_global_row))
         self.global_buttons.addWidget(self.add_global_button)
 
         self.delete_global_button = QPushButton(self.t("category.button.delete_condition", "Delete condition"))
+        self.delete_global_button.setToolTip(self.t("category.delete_global_tooltip", "Delete selected global condition rows."))
         self.delete_global_button.clicked.connect(lambda: self.safe(self.delete_selected_global_rows))
         self.global_buttons.addWidget(self.delete_global_button)
 
         self.move_global_up_button = QPushButton(self.t("category.button.move_condition_up", "↑ Condition"))
+        self.move_global_up_button.setToolTip(self.t("category.move_global_up_tooltip", "Move selected global conditions up in the list."))
         self.move_global_up_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.global_table, -1)))
         self.global_buttons.addWidget(self.move_global_up_button)
 
         self.move_global_down_button = QPushButton(self.t("category.button.move_condition_down", "↓ Condition"))
+        self.move_global_down_button.setToolTip(self.t("category.move_global_down_tooltip", "Move selected global conditions down in the list."))
         self.move_global_down_button.clicked.connect(lambda: self.safe(lambda: self.move_selected_rule_rows(self.global_table, 1)))
         self.global_buttons.addWidget(self.move_global_down_button)
 
@@ -365,10 +385,12 @@ class CategoryTab(QWidget):
         self.new_global_row = QHBoxLayout()
         self.new_global_edit = QLineEdit()
         self.new_global_edit.setPlaceholderText(self.t("category.placeholder.global_condition", "Global condition, e.g. solo -comic"))
+        self.new_global_edit.setToolTip(self.t("category.new_global_tooltip", "Enter tags that should apply to every include rule. '-' means blocked."))
         self.new_global_edit.returnPressed.connect(lambda: self.safe(self.add_global_from_input))
         self.new_global_row.addWidget(self.new_global_edit, stretch=1)
 
         self.add_global_from_input_button = QPushButton(self.t("common.add", "Add"))
+        self.add_global_from_input_button.setToolTip(self.t("category.add_global_from_input_tooltip", "Add the typed global condition to the table."))
         self.add_global_from_input_button.clicked.connect(lambda: self.safe(self.add_global_from_input))
         self.new_global_row.addWidget(self.add_global_from_input_button)
         self.rules_layout.addLayout(self.new_global_row)
@@ -390,6 +412,7 @@ class CategoryTab(QWidget):
 
         self.show_advanced_check = QCheckBox(self.t("category.checkbox.show_advanced", "Show advanced fields"))
         self.show_advanced_check.setChecked(True)
+        self.show_advanced_check.setToolTip(self.t("category.advanced_tooltip", "Show category-specific output path and read-only priority position."))
         self.show_advanced_check.stateChanged.connect(self.apply_advanced_visibility)
         self.right_layout.addWidget(self.show_advanced_check)
 

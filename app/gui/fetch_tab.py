@@ -20,9 +20,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -46,6 +49,18 @@ RATING_FILTERS: list[tuple[str, str]] = [
 RATING_STATE_IGNORE = "ignore"
 RATING_STATE_INCLUDE = "include"
 RATING_STATE_EXCLUDE = "exclude"
+
+
+def parse_fetch_exclude_tag_input(text: str) -> list[str]:
+    tags: list[str] = []
+    seen: set[str] = set()
+    for raw_tag in re.split(r"[\s,;]+", text):
+        tag = raw_tag.strip().lower()
+        if not tag or tag in seen:
+            continue
+        tags.append(tag)
+        seen.add(tag)
+    return tags
 
 
 class FetchWorker(QObject):
@@ -297,6 +312,93 @@ class RatingTriStateBox(QCheckBox):
         self.setToolTip("Click cycle: empty = ignore, check = include, dash = exclude.")
 
 
+class FetchExcludeDialog(QDialog):
+    def __init__(self, config: dict[str, Any], db: Database, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.config = config
+        self.db = db
+        self.setWindowTitle(tr("fetch.exclude.dialog_title", "Fetch exclude tags", config=self.config))
+        self.resize(620, 520)
+
+        layout = QVBoxLayout(self)
+
+        hint = QLabel(
+            tr(
+                "fetch.exclude.hint",
+                "Posts containing these tags are skipped before they enter the local review workflow.",
+                config=self.config,
+            )
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(QListWidget.ExtendedSelection)
+        layout.addWidget(self.list_widget, stretch=1)
+
+        input_row = QHBoxLayout()
+        self.tag_edit = QLineEdit()
+        self.tag_edit.setPlaceholderText(tr("fetch.exclude.placeholder", "Add tags, separated by spaces or commas", config=self.config))
+        self.tag_edit.returnPressed.connect(self.add_tags_from_input)
+        input_row.addWidget(self.tag_edit, stretch=1)
+
+        add_button = QPushButton(tr("fetch.exclude.add", "Add", config=self.config))
+        add_button.clicked.connect(self.add_tags_from_input)
+        input_row.addWidget(add_button)
+
+        remove_button = QPushButton(tr("fetch.exclude.remove_selected", "Remove selected", config=self.config))
+        remove_button.clicked.connect(self.remove_selected_tags)
+        input_row.addWidget(remove_button)
+
+        refresh_button = QPushButton(tr("common.refresh", "Refresh", config=self.config))
+        refresh_button.clicked.connect(self.load_tags)
+        input_row.addWidget(refresh_button)
+        layout.addLayout(input_row)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.load_tags()
+
+    def load_tags(self) -> None:
+        selected = set(self.selected_tags())
+        self.list_widget.clear()
+        for tag in sorted(self.db.fetch_excluded_tag_set()):
+            item = QListWidgetItem(tag)
+            item.setData(Qt.UserRole, tag)
+            self.list_widget.addItem(item)
+            if tag in selected:
+                item.setSelected(True)
+
+    def selected_tags(self) -> list[str]:
+        tags: list[str] = []
+        for item in self.list_widget.selectedItems():
+            tag = item.data(Qt.UserRole) or item.text()
+            if tag:
+                tags.append(str(tag))
+        return tags
+
+    def add_tags_from_input(self) -> None:
+        tags = parse_fetch_exclude_tag_input(self.tag_edit.text())
+        if not tags:
+            return
+
+        for tag in tags:
+            self.db.add_fetch_excluded_tag(tag, "fetch-tab")
+        self.tag_edit.clear()
+        self.load_tags()
+
+    def remove_selected_tags(self) -> None:
+        tags = self.selected_tags()
+        if not tags:
+            return
+
+        for tag in tags:
+            self.db.remove_fetch_excluded_tag(tag)
+        self.load_tags()
+
+
 class FetchTab(QWidget):
     fetch_started = Signal()
     fetch_finished = Signal()
@@ -334,15 +436,18 @@ class FetchTab(QWidget):
         self.preset_combo = QComboBox()
         self.preset_combo.setEditable(True)
         self.preset_combo.setMinimumWidth(260)
+        self.preset_combo.setToolTip("Fetch presets store query, source, rating filters, limits and advanced filter settings.")
         self.preset_combo.currentIndexChanged.connect(self.on_preset_selected)
         self.preset_layout.addWidget(QLabel(tr("fetch.preset.label", config=self.config)))
         self.preset_layout.addWidget(self.preset_combo, stretch=1)
 
         self.save_preset_button = QPushButton(tr("fetch.preset.save", config=self.config))
+        self.save_preset_button.setToolTip("Save the current Fetch settings under the selected preset name.")
         self.save_preset_button.clicked.connect(self.save_current_preset)
         self.preset_layout.addWidget(self.save_preset_button)
 
         self.delete_preset_button = QPushButton(tr("fetch.preset.delete", config=self.config))
+        self.delete_preset_button.setToolTip("Delete the selected Fetch preset. This does not delete posts.")
         self.delete_preset_button.clicked.connect(self.delete_current_preset)
         self.preset_layout.addWidget(self.delete_preset_button)
 
@@ -354,6 +459,7 @@ class FetchTab(QWidget):
         self.source_mode_combo = QComboBox()
         self.source_mode_combo.addItem(tr("fetch.source.manual", config=self.config), "tags")
         self.source_mode_combo.addItem("Saved Searches", "saved_searches")
+        self.source_mode_combo.setToolTip("Choose manual Danbooru tags or your Danbooru saved searches as Fetch source.")
         self.source_mode_combo.currentIndexChanged.connect(self.on_source_mode_changed)
         self.source_layout.addRow(tr("fetch.source.label", config=self.config), self.source_mode_combo)
 
@@ -364,6 +470,7 @@ class FetchTab(QWidget):
 
         self.manual_query_edit = TagQueryLineEdit()
         self.manual_query_edit.setPlaceholderText(tr("fetch.manual.placeholder", config=self.config))
+        self.manual_query_edit.setToolTip("Danbooru query tags. Use normal Danbooru syntax such as rating:safe landscape order:id_desc.")
         self.manual_query_edit.suggestions_requested.connect(self.request_tag_suggestions)
         self.manual_layout.addRow(tr("fetch.manual.query", config=self.config), self.manual_query_edit)
 
@@ -374,10 +481,12 @@ class FetchTab(QWidget):
 
         self.saved_search_label_edit = QLineEdit()
         self.saved_search_label_edit.setPlaceholderText(tr("fetch.saved.label_placeholder", config=self.config))
+        self.saved_search_label_edit.setToolTip("Optional label filter for Danbooru saved searches.")
         self.saved_search_layout.addRow("Label:", self.saved_search_label_edit)
 
         self.saved_search_query_edit = QLineEdit()
         self.saved_search_query_edit.setPlaceholderText(tr("fetch.saved.query_placeholder", config=self.config))
+        self.saved_search_query_edit.setToolTip("Optional text filter for the query text of Danbooru saved searches.")
         self.saved_search_layout.addRow(tr("fetch.saved.query_filter", config=self.config), self.saved_search_query_edit)
 
         self.saved_search_hint = QLabel(tr("fetch.saved.hint", config=self.config))
@@ -392,10 +501,45 @@ class FetchTab(QWidget):
         self.rating_boxes: dict[str, RatingTriStateBox] = {}
         for code, label in RATING_FILTERS:
             box = RatingTriStateBox(code, label)
+            box.setToolTip("Click cycle: ignore, include this rating, exclude this rating.")
             self.rating_boxes[code] = box
             self.rating_layout.addWidget(box)
         self.rating_layout.addStretch(1)
         self.main_layout.addWidget(self.rating_group)
+
+        self.fetch_exclude_group = QGroupBox(tr("fetch.exclude.group", "Fetch exclude tags", config=self.config))
+        self.fetch_exclude_layout = QHBoxLayout(self.fetch_exclude_group)
+
+        self.fetch_exclude_enabled_checkbox = QCheckBox(tr("fetch.exclude.activate", "Activate Tag-exclude", config=self.config))
+        self.fetch_exclude_enabled_checkbox.setChecked(bool(self.config.get("fetch_exclude_enabled", True)))
+        self.fetch_exclude_enabled_checkbox.setToolTip(
+            tr(
+                "fetch.exclude.activate_tooltip",
+                "When enabled, posts containing fetch-excluded tags are skipped during the next fetch.",
+                config=self.config,
+            )
+        )
+        self.fetch_exclude_layout.addWidget(self.fetch_exclude_enabled_checkbox)
+
+        self.fetch_exclude_count_limits_checkbox = QCheckBox(
+            tr("fetch.exclude.count_limits", "Count excluded posts toward limits", config=self.config)
+        )
+        self.fetch_exclude_count_limits_checkbox.setChecked(bool(self.config.get("fetch_excluded_posts_count_toward_limits", True)))
+        self.fetch_exclude_count_limits_checkbox.setToolTip(
+            tr(
+                "fetch.exclude.count_limits_tooltip",
+                "When disabled, fetch-excluded posts do not consume max posts per query or max total posts.",
+                config=self.config,
+            )
+        )
+        self.fetch_exclude_layout.addWidget(self.fetch_exclude_count_limits_checkbox)
+
+        self.fetch_exclude_dialog_button = QPushButton()
+        self.fetch_exclude_dialog_button.setToolTip("Open the editable list of tags that should be skipped during Fetch.")
+        self.fetch_exclude_dialog_button.clicked.connect(self.open_fetch_exclude_dialog)
+        self.fetch_exclude_layout.addWidget(self.fetch_exclude_dialog_button)
+        self.fetch_exclude_layout.addStretch(1)
+        self.main_layout.addWidget(self.fetch_exclude_group)
 
         self.options_group = QGroupBox(tr("fetch.options.group", config=self.config))
         self.options_layout = QFormLayout(self.options_group)
@@ -432,6 +576,7 @@ class FetchTab(QWidget):
         self.max_total_posts_spin.setRange(1, 100000)
         self.max_total_posts_spin.setValue(int(config.get("max_total_posts", 500)))
         self.max_total_posts_spin.setKeyboardTracking(False)
+        self.max_total_posts_spin.setToolTip("Maximum API posts inspected across the whole Fetch run.")
         self.options_layout.addRow(tr("fetch.options.max_total", config=self.config), self.max_total_posts_spin)
 
         self.advanced_filter_button = QPushButton()
@@ -447,6 +592,7 @@ class FetchTab(QWidget):
         self.button_row = QHBoxLayout()
 
         self.fetch_button = QPushButton(tr("fetch.start", config=self.config))
+        self.fetch_button.setToolTip("Start Fetch with the current source, filters and limits.")
         self.fetch_button.clicked.connect(self.start_fetch)
         self.button_row.addWidget(self.fetch_button)
 
@@ -458,6 +604,9 @@ class FetchTab(QWidget):
         self.button_row.addWidget(self.progress_bar, stretch=1)
 
         self.fetch_progress_label = QLabel("")
+        self.fetch_progress_label.setWordWrap(True)
+        self.fetch_progress_label.setMinimumWidth(0)
+        self.fetch_progress_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.fetch_progress_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.fetch_progress_label.setStyleSheet("QLabel { color: #cccccc; }")
         self.fetch_progress_label.setVisible(False)
@@ -476,7 +625,22 @@ class FetchTab(QWidget):
         # Apparently doing work only when needed still counts as innovation.
         self.load_presets()
         self.load_initial_values()
+        self.refresh_fetch_exclude_button()
         self.on_source_mode_changed()
+
+    def parse_fetch_exclude_input(self, text: str) -> list[str]:
+        return parse_fetch_exclude_tag_input(text)
+
+    def refresh_fetch_exclude_button(self) -> None:
+        tags = sorted(self.db.fetch_excluded_tag_set())
+        self.fetch_exclude_dialog_button.setText(
+            tr("fetch.exclude.open_button", "Excluded Tags ({count})", config=self.config, count=len(tags))
+        )
+
+    def open_fetch_exclude_dialog(self) -> None:
+        dialog = FetchExcludeDialog(self.config, self.db, self)
+        dialog.exec()
+        self.refresh_fetch_exclude_button()
 
     def request_tag_suggestions(self, token: str) -> None:
         token = str(token or "").strip()
@@ -589,6 +753,8 @@ class FetchTab(QWidget):
             "min_unknown_posts_per_query": int(self.min_unknown_per_query_spin.value()),
             "max_total_posts": int(self.max_total_posts_spin.value()),
             "llm_enabled": self.llm_enabled_checkbox.isChecked(),
+            "fetch_exclude_enabled": self.fetch_exclude_enabled_checkbox.isChecked(),
+            "fetch_excluded_posts_count_toward_limits": self.fetch_exclude_count_limits_checkbox.isChecked(),
             "resolution_filters": dict(self.resolution_filters),
         }
 
@@ -631,6 +797,17 @@ class FetchTab(QWidget):
         self.update_advanced_filter_button()
         self.llm_enabled_checkbox.setChecked(
             bool(payload.get("llm_enabled", (self.config.get("llm", {}) or {}).get("enabled", False)))
+        )
+        self.fetch_exclude_enabled_checkbox.setChecked(
+            bool(payload.get("fetch_exclude_enabled", self.config.get("fetch_exclude_enabled", True)))
+        )
+        self.fetch_exclude_count_limits_checkbox.setChecked(
+            bool(
+                payload.get(
+                    "fetch_excluded_posts_count_toward_limits",
+                    self.config.get("fetch_excluded_posts_count_toward_limits", True),
+                )
+            )
         )
         self.on_source_mode_changed()
 
@@ -710,6 +887,8 @@ class FetchTab(QWidget):
         fetch_config["min_unknown_posts_per_query"] = int(self.min_unknown_per_query_spin.value())
         fetch_config["max_total_posts"] = int(self.max_total_posts_spin.value())
         fetch_config.setdefault("llm", {})["enabled"] = self.llm_enabled_checkbox.isChecked()
+        fetch_config["fetch_exclude_enabled"] = self.fetch_exclude_enabled_checkbox.isChecked()
+        fetch_config["fetch_excluded_posts_count_toward_limits"] = self.fetch_exclude_count_limits_checkbox.isChecked()
         fetch_config["resolution_filters"] = dict(self.resolution_filters)
 
         mode = self.selected_source_mode()

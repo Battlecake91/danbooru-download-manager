@@ -1,7 +1,7 @@
 # Danbooru Download Manager
 
-> **Current release:** `1.3.193`  
-> Version `1.3.193` improves Viewer responsiveness and fixes critical portable-updater safety issues.  
+> **Current release:** `1.3.194`
+> Version `1.3.194` adds Viewer preview-strip controls, Fetch-exclude workflow controls, richer Help guidance and guarded layout/statistics fixes.
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
 Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
@@ -125,7 +125,7 @@ Single-executable build for the current platform:
 python scripts/make_release.py --allow-dirty --onefile
 ```
 
-Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.193_win64_portable.zip` or `DanbooruManager_1.3.193_linux_x86_64_onefile.zip`.
+Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.194_win64_portable.zip` or `DanbooruManager_1.3.194_linux_x86_64_onefile.zip`.
 
 ---
 
@@ -255,7 +255,7 @@ See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 | [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
 | [`docs/RELEASE_WORKFLOW.md`](docs/RELEASE_WORKFLOW.md) | Push, build and release workflow |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
-| [`docs/RELEASE_NOTES_1.3.193.md`](docs/RELEASE_NOTES_1.3.193.md) | Changes included in this release |
+| [`docs/RELEASE_NOTES_1.3.194.md`](docs/RELEASE_NOTES_1.3.194.md) | Changes included in this release |
 
 ---
 

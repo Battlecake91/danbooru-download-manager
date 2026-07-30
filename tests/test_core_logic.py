@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from app.core.category_engine import build_category_match_groups, build_category_rule_set
-from app.core.db.common import calculate_computed_tag_score, parse_preview_search_terms
+from app.core.db.common import calculate_computed_tag_score, calculate_rejected_percent, parse_preview_search_terms
 from app.core.filename_builder import safe_filename, truncate_filename
 from tests.helpers import open_temp_database
 
@@ -26,6 +26,22 @@ class CoreLogicTests(unittest.TestCase):
         )
 
         self.assertLess(score, 3.0)
+
+    def test_rejected_percent_ignores_scoring_excluded_tags(self) -> None:
+        self.assertEqual(
+            calculate_rejected_percent(saved_count=3, rejected_count=1),
+            25.0,
+        )
+        self.assertIsNone(
+            calculate_rejected_percent(
+                saved_count=3,
+                rejected_count=1,
+                scoring_excluded=True,
+            )
+        )
+        self.assertIsNone(
+            calculate_rejected_percent(saved_count=0, rejected_count=0)
+        )
 
     def test_safe_filename_removes_windows_reserved_characters(self) -> None:
         self.assertEqual(safe_filename('a/b<c>d:e"f|g?h*i.jpg'), "a_b_c_d_e_f_g_h_i.jpg")
