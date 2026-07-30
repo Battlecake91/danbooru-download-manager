@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from app.core.database import Database
 from app.danbooru.api import DanbooruApi
+from app.gui.platform_open import open_local_path
 from app.i18n.i18n import tr
 from app.services.download_service import DownloadService
 from app.gui.first_run_setup import FirstRunSetupDialog
@@ -480,7 +480,12 @@ class MaintenanceTab(QWidget):
             return
         path = Path(str(row["final_file_path"]))
         if path.exists():
-            os.startfile(path)
+            if not open_local_path(path):
+                QMessageBox.warning(
+                    self,
+                    tr("maintenance.title", config=self.config),
+                    tr("maintenance.error.open_failed", "Could not open:\n{path}", config=self.config, path=path),
+                )
 
 
 def read_image_dimensions(path: Path) -> tuple[int | None, int | None]:

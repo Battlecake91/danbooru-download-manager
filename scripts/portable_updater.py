@@ -33,6 +33,12 @@ PRESERVED_SUFFIXES = {
 }
 
 
+def app_executable_names() -> tuple[str, ...]:
+    if os.name == "nt":
+        return ("DanbooruManager.exe",)
+    return ("DanbooruManager", "danbooru-manager")
+
+
 class UpdateError(RuntimeError):
     pass
 
@@ -114,10 +120,10 @@ def find_payload_root(extract_dir: Path) -> Path:
 
     if len(dirs) == 1 and not files:
         candidate = dirs[0]
-        if (candidate / "DanbooruManager.exe").exists() or (candidate / "main.py").exists():
+        if any((candidate / name).exists() for name in app_executable_names()) or (candidate / "main.py").exists():
             return candidate
 
-    if (extract_dir / "DanbooruManager.exe").exists() or (extract_dir / "main.py").exists():
+    if any((extract_dir / name).exists() for name in app_executable_names()) or (extract_dir / "main.py").exists():
         return extract_dir
 
     if len(dirs) == 1:
@@ -186,12 +192,10 @@ def restart_application(restart_path: Path | None) -> None:
         return
 
     log(f"Restarting {restart_path}...")
-    subprocess.Popen(
-        [str(restart_path)],
-        cwd=str(restart_path.parent),
-        close_fds=True,
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-    )
+    popen_kwargs = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([str(restart_path)], cwd=str(restart_path.parent), close_fds=True, **popen_kwargs)
 
 
 def parse_args() -> argparse.Namespace:
@@ -208,7 +212,7 @@ def main() -> int:
     args = parse_args()
     zip_path = Path(args.zip).resolve()
     target_dir = Path(args.target).resolve()
-    if target_dir.suffix.lower() == ".exe":
+    if os.name == "nt" and target_dir.suffix.lower() == ".exe":
         log(f"Target points to an executable; using its parent directory: {target_dir.parent}")
         target_dir = target_dir.parent
 

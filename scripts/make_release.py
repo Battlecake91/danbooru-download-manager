@@ -47,6 +47,108 @@ DEFAULT_UPDATER_ENTRYPOINT_CANDIDATES = [
     "scripts/portable_updater.py",
     "portable_updater.py",
 ]
+PYINSTALLER_HIDDEN_IMPORTS = [
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "PySide6.QtNetwork",
+]
+PYINSTALLER_EXCLUDES = [
+    "pytest",
+    "unittest",
+    "tkinter",
+    "PySide6.Qt3DAnimation",
+    "PySide6.Qt3DCore",
+    "PySide6.Qt3DExtras",
+    "PySide6.Qt3DInput",
+    "PySide6.Qt3DLogic",
+    "PySide6.Qt3DRender",
+    "PySide6.QtBluetooth",
+    "PySide6.QtCharts",
+    "PySide6.QtConcurrent",
+    "PySide6.QtDataVisualization",
+    "PySide6.QtDesigner",
+    "PySide6.QtGraphs",
+    "PySide6.QtGraphsWidgets",
+    "PySide6.QtHelp",
+    "PySide6.QtHttpServer",
+    "PySide6.QtLocation",
+    "PySide6.QtMultimedia",
+    "PySide6.QtMultimediaWidgets",
+    "PySide6.QtNetworkAuth",
+    "PySide6.QtNfc",
+    "PySide6.QtOpenGL",
+    "PySide6.QtOpenGLWidgets",
+    "PySide6.QtPdf",
+    "PySide6.QtPdfWidgets",
+    "PySide6.QtPositioning",
+    "PySide6.QtPrintSupport",
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+    "PySide6.QtQuick3D",
+    "PySide6.QtQuickControls2",
+    "PySide6.QtRemoteObjects",
+    "PySide6.QtSvg",
+    "PySide6.QtSvgWidgets",
+    "PySide6.QtTest",
+    "PySide6.QtTextToSpeech",
+    "PySide6.QtUiTools",
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineQuick",
+    "PySide6.QtWebEngineWidgets",
+    "PySide6.scripts",
+    "PySide6.support",
+]
+
+
+def platform_release_suffix(platform: str | None = None) -> str:
+    value = (platform or sys.platform).lower()
+    machine = "x86_64"
+    try:
+        import platform as platform_module
+
+        machine = platform_module.machine().lower() or machine
+    except Exception:
+        pass
+
+    if value.startswith("win"):
+        return "win64" if machine in {"amd64", "x86_64"} else "win32"
+    if value.startswith("linux"):
+        return "linux_x86_64" if machine in {"amd64", "x86_64"} else f"linux_{machine}"
+    if value == "darwin":
+        return "macos_arm64" if machine in {"arm64", "aarch64"} else "macos_x86_64"
+    return value.replace(" ", "_")
+
+
+def is_windows_platform(platform: str | None = None) -> bool:
+    return (platform or sys.platform).lower().startswith("win")
+
+
+def executable_name(base_name: str, platform: str | None = None) -> str:
+    if is_windows_platform(platform):
+        return f"{base_name}.exe"
+    return base_name
+
+
+def pyinstaller_data_separator(platform: str | None = None) -> str:
+    return ";" if is_windows_platform(platform) else ":"
+
+
+def pyinstaller_data_args(project_root: Path, platform: str | None = None) -> list[str]:
+    separator = pyinstaller_data_separator(platform)
+    data_pairs: list[tuple[Path, str]] = []
+    locales_dir = project_root / "app" / "i18n" / "locales"
+    if locales_dir.exists():
+        data_pairs.append((locales_dir, "app/i18n/locales"))
+
+    for asset_dir in (project_root / "assets", project_root / "app" / "assets"):
+        if asset_dir.exists():
+            data_pairs.append((asset_dir, str(asset_dir.relative_to(project_root)).replace("\\", "/")))
+
+    args: list[str] = []
+    for source, target in data_pairs:
+        args.extend(["--add-data", f"{source}{separator}{target}"])
+    return args
 
 
 def print_step(message: str) -> None:
@@ -360,9 +462,13 @@ def build_with_pyinstaller(
         if entrypoint is None:
             raise RuntimeError("Internal error: entrypoint is missing.")
 
+        spec_dir = project_root / "build" / "pyinstaller_specs"
+        spec_dir.mkdir(parents=True, exist_ok=True)
         command = pyinstaller_command(
             "--noconfirm",
             "--clean",
+            "--specpath",
+            str(spec_dir),
             "--name",
             expected_name,
         )
@@ -382,6 +488,11 @@ def build_with_pyinstaller(
             else:
                 print_warn(f"Icon not found, ignoring: {icon_path}")
 
+        command.extend(pyinstaller_data_args(project_root))
+        for hidden_import in PYINSTALLER_HIDDEN_IMPORTS:
+            command.extend(["--hidden-import", hidden_import])
+        for excluded_module in PYINSTALLER_EXCLUDES:
+            command.extend(["--exclude-module", excluded_module])
         command.append(str(entrypoint.relative_to(project_root)))
 
     run_command(command, cwd=project_root)
@@ -478,12 +589,14 @@ def prepare_release_payload(
         print_warn("Updater was not included in the release payload because --no-updater was used.")
 
     if require_updater:
-        expected_updater = payload_app_dir / (
-            f"{UPDATER_NAME}.exe" if sys.platform.startswith("win") else UPDATER_NAME
-        )
-        if not expected_updater.exists():
+        expected_updater_names = [
+            executable_name(UPDATER_NAME),
+            executable_name("updater"),
+        ]
+        if not any((payload_app_dir / name).exists() for name in expected_updater_names):
             raise FileNotFoundError(
-                f"Updater executable is missing from release payload: {expected_updater}"
+                "Updater executable is missing from release payload. "
+                f"Expected one of: {', '.join(expected_updater_names)}"
             )
 
     return payload_app_dir
@@ -497,13 +610,21 @@ def zip_directory(source_dir: Path, zip_path: Path) -> None:
                 zipf.write(file_path, arcname)
 
 
-def create_release_zip(project_root: Path, payload_dir: Path, version: str) -> Path:
+def create_release_zip(
+    project_root: Path,
+    payload_dir: Path,
+    version: str,
+    *,
+    onefile: bool = False,
+    platform: str | None = None,
+) -> Path:
     print_step("Creating release ZIP")
 
     release_dir = project_root / "release"
     release_dir.mkdir(exist_ok=True)
 
-    zip_path = release_dir / f"{APP_NAME}_{version}_win64.zip"
+    bundle_suffix = "onefile" if onefile else "portable"
+    zip_path = release_dir / f"{APP_NAME}_{version}_{platform_release_suffix(platform)}_{bundle_suffix}.zip"
 
     if zip_path.exists():
         zip_path.unlink()
@@ -813,7 +934,14 @@ def main() -> int:
                 ]
             )
 
-        spec_file = find_spec_file(project_root, args.spec)
+        if args.onefile and args.spec is None:
+            spec_file = None
+            print_info("Onefile build requested; using PyInstaller CLI options instead of the default onedir spec.")
+        elif not is_windows_platform() and args.spec is None:
+            spec_file = None
+            print_info("Non-Windows build detected; using PyInstaller CLI options instead of the Windows-oriented spec.")
+        else:
+            spec_file = find_spec_file(project_root, args.spec)
 
         if spec_file:
             print_info(f"Using PyInstaller spec file: {spec_file.relative_to(project_root)}")
@@ -874,7 +1002,12 @@ def main() -> int:
             require_updater=not args.no_updater,
         )
 
-        zip_path = create_release_zip(project_root, payload_dir, version)
+        zip_path = create_release_zip(
+            project_root,
+            payload_dir,
+            version,
+            onefile=args.onefile,
+        )
 
         tag = None
         if args.tag or args.push or args.publish:

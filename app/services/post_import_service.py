@@ -390,4 +390,4 @@ class PostImportService:
 
 
 def split_tags(tag_string: str) -> list[str]:
-    return [tag.strip() for tag in tag_string.split(" ") if tag.strip()]
+    return [tag.strip() for tag in tag_string.split() if tag.strip()]

@@ -83,13 +83,21 @@ The central workflow is deliberately metadata-first:
 
 ### Release build
 
-Download the Windows ZIP from the GitHub release, extract it completely, then run:
+Download the ZIP for your operating system from the GitHub release, extract it completely, then run the application from the extracted folder.
+
+Windows builds contain:
 
 ```text
 DanbooruManager.exe
 ```
 
-Do not start the executable from inside the ZIP. Windows already invents enough filesystem folklore without assistance.
+Linux builds contain:
+
+```text
+DanbooruManager
+```
+
+Do not start the application from inside the ZIP. Operating systems already invent enough filesystem folklore without assistance.
 
 ### From source
 
@@ -102,6 +110,22 @@ Install dependencies first:
 ```bash
 pip install -r requirements.txt
 ```
+
+### Building releases
+
+Portable folder-style build for the current platform:
+
+```bash
+python scripts/make_release.py --allow-dirty
+```
+
+Single-executable build for the current platform:
+
+```bash
+python scripts/make_release.py --allow-dirty --onefile
+```
+
+Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.193_win64_portable.zip` or `DanbooruManager_1.3.193_linux_x86_64_onefile.zip`.
 
 ---
 
@@ -229,6 +253,7 @@ See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 | [`docs/IMPORTER.md`](docs/IMPORTER.md) | Existing-file scan, review, comparison and import workflow |
 | [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md) | SQLite connection and write-coordination model |
 | [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
+| [`docs/RELEASE_WORKFLOW.md`](docs/RELEASE_WORKFLOW.md) | Push, build and release workflow |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
 | [`docs/RELEASE_NOTES_1.3.193.md`](docs/RELEASE_NOTES_1.3.193.md) | Changes included in this release |
 

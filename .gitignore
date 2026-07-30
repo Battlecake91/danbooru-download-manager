@@ -31,6 +31,7 @@ ENV/
 # Type checker / linter cache
 .mypy_cache/
 .pyright/
+.pytest_cache/
 .ruff_cache/
 
 

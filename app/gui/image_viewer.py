@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from concurrent.futures import Future, ThreadPoolExecutor
-import os
 import time
 import webbrowser
 from pathlib import Path
@@ -40,6 +39,7 @@ from app.core.database import Database
 from app.services.download_service import DownloadService
 from app.danbooru.api import DanbooruApi
 from app.gui.icon_utils import ensure_app_icon
+from app.gui.platform_open import open_local_path as open_os_local_path
 from app.i18n.i18n import tr
 from app.gui.tag_display import TypedTagListWidget, typed_tags_for_post
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
@@ -1040,7 +1040,8 @@ class ImageViewerWindow(QMainWindow):
             QMessageBox.warning(self, self.t("viewer.local_file_missing_title", "Local File Missing"), self.t("viewer.file_does_not_exist", "File does not exist:\n{path}", path=path))
             return
 
-        os.startfile(path)
+        if not open_os_local_path(path):
+            QMessageBox.warning(self, self.t("viewer.open_failed_title", "Open Failed"), self.t("viewer.open_failed_message", "Could not open:\n{path}", path=path))
 
     def open_local_folder(self, path: Path) -> None:
         folder = path.parent if path.is_file() else path
@@ -1048,7 +1049,8 @@ class ImageViewerWindow(QMainWindow):
             QMessageBox.warning(self, self.t("viewer.folder_missing_title", "Folder Missing"), self.t("viewer.folder_does_not_exist", "Folder does not exist:\n{folder}", folder=folder))
             return
 
-        os.startfile(folder)
+        if not open_os_local_path(folder):
+            QMessageBox.warning(self, self.t("viewer.open_failed_title", "Open Failed"), self.t("viewer.open_failed_message", "Could not open:\n{path}", path=folder))
 
     def update_category_controls(self, post_id: int, metrics: dict[str, float] | None = None) -> None:
         started_at = time.perf_counter()
@@ -1982,7 +1984,8 @@ class ImageViewerWindow(QMainWindow):
             QMessageBox.warning(self, self.t("viewer.folder_missing_title", "Folder Missing"), self.t("viewer.folder_does_not_exist", "Folder does not exist:\n{folder}", folder=path))
             return
 
-        os.startfile(path)
+        if not open_os_local_path(path):
+            QMessageBox.warning(self, self.t("viewer.open_failed_title", "Open Failed"), self.t("viewer.open_failed_message", "Could not open:\n{path}", path=path))
 
     def open_current_local_image(self) -> None:
         if self.current_post_id is None:

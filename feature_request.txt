@@ -4,3 +4,9 @@
 - Optional list-oriented library view
 - Additional quality-of-life improvements
 - More LLM provider and payload validation
+- forbidden tags should be allow through context-menu
+- stacked view for childs / parents or preview in viewer)
+- activate/deactivate filtered tags in fetch tab
+- stats in previewer for how many rejected / saved etc pictures
+- Tag-stats how many rejected posts for each tag
+- Preview in Viewer (next x-pictures, last x-pictures under the pic)

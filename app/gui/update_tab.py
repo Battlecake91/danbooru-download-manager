@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from app.services.update_service import (
     check_for_update,
     download_update_asset,
+    packaged_update_requirement_message,
     portable_update_available,
     start_portable_update,
     updates_dir,
@@ -95,10 +96,7 @@ class UpdateTab(QWidget):
             QMessageBox.information(
                 self,
                 "Update check",
-                "Portable self-updates require the packaged release folder with "
-                "DanbooruManager.exe and DanbooruManagerUpdater.exe next to each other.\n\n"
-                "Build the application with the Release task first and start the packaged EXE. "
-                "Running from source will not overwrite your checkout.",
+                packaged_update_requirement_message(),
             )
             return
 

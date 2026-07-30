@@ -1,2 +1,4 @@
 pyinstaller
 Pillow
+pytest
+coverage

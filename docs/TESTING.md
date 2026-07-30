@@ -1,4 +1,37 @@
-# Testing Notes for Release 1.3.189
+# Testing
+
+Danbooru Download Manager has both automated checks and manual functional validation.
+
+Run the automated tests from the repository root:
+
+```bash
+python -m pytest
+```
+
+For a dependency-free smoke run in environments where `pytest` is not installed yet:
+
+```bash
+python -m unittest discover -v
+```
+
+The automated suite intentionally avoids network access and GUI startup. It covers core parsing/scoring helpers, database bootstrap, selected fetch/update helpers, release-asset selection, and SQLite performance guardrails.
+
+## Performance diagnostics
+
+Database performance tests live in `tests/test_database_performance.py`.
+
+They combine two checks:
+
+- `EXPLAIN QUERY PLAN` assertions for important indexes, so regressions identify whether SQLite stopped using a hot-path index.
+- bounded runtime checks on a synthetic medium-size dataset, so unexpectedly expensive preview, tag completion, category influence, and tag-statistics paths fail early.
+
+If a performance test fails, inspect the failure message first. Query-plan failures print the plan SQLite chose; timing failures name the method that exceeded its budget.
+
+These tests are not a replacement for profiling a very large personal collection, but they give the project a repeatable tripwire for the DB paths that have historically hurt responsiveness.
+
+---
+
+## Manual validation notes
 
 Danbooru Download Manager `1.3.189` was developed through incremental patches and manual functional validation of the affected workflows.
 

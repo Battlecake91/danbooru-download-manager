@@ -18,6 +18,51 @@ from app.version import APP_NAME, GITHUB_REPOSITORY, __version__
 ProgressCallback = Callable[[int, int], None]
 
 
+def platform_key(platform: str | None = None) -> str:
+    value = (platform or sys.platform).lower()
+    if value.startswith("win"):
+        return "windows"
+    if value.startswith("linux"):
+        return "linux"
+    if value == "darwin":
+        return "macos"
+    return value
+
+
+def app_executable_names(platform: str | None = None) -> list[str]:
+    if platform_key(platform) == "windows":
+        return ["DanbooruManager.exe"]
+    return ["DanbooruManager", "danbooru-manager"]
+
+
+def updater_executable_names(platform: str | None = None) -> list[str]:
+    if platform_key(platform) == "windows":
+        return ["DanbooruManagerUpdater.exe", "updater.exe"]
+    return ["DanbooruManagerUpdater", "danbooru-manager-updater", "updater"]
+
+
+def release_asset_platform_tokens(platform: str | None = None) -> tuple[str, ...]:
+    key = platform_key(platform)
+    if key == "windows":
+        return ("win64", "windows", "win")
+    if key == "linux":
+        return ("linux", "x86_64", "amd64")
+    if key == "macos":
+        return ("macos", "darwin")
+    return (key,)
+
+
+def packaged_update_requirement_message(platform: str | None = None) -> str:
+    app_name = app_executable_names(platform)[0]
+    updater_name = updater_executable_names(platform)[0]
+    return (
+        "Portable self-updates require the packaged release folder with "
+        f"{app_name} and {updater_name} next to each other.\n\n"
+        "Build the application with the Release task first and start the packaged app. "
+        "Running from source will not overwrite your checkout."
+    )
+
+
 @dataclass(frozen=True)
 class ReleaseAsset:
     name: str
@@ -77,9 +122,9 @@ def packaged_runtime_dir() -> Path | None:
         return executable_dir()
 
     for directory in runtime_candidate_dirs():
-        app_exe = directory / "DanbooruManager.exe"
-        updater_exe = directory / "DanbooruManagerUpdater.exe"
-        if app_exe.exists() and updater_exe.exists():
+        app_exists = any((directory / name).exists() for name in app_executable_names())
+        updater_exists = any((directory / name).exists() for name in updater_executable_names())
+        if app_exists and updater_exists:
             return directory
 
     return None
@@ -139,9 +184,10 @@ def _json_request(url: str, timeout: int = 20) -> dict[str, Any]:
         raise RuntimeError("GitHub returned an invalid JSON response.") from exc
 
 
-def find_release_asset(release: dict[str, Any]) -> ReleaseAsset:
+def find_release_asset(release: dict[str, Any], platform: str | None = None) -> ReleaseAsset:
     assets = release.get("assets") or []
     candidates: list[ReleaseAsset] = []
+    platform_tokens = release_asset_platform_tokens(platform)
 
     for asset in assets:
         name = str(asset.get("name") or "")
@@ -152,16 +198,26 @@ def find_release_asset(release: dict[str, Any]) -> ReleaseAsset:
             continue
         if not lower_name.endswith(".zip"):
             continue
-        if "win64" not in lower_name and "windows" not in lower_name:
+        if not any(token in lower_name for token in platform_tokens):
             continue
         if APP_NAME.lower() not in lower_name and "danbooru" not in lower_name:
             continue
         candidates.append(ReleaseAsset(name=name, download_url=url, size=size))
 
     if not candidates:
-        raise RuntimeError("No suitable Windows ZIP asset was found in the latest GitHub release.")
+        raise RuntimeError(
+            f"No suitable {platform_key(platform)} ZIP asset was found in the latest GitHub release."
+        )
 
-    candidates.sort(key=lambda item: ("win64" not in item.name.lower(), item.name.lower()))
+    candidates.sort(
+        key=lambda item: (
+            min(
+                (index for index, token in enumerate(platform_tokens) if token in item.name.lower()),
+                default=len(platform_tokens),
+            ),
+            item.name.lower(),
+        )
+    )
     return candidates[0]
 
 
@@ -235,9 +291,10 @@ def app_target_dir() -> Path:
 def app_restart_executable() -> Path:
     runtime_dir = packaged_runtime_dir()
     if runtime_dir is not None:
-        app_exe = runtime_dir / "DanbooruManager.exe"
-        if app_exe.exists():
-            return app_exe
+        for name in app_executable_names():
+            app_path = runtime_dir / name
+            if app_path.exists():
+                return app_path
 
     if is_frozen_app():
         return Path(sys.executable).resolve()
@@ -248,21 +305,16 @@ def app_restart_executable() -> Path:
 def find_updater_executable(config: dict[str, Any]) -> Path:
     runtime_dir = packaged_runtime_dir()
     if runtime_dir is not None:
-        candidates = [
-            runtime_dir / "DanbooruManagerUpdater.exe",
-            runtime_dir / "updater.exe",
-        ]
+        candidates = [runtime_dir / name for name in updater_executable_names()]
         for candidate in candidates:
             if candidate.exists():
                 return candidate
 
     searched = ", ".join(str(path) for path in runtime_candidate_dirs())
     raise RuntimeError(
-        "Portable updates require the packaged release folder with "
-        "DanbooruManager.exe and DanbooruManagerUpdater.exe next to each other.\n\n"
+        packaged_update_requirement_message()
+        + "\n\n"
         f"Searched in: {searched}\n\n"
-        "Build the application with the Release task first and start the packaged EXE. "
-        "Running from source will not overwrite your checkout."
     )
 
 
@@ -313,16 +365,19 @@ def start_portable_update(zip_path: Path, config: dict[str, Any]) -> None:
         ]
     )
 
-    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    popen_kwargs: dict[str, Any] = {}
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+        popen_kwargs["creationflags"] = creationflags
     process = subprocess.Popen(
         command,
         cwd=str(target_dir),
         close_fds=True,
-        creationflags=creationflags,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        **popen_kwargs,
     )
     if process.poll() is not None:
         raise RuntimeError(
