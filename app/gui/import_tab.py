@@ -392,6 +392,13 @@ class ImportTab(QWidget):
         self.import_button.clicked.connect(lambda: self.start_import())
         self.import_button.setEnabled(False)
         process_buttons.addWidget(self.import_button)
+        self.new_import_button = QPushButton(
+            tr("import.button.new_import", "Import another folder…", config=self.config)
+        )
+        self.new_import_button.clicked.connect(self.start_new_import)
+        self.new_import_button.setEnabled(False)
+        self.new_import_button.setVisible(False)
+        process_buttons.addWidget(self.new_import_button)
         process_layout.addLayout(process_buttons)
 
         self.repair_group = QGroupBox(tr("import.group.repair", config=self.config))
@@ -428,6 +435,17 @@ class ImportTab(QWidget):
         if selected:
             self.folder_edit.setText(selected)
             self.clear_scan_results()
+
+    def start_new_import(self) -> None:
+        if self.thread is not None:
+            return
+        self.folder_edit.clear()
+        self.clear_scan_results()
+        self.progress_bar.setVisible(False)
+        self.progress_label.setText(tr("common.ready", "Ready.", config=self.config))
+        self.log_text.clear()
+        self.show_source_page()
+        self.choose_folder()
 
     def show_source_page(self) -> None:
         self.source_layout.addWidget(self.status_group, stretch=1)
@@ -610,6 +628,8 @@ class ImportTab(QWidget):
         self.update_candidate_open_buttons()
         self.rename_category_button.setEnabled(enabled)
         self.refresh_categories_button.setEnabled(enabled)
+        if hasattr(self, "new_import_button"):
+            self.new_import_button.setEnabled(enabled and self.new_import_button.isVisible())
         self.update_process_selection_summary()
 
     def start_scan(self) -> None:
@@ -823,6 +843,9 @@ class ImportTab(QWidget):
             QMessageBox.information(self, tr("import.importer_title", config=self.config), tr("import.info.already_running", config=self.config))
             return
 
+        if hasattr(self, "new_import_button"):
+            self.new_import_button.setEnabled(False)
+            self.new_import_button.setVisible(False)
         self.set_controls_enabled(False)
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(0)
@@ -951,6 +974,9 @@ class ImportTab(QWidget):
         )
         self.log_text.append(summary)
         self.progress_label.setText(summary.replace("\n", " | "))
+        if hasattr(self, "new_import_button"):
+            self.new_import_button.setVisible(True)
+            self.new_import_button.setEnabled(True)
         self.import_finished.emit()
 
     def clear_scan_results(self) -> None:
@@ -971,6 +997,9 @@ class ImportTab(QWidget):
         if hasattr(self, "mark_all_button"):
             self.mark_all_button.setEnabled(False)
             self.import_all_button.setEnabled(False)
+        if hasattr(self, "new_import_button"):
+            self.new_import_button.setEnabled(False)
+            self.new_import_button.setVisible(False)
         if hasattr(self, "process_selection_label"):
             self.update_process_selection_summary()
 

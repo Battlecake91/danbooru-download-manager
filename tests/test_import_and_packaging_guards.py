@@ -74,6 +74,16 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
         self.assertIn("RejectedCachePurgeWorker", app_window_source)
         self.assertIn("QTimer.singleShot(1000, self.start_rejected_cache_purge)", app_window_source)
 
+    def test_import_tab_can_start_another_folder_after_import(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "app" / "gui" / "import_tab.py").read_text(encoding="utf-8")
+
+        self.assertIn("self.new_import_button = QPushButton", source)
+        self.assertIn("self.new_import_button.clicked.connect(self.start_new_import)", source)
+        self.assertIn("def start_new_import(self) -> None:", source)
+        self.assertIn("self.new_import_button.setVisible(True)", source)
+        self.assertIn("self.new_import_button.setVisible(False)", source)
+
     @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
     def test_resolution_filter_treats_unknown_dimensions_as_reject_when_limit_is_active(self) -> None:
         from app.services.post_import_service import PostImportService

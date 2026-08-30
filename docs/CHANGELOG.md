@@ -2,7 +2,18 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.197 - Current release
+## 1.3.198 - Current release
+
+### Fixed
+
+- Added an Importer action for starting another folder import after a completed run.
+- Reset Importer scan/progress state when starting the next folder import so the manager does not need to be restarted.
+
+See [`RELEASE_NOTES_1.3.198.md`](RELEASE_NOTES_1.3.198.md) for the complete release summary.
+
+---
+
+## 1.3.197
 
 ### Fixed
 
