@@ -2,7 +2,18 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.199 - Current release
+## 1.3.200 - Current release
+
+### Fixed
+
+- Fixed escaped newline text appearing in the Importer status summary after completed imports.
+- Added Danbooru API throttling and retry handling for HTTP 429 rate-limit responses.
+
+See [`RELEASE_NOTES_1.3.200.md`](RELEASE_NOTES_1.3.200.md) for the complete release summary.
+
+---
+
+## 1.3.199
 
 ### Added
 

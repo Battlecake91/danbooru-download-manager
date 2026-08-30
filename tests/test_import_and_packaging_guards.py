@@ -93,6 +93,15 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
         self.assertIn('mode="md5_test"', source)
         self.assertIn("service.test_file_md5_lookup", source)
 
+    def test_import_summary_status_normalizes_escaped_newlines(self) -> None:
+        from app.gui.import_tab import single_line_summary
+
+        self.assertEqual(
+            single_line_summary("\\nImporter summary:\\n  Files checked: 10\\n  Errors: 0"),
+            "Importer summary: | Files checked: 10 | Errors: 0",
+        )
+        self.assertNotIn("\\n", single_line_summary("\\nImporter summary:\\n  Files checked: 10"))
+
     @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
     def test_resolution_filter_treats_unknown_dimensions_as_reject_when_limit_is_active(self) -> None:
         from app.services.post_import_service import PostImportService

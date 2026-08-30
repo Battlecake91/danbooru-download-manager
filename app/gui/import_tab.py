@@ -41,6 +41,14 @@ from app.services.existing_file_import_service import (
 )
 
 
+def single_line_summary(text: str) -> str:
+    return " | ".join(
+        part.strip()
+        for part in str(text).replace("\\n", "\n").splitlines()
+        if part.strip()
+    )
+
+
 class ExistingFileImportWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
@@ -1027,8 +1035,9 @@ class ImportTab(QWidget):
             skipped_tag_mismatch=getattr(result, "skipped_tag_mismatch", 0),
             cached_thumbnails=getattr(result, "cached_thumbnails", 0),
         )
+        summary = summary.replace("\\n", "\n")
         self.log_text.append(summary)
-        self.progress_label.setText(summary.replace("\n", " | "))
+        self.progress_label.setText(single_line_summary(summary))
         if hasattr(self, "new_import_button"):
             self.new_import_button.setVisible(True)
             self.new_import_button.setEnabled(True)

@@ -96,6 +96,49 @@ class CoreLogicTests(unittest.TestCase):
             self.assertEqual(result.errors, 0)
             self.assertEqual(result.matches, [(str(matching_file), "900150983cd24fb0d6963f7d28e17f72", 12345)])
 
+    def test_danbooru_api_retries_after_rate_limit(self) -> None:
+        from app.danbooru.api import DanbooruApi
+
+        class FakeResponse:
+            def __init__(self, status_code: int, payload, retry_after: str = "0") -> None:
+                self.status_code = status_code
+                self.payload = payload
+                self.headers = {"Retry-After": retry_after}
+
+            def raise_for_status(self) -> None:
+                if self.status_code >= 400:
+                    raise AssertionError(f"unexpected status: {self.status_code}")
+
+            def json(self):
+                return self.payload
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.headers = {}
+                self.calls = 0
+
+            def get(self, *_args, **_kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return FakeResponse(429, {}, retry_after="0")
+                return FakeResponse(200, [{"id": 123}])
+
+        api = DanbooruApi(
+            {
+                "base_url": "https://example.invalid",
+                "request_min_interval_seconds": 0,
+                "rate_limit_retry_attempts": 1,
+                "rate_limit_retry_base_seconds": 0.1,
+            }
+        )
+        fake_session = FakeSession()
+        api.session = fake_session
+
+        page = api.get_posts("md5:abc", limit=1)
+
+        self.assertEqual(fake_session.calls, 2)
+        self.assertEqual(page.posts, [{"id": 123}])
+
     def test_category_rules_apply_global_conditions_to_each_group(self) -> None:
         rules = [
             {"rule_type": "group_1_include", "tag": "blue_eyes"},

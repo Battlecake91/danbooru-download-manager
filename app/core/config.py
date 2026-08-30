@@ -18,6 +18,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_posts_per_query": 200,
     "max_total_posts": 500,
     "request_timeout_seconds": 30,
+    "request_min_interval_seconds": 0.35,
+    "rate_limit_retry_attempts": 3,
+    "rate_limit_retry_base_seconds": 2.0,
     "user_agent": "DanbooruManager/0.1",
     "ui": {
         "language": "en",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin
@@ -30,6 +31,10 @@ class DanbooruApi:
     def __init__(self, config: dict[str, Any]) -> None:
         self.base_url = str(config["base_url"]).rstrip("/") + "/"
         self.timeout = int(config.get("request_timeout_seconds", 30))
+        self.min_interval_seconds = max(0.0, float(config.get("request_min_interval_seconds", 0.35) or 0.0))
+        self.rate_limit_retry_attempts = max(0, int(config.get("rate_limit_retry_attempts", 3) or 0))
+        self.rate_limit_retry_base_seconds = max(0.1, float(config.get("rate_limit_retry_base_seconds", 2.0) or 2.0))
+        self._last_request_at = 0.0
 
         self.session = requests.Session()
         self.session.headers.update(
@@ -41,6 +46,49 @@ class DanbooruApi:
         if username and api_key:
             self.session.auth = (username, api_key)
 
+    def _request_json(self, url: str, *, params: dict[str, Any] | None = None) -> Any:
+        for attempt in range(self.rate_limit_retry_attempts + 1):
+            self._wait_for_request_slot()
+            response = self.session.get(url, params=params, timeout=self.timeout)
+            self._last_request_at = time.monotonic()
+            if response.status_code != 429:
+                response.raise_for_status()
+                return response.json()
+
+            if attempt >= self.rate_limit_retry_attempts:
+                response.raise_for_status()
+
+            retry_after = self._retry_after_seconds(response)
+            delay = retry_after if retry_after is not None else self.rate_limit_retry_base_seconds * (2 ** attempt)
+            LOGGER.warning(
+                "Danbooru rate limit hit for %s; retrying in %.1fs (%s/%s)",
+                url,
+                delay,
+                attempt + 1,
+                self.rate_limit_retry_attempts,
+            )
+            time.sleep(delay)
+
+        raise RuntimeError("Danbooru request retry loop ended unexpectedly")
+
+    def _wait_for_request_slot(self) -> None:
+        if self.min_interval_seconds <= 0:
+            return
+        elapsed = time.monotonic() - self._last_request_at
+        delay = self.min_interval_seconds - elapsed
+        if delay > 0:
+            time.sleep(delay)
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float | None:
+        value = str(response.headers.get("Retry-After") or "").strip()
+        if not value:
+            return None
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            return None
+
     def get_posts(self, tags: str, limit: int, page: str | None = None) -> DanbooruSearchPage:
         url = urljoin(self.base_url, "posts.json")
         params: dict[str, Any] = {
@@ -51,10 +99,7 @@ class DanbooruApi:
             params["page"] = page
 
         LOGGER.debug("Danbooru GET %s params=%s", url, params)
-        response = self.session.get(url, params=params, timeout=self.timeout)
-        response.raise_for_status()
-
-        posts = response.json()
+        posts = self._request_json(url, params=params)
         if not isinstance(posts, list):
             raise RuntimeError(f"Unexpected Danbooru response: {posts!r}")
 
@@ -69,10 +114,7 @@ class DanbooruApi:
     def get_post(self, post_id: int) -> dict[str, Any]:
         url = urljoin(self.base_url, f"posts/{int(post_id)}.json")
         LOGGER.debug("Danbooru GET %s", url)
-        response = self.session.get(url, timeout=self.timeout)
-        response.raise_for_status()
-
-        post = response.json()
+        post = self._request_json(url)
         if not isinstance(post, dict):
             raise RuntimeError(f"Unexpected Danbooru post response: {post!r}")
         return post
@@ -119,10 +161,7 @@ class DanbooruApi:
             params["search[post_count_gte]"] = int(min_post_count)
 
         LOGGER.debug("Danbooru GET %s params=%s", url, params)
-        response = self.session.get(url, params=params, timeout=self.timeout)
-        response.raise_for_status()
-
-        data = response.json()
+        data = self._request_json(url, params=params)
         if not isinstance(data, list):
             raise RuntimeError(f"Unexpected Danbooru tags response: {data!r}")
         return [item for item in data if isinstance(item, dict)]
@@ -177,10 +216,7 @@ class DanbooruApi:
     def get_saved_searches(self) -> list[dict[str, Any]]:
         url = urljoin(self.base_url, "saved_searches.json")
         LOGGER.debug("Danbooru GET %s", url)
-        response = self.session.get(url, timeout=self.timeout)
-        response.raise_for_status()
-
-        data = response.json()
+        data = self._request_json(url)
         if not isinstance(data, list):
             raise RuntimeError(f"Unexpected saved search response: {data!r}")
         return data
