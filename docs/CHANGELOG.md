@@ -2,7 +2,21 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.198 - Current release
+## 1.3.199 - Current release
+
+### Added
+
+- Added an Importer test mode that calculates each local file's MD5 and checks Danbooru for exact matches without importing.
+
+### Fixed
+
+- Passed selected replacement file/post data into the Importer worker for the existing **Download best version** action.
+
+See [`RELEASE_NOTES_1.3.199.md`](RELEASE_NOTES_1.3.199.md) for the complete release summary.
+
+---
+
+## 1.3.198
 
 ### Fixed
 

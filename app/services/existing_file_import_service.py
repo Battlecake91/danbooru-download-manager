@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 
 import requests
@@ -175,6 +176,15 @@ class ExistingFileImportResult:
     skipped_tag_mismatch: int = 0
     cached_thumbnails: int = 0
     imported_post_ids: list[int] = field(default_factory=list)
+
+
+@dataclass
+class ExistingFileMd5LookupTestResult:
+    scanned_files: int = 0
+    matched_posts: int = 0
+    not_found: int = 0
+    errors: int = 0
+    matches: list[tuple[str, str, int]] = field(default_factory=list)
 
 
 class ExistingFileImportService:
@@ -716,6 +726,136 @@ class ExistingFileImportService:
                 ))
         return result
 
+    def test_file_md5_lookup(
+        self,
+        folder: str | Path,
+        *,
+        recursive: bool = True,
+    ) -> ExistingFileMd5LookupTestResult:
+        root = Path(folder).expanduser()
+        if not root.exists() or not root.is_dir():
+            raise RuntimeError(tr("import.error.import_folder_not_found", config=self.config, root=root))
+
+        files = self.find_import_files(root, recursive=recursive)
+        result = ExistingFileMd5LookupTestResult(scanned_files=len(files))
+        self.emit_progress(
+            ExistingFileImportProgress(
+                phase="start",
+                total=len(files),
+                message=tr("import.service.md5_test_started", "MD5 lookup test started: {count} files", config=self.config, count=len(files)),
+            )
+        )
+
+        for index, path in enumerate(files, start=1):
+            try:
+                self.emit_progress(
+                    ExistingFileImportProgress(
+                        phase="md5_hash",
+                        current=index,
+                        total=len(files),
+                        path=str(path),
+                        imported=result.matched_posts,
+                        not_found=result.not_found,
+                        errors=result.errors,
+                        message=tr(
+                            "import.service.md5_hashing_file",
+                            "Calculating file MD5 {current}/{total}: {filename}",
+                            config=self.config,
+                            current=index,
+                            total=len(files),
+                            filename=path.name,
+                        ),
+                    )
+                )
+                md5_hash = calculate_file_md5(path)
+                self.emit_progress(
+                    ExistingFileImportProgress(
+                        phase="md5_lookup",
+                        current=index,
+                        total=len(files),
+                        path=str(path),
+                        md5_hash=md5_hash,
+                        identifier_kind="file_md5",
+                        identifier_value=md5_hash,
+                        imported=result.matched_posts,
+                        not_found=result.not_found,
+                        errors=result.errors,
+                        message=tr(
+                            "import.service.md5_test_lookup",
+                            "Looking up Danbooru post by calculated file MD5 {md5}: {filename}",
+                            config=self.config,
+                            md5=md5_hash,
+                            filename=path.name,
+                        ),
+                    )
+                )
+                post = self.api.get_post_by_md5(md5_hash)
+                if post is None:
+                    result.not_found += 1
+                    post_id = None
+                    message = tr(
+                        "import.service.md5_test_not_found",
+                        "No Danbooru post for calculated file MD5 {md5}: {filename}",
+                        config=self.config,
+                        md5=md5_hash,
+                        filename=path.name,
+                    )
+                else:
+                    post_id = int(post["id"])
+                    result.matched_posts += 1
+                    result.matches.append((str(path), md5_hash, post_id))
+                    message = tr(
+                        "import.service.md5_test_match",
+                        "Calculated file MD5 matched Danbooru post {post_id}: {filename}",
+                        config=self.config,
+                        post_id=post_id,
+                        filename=path.name,
+                    )
+
+                self.emit_progress(
+                    ExistingFileImportProgress(
+                        phase="md5_match" if post_id is not None else "md5_not_found",
+                        current=index,
+                        total=len(files),
+                        path=str(path),
+                        md5_hash=md5_hash,
+                        post_id=post_id,
+                        identifier_kind="file_md5",
+                        identifier_value=md5_hash,
+                        imported=result.matched_posts,
+                        not_found=result.not_found,
+                        errors=result.errors,
+                        message=message,
+                    )
+                )
+            except Exception as exc:
+                result.errors += 1
+                self.emit_progress(
+                    ExistingFileImportProgress(
+                        phase="error",
+                        current=index,
+                        total=len(files),
+                        path=str(path),
+                        imported=result.matched_posts,
+                        not_found=result.not_found,
+                        errors=result.errors,
+                        message=tr("import.service.error_file", "Error for {filename}: {error}", config=self.config, filename=path.name, error=exc),
+                    )
+                )
+
+        self.emit_progress(
+            ExistingFileImportProgress(
+                phase="done",
+                current=len(files),
+                total=len(files),
+                imported=result.matched_posts,
+                not_found=result.not_found,
+                errors=result.errors,
+                message=tr("import.service.md5_test_done", "MD5 lookup test completed.", config=self.config),
+            )
+        )
+        return result
+
     def get_post_by_id_or_none(self, post_id: int) -> dict[str, Any] | None:
         try:
             return self.api.get_post(int(post_id))
@@ -1016,6 +1156,14 @@ def extract_md5_from_filename(filename: str) -> str | None:
     if not match:
         return None
     return match.group(1).lower()
+
+
+def calculate_file_md5(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.md5(usedforsecurity=False)
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def extract_post_id_from_filename(filename: str) -> int | None:

@@ -53,6 +53,49 @@ class CoreLogicTests(unittest.TestCase):
         self.assertLessEqual(len(filename), 16)
         self.assertTrue(filename.endswith(".jpg"))
 
+    def test_calculate_file_md5_hashes_file_contents(self) -> None:
+        from app.services.existing_file_import_service import calculate_file_md5
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sample.jpg"
+            path.write_bytes(b"abc")
+
+            self.assertEqual(calculate_file_md5(path), "900150983cd24fb0d6963f7d28e17f72")
+
+    def test_file_md5_lookup_test_uses_calculated_hash_without_importing(self) -> None:
+        from app.services.existing_file_import_service import ExistingFileImportService
+
+        class FakeApi:
+            def __init__(self, matching_hash: str) -> None:
+                self.matching_hash = matching_hash
+                self.requested_hashes: list[str] = []
+
+            def get_post_by_md5(self, md5_hash: str):
+                self.requested_hashes.append(md5_hash)
+                if md5_hash == self.matching_hash:
+                    return {"id": 12345}
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matching_file = root / "without_hash_name.jpg"
+            missing_file = root / "other.png"
+            matching_file.write_bytes(b"abc")
+            missing_file.write_bytes(b"other")
+
+            service = object.__new__(ExistingFileImportService)
+            service.config = {}
+            service.progress_callback = None
+            service.api = FakeApi("900150983cd24fb0d6963f7d28e17f72")
+
+            result = service.test_file_md5_lookup(root, recursive=False)
+
+            self.assertEqual(result.scanned_files, 2)
+            self.assertEqual(result.matched_posts, 1)
+            self.assertEqual(result.not_found, 1)
+            self.assertEqual(result.errors, 0)
+            self.assertEqual(result.matches, [(str(matching_file), "900150983cd24fb0d6963f7d28e17f72", 12345)])
+
     def test_category_rules_apply_global_conditions_to_each_group(self) -> None:
         rules = [
             {"rule_type": "group_1_include", "tag": "blue_eyes"},

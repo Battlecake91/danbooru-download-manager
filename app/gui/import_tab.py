@@ -36,6 +36,7 @@ from app.services.existing_file_import_service import (
     ExistingFileImportProgress,
     ExistingFileImportService,
     ExistingFileReplacementResult,
+    ExistingFileMd5LookupTestResult,
     ExistingFileScanResult,
 )
 
@@ -104,6 +105,12 @@ class ExistingFileImportWorker(QObject):
                     raise RuntimeError("Replacement path or post ID is missing")
                 result = service.replace_candidate_with_best_remote(
                     self.replacement_path, self.replacement_post_id
+                )
+            elif self.mode == "md5_test":
+                self.log.emit(tr("import.log.md5_test_started", "Calculated file MD5 lookup test started.", config=self.config))
+                result = service.test_file_md5_lookup(
+                    self.folder,
+                    recursive=self.recursive,
                 )
             elif self.mode == "repair":
                 if self.old_category_id is None:
@@ -191,6 +198,11 @@ class ImportTab(QWidget):
         self.scan_button = QPushButton(tr("import.button.scan_folder", "Scan folder", config=self.config))
         self.scan_button.clicked.connect(self.start_scan)
         source_buttons.addWidget(self.scan_button)
+        self.md5_test_button = QPushButton(
+            tr("import.button.md5_lookup_test", "Test calculated MD5 lookup", config=self.config)
+        )
+        self.md5_test_button.clicked.connect(self.start_md5_lookup_test)
+        source_buttons.addWidget(self.md5_test_button)
         self.refresh_categories_button = QPushButton(tr("import.button.reload_categories", config=self.config))
         self.refresh_categories_button.clicked.connect(self.load_categories)
         source_buttons.addWidget(self.refresh_categories_button)
@@ -614,6 +626,7 @@ class ImportTab(QWidget):
         self.old_category_combo.setEnabled(enabled)
         self.repair_button.setEnabled(enabled)
         self.scan_button.setEnabled(enabled)
+        self.md5_test_button.setEnabled(enabled)
         self.review_results_button.setEnabled(enabled and bool(self.scan_candidates))
         self.back_to_source_button.setEnabled(enabled)
         self.back_to_review_button.setEnabled(enabled)
@@ -642,6 +655,20 @@ class ImportTab(QWidget):
         self.start_worker(
             mode="scan", folder=folder, category_id=category_id,
             recursive=self.recursive_checkbox.isChecked(), rename_after_import=False,
+        )
+
+    def start_md5_lookup_test(self) -> None:
+        folder = self.folder_edit.text().strip()
+        if not folder or not Path(folder).expanduser().is_dir():
+            QMessageBox.warning(self, tr("import.title", config=self.config), tr("import.warning.folder_not_found", config=self.config, folder=folder))
+            return
+        self.clear_scan_results()
+        self.start_worker(
+            mode="md5_test",
+            folder=folder,
+            category_id=self.current_category_id() or 0,
+            recursive=self.recursive_checkbox.isChecked(),
+            rename_after_import=False,
         )
 
     def visible_candidate_paths(self, *, importable_only: bool = False) -> list[str]:
@@ -867,6 +894,8 @@ class ImportTab(QWidget):
             fetch_thumbnails=fetch_thumbnails,
             post_ids=post_ids,
             candidate_paths=candidate_paths,
+            replacement_path=replacement_path,
+            replacement_post_id=replacement_post_id,
         )
         self.worker.moveToThread(self.thread)
 
@@ -948,6 +977,32 @@ class ImportTab(QWidget):
                     count=len(self.scan_candidates),
                 )
             )
+            self.show_source_page()
+            return
+        if isinstance(result, ExistingFileMd5LookupTestResult):
+            self.progress_bar.setVisible(False)
+            summary = tr(
+                "import.md5_test.summary",
+                "Calculated MD5 lookup test complete: {scanned} files | Matches: {matched} | Not found: {not_found} | Errors: {errors}",
+                config=self.config,
+                scanned=result.scanned_files,
+                matched=result.matched_posts,
+                not_found=result.not_found,
+                errors=result.errors,
+            )
+            self.progress_label.setText(summary)
+            self.log_text.append(summary)
+            for path, md5_hash, post_id in result.matches:
+                self.log_text.append(
+                    tr(
+                        "import.md5_test.match_detail",
+                        "Match: post {post_id} | {md5} | {path}",
+                        config=self.config,
+                        post_id=post_id,
+                        md5=md5_hash,
+                        path=path,
+                    )
+                )
             self.show_source_page()
             return
         imported_ids = list(getattr(result, "imported_post_ids", []) or [])

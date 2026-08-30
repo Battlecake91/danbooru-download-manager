@@ -84,6 +84,15 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
         self.assertIn("self.new_import_button.setVisible(True)", source)
         self.assertIn("self.new_import_button.setVisible(False)", source)
 
+    def test_import_tab_exposes_calculated_md5_lookup_test(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "app" / "gui" / "import_tab.py").read_text(encoding="utf-8")
+
+        self.assertIn("self.md5_test_button = QPushButton", source)
+        self.assertIn("self.md5_test_button.clicked.connect(self.start_md5_lookup_test)", source)
+        self.assertIn('mode="md5_test"', source)
+        self.assertIn("service.test_file_md5_lookup", source)
+
     @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
     def test_resolution_filter_treats_unknown_dimensions_as_reject_when_limit_is_active(self) -> None:
         from app.services.post_import_service import PostImportService
