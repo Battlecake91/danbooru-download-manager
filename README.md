@@ -34,7 +34,7 @@ The central workflow is deliberately metadata-first:
   Scan a folder, review likely matches, compare local and remote images, then choose the final import actions such as renaming and thumbnail fetching.
 
 - **Importer identity checks**  
-  Resolve files through Danbooru MD5 hashes or post IDs, validate recognized filename tags, detect likely foreign-board ID collisions and compare local versus remote resolution.
+  Resolve files by post ID first, verify the actual file MD5 against Danbooru, then fall back to calculated file-MD5 lookup for missing/mismatched IDs or foreign-board filenames. Exact ID+MD5 or MD5 matches ignore filename tags and still compare local versus remote resolution.
 
 - **Side-by-side import comparison**  
   Compare local and Danbooru images directly, navigate with buttons or arrow keys, and manually mark candidates as Match or Mismatch.
@@ -198,7 +198,7 @@ The importer uses a three-step workflow:
 
 The scanner can:
 
-- recognize Danbooru MD5 hashes and post IDs in filenames,
+- recognize Danbooru post IDs and MD5 hashes in filenames, with calculated file-MD5 fallback,
 - compare every recognized filename tag with the fetched Danbooru post,
 - preserve hyphenated tags such as `one-piece_swimsuit` and `chain-link`,
 - detect probable Konachan or other foreign-board ID collisions,

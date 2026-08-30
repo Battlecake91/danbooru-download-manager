@@ -43,6 +43,15 @@ def collect_post_tags(post: dict[str, Any]) -> set[str]:
     return tags
 
 
+def has_foreign_board_name(filename: str) -> bool:
+    lower_name = filename.casefold()
+    return "konachan.com" in lower_name or lower_name.startswith("konachan -")
+
+
+def post_md5(post: dict[str, Any] | None) -> str:
+    return str((post or {}).get("md5") or "").strip().lower()
+
+
 def normalize_filename_for_tag_scan(filename: str) -> list[str]:
     stem = Path(filename).stem.casefold()
     stem = MD5_RE.sub("_", stem)
@@ -246,11 +255,12 @@ class ExistingFileImportService:
         for index, path in enumerate(files, start=1):
             md5_hash = extract_md5_from_filename(path.name)
             post_id_from_name = extract_post_id_from_filename(path.name)
-            if not md5_hash and post_id_from_name is None and candidate_paths is not None:
-                md5_hash = calculate_file_md5(path)
-                identifier_kind = "file_md5"
-            else:
-                identifier_kind = "md5" if md5_hash else ("post_id" if post_id_from_name is not None else "")
+            foreign_board_name = has_foreign_board_name(path.name)
+            identifier_kind = (
+                "post_id"
+                if post_id_from_name is not None and not foreign_board_name
+                else ("file_md5" if foreign_board_name else ("md5" if md5_hash else "file_md5"))
+            )
             identifier_value = md5_hash or (str(post_id_from_name) if post_id_from_name is not None else "")
             base_progress = ExistingFileImportProgress(
                 phase="file",
@@ -280,18 +290,31 @@ class ExistingFileImportService:
             )
             self.emit_progress(base_progress)
 
-            if not md5_hash and post_id_from_name is None:
-                result.skipped_no_md5 += 1
-                base_progress.phase = "skip"
-                base_progress.skipped_no_md5 = result.skipped_no_md5
-                base_progress.message = tr("import.service.skipped_no_id_md5", config=self.config, filename=path.name)
-                self.emit_progress(base_progress)
-                continue
-
             try:
                 post: dict[str, Any] | None = None
                 existing = None
-                if md5_hash:
+                if post_id_from_name is not None and not foreign_board_name:
+                    lookup_description = f"Post-ID {post_id_from_name}"
+                    base_progress.message = tr(
+                        "import.service.lookup_post_id",
+                        "Looking up Danbooru post {post_id}: {filename}",
+                        config=self.config,
+                        post_id=post_id_from_name,
+                        filename=path.name,
+                    )
+                    self.emit_progress(base_progress)
+                    post = self.get_post_by_id_or_none(int(post_id_from_name))
+                    if post is not None:
+                        md5_hash = calculate_file_md5(path)
+                        if post_md5(post) == md5_hash:
+                            identifier_kind = "post_id_md5"
+                            identifier_value = str(post_id_from_name)
+                        else:
+                            post = None
+
+                if post is None:
+                    md5_hash = calculate_file_md5(path)
+                    lookup_description = f"MD5 {md5_hash}"
                     base_progress.message = tr(
                         "import.service.lookup_md5",
                         "Looking up Danbooru post by MD5 {md5}: {filename}",
@@ -301,50 +324,14 @@ class ExistingFileImportService:
                     )
                     self.emit_progress(base_progress)
                     post = self.api.get_post_by_md5(md5_hash)
-                    lookup_description = f"MD5 {md5_hash}"
-                else:
-                    lookup_description = f"Post-ID {post_id_from_name}"
-                    existing = self.db.execute(
-                        """
-                        SELECT id, final_file_path
-                        FROM posts
-                        WHERE id = ?
-                        """,
-                        (int(post_id_from_name),),
-                    ).fetchone()
-                    if existing is None:
-                        base_progress.message = tr(
-                            "import.service.lookup_post_id",
-                            "Looking up Danbooru post {post_id}: {filename}",
-                            config=self.config,
-                            post_id=post_id_from_name,
-                            filename=path.name,
-                        )
-                        self.emit_progress(base_progress)
-                        post = self.get_post_by_id_or_none(int(post_id_from_name))
-                    else:
-                        base_progress.message = tr(
-                            "import.service.local_post_id",
-                            "Using local database record for post {post_id}: {filename}",
-                            config=self.config,
-                            post_id=post_id_from_name,
-                            filename=path.name,
-                        )
-                        self.emit_progress(base_progress)
+                    identifier_kind = "file_md5" if foreign_board_name or candidate_paths is not None else "md5"
+                    identifier_value = md5_hash
 
                 if post is None and existing is None:
                     result.not_found += 1
                     base_progress.phase = "not_found"
                     base_progress.not_found = result.not_found
                     base_progress.message = tr("import.service.no_danbooru_post", config=self.config, lookup=lookup_description, filename=path.name)
-                    self.emit_progress(base_progress)
-                    continue
-
-                if post is not None and not md5_hash and self.evaluate_candidate(path, post, identifier_kind="post_id").confidence == "mismatch":
-                    result.skipped_tag_mismatch += 1
-                    base_progress.phase = "tag_mismatch"
-                    base_progress.skipped_tag_mismatch = result.skipped_tag_mismatch
-                    base_progress.message = tr("import.service.filename_tag_mismatch", config=self.config, filename=path.name, post_id=post.get("id"))
                     self.emit_progress(base_progress)
                     continue
 
@@ -570,16 +557,18 @@ class ExistingFileImportService:
         else:
             resolution_status = "unknown"
 
-        lower_name = path.name.casefold()
-        if "konachan.com" in lower_name or lower_name.startswith("konachan -"):
+        if identifier_kind == "post_id_md5":
+            confidence = "high"
+            reason = "Post ID and calculated file MD5 match"
+        elif identifier_kind in {"md5", "file_md5"}:
+            confidence = "high"
+            reason = "Exact MD5 match"
+        elif has_foreign_board_name(path.name):
             confidence = "mismatch"
             reason = "Foreign-board filename prefix"
         elif missing:
             confidence = "mismatch"
             reason = "Filename tags missing from Danbooru post: " + ", ".join(missing)
-        elif identifier_kind == "md5":
-            confidence = "high"
-            reason = "Exact MD5 match"
         elif resolution_status == "match" and filename_tags:
             confidence = "high"
             reason = "All recognized filename tags and resolution match"
@@ -700,14 +689,25 @@ class ExistingFileImportService:
         for index, path in enumerate(files, start=1):
             md5_hash = extract_md5_from_filename(path.name)
             post_id = extract_post_id_from_filename(path.name)
-            kind = "md5" if md5_hash else ("post_id" if post_id is not None else "")
+            foreign_board_name = has_foreign_board_name(path.name)
+            kind = "post_id" if post_id is not None and not foreign_board_name else ("md5" if md5_hash else "")
             try:
-                if md5_hash:
-                    post = self.api.get_post_by_md5(md5_hash)
-                elif post_id is not None:
+                if post_id is not None and not foreign_board_name:
                     post = self.get_post_by_id_or_none(post_id)
+                    if post is not None:
+                        file_md5 = calculate_file_md5(path)
+                        if post_md5(post) == file_md5:
+                            kind = "post_id_md5"
+                            md5_hash = file_md5
+                        else:
+                            post = None
+                            md5_hash = file_md5
                 else:
                     post = None
+                if post is None:
+                    md5_hash = calculate_file_md5(path)
+                    post = self.api.get_post_by_md5(md5_hash)
+                    kind = "file_md5" if foreign_board_name or post_id is not None else "md5"
                 if post is None:
                     candidate = ExistingFileImportCandidate(
                         path=str(path), filename=path.name, identifier_kind=kind,
