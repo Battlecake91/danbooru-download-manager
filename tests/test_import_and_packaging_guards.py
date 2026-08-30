@@ -92,6 +92,8 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
         self.assertIn("self.md5_test_button.clicked.connect(self.start_md5_lookup_test)", source)
         self.assertIn('mode="md5_test"', source)
         self.assertIn("service.test_file_md5_lookup", source)
+        self.assertIn("self.scan_candidates = list(result.candidates)", source)
+        self.assertIn("self.show_review_page()", source)
 
     def test_import_summary_status_normalizes_escaped_newlines(self) -> None:
         from app.gui.import_tab import single_line_summary

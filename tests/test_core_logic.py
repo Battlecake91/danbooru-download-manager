@@ -73,7 +73,18 @@ class CoreLogicTests(unittest.TestCase):
             def get_post_by_md5(self, md5_hash: str):
                 self.requested_hashes.append(md5_hash)
                 if md5_hash == self.matching_hash:
-                    return {"id": 12345}
+                    return {
+                        "id": 12345,
+                        "md5": md5_hash,
+                        "rating": "s",
+                        "score": 10,
+                        "fav_count": 2,
+                        "file_ext": "jpg",
+                        "file_url": "https://example.invalid/file.jpg",
+                        "large_file_url": "https://example.invalid/large.jpg",
+                        "preview_file_url": "https://example.invalid/preview.jpg",
+                        "tag_string_general": "sample",
+                    }
                 return None
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -83,18 +94,74 @@ class CoreLogicTests(unittest.TestCase):
             matching_file.write_bytes(b"abc")
             missing_file.write_bytes(b"other")
 
-            service = object.__new__(ExistingFileImportService)
-            service.config = {}
-            service.progress_callback = None
-            service.api = FakeApi("900150983cd24fb0d6963f7d28e17f72")
+            config, db = open_temp_database(root / "db")
+            try:
+                service = ExistingFileImportService(config, db)
+                service.api = FakeApi("900150983cd24fb0d6963f7d28e17f72")
 
-            result = service.test_file_md5_lookup(root, recursive=False)
+                result = service.test_file_md5_lookup(root, recursive=False)
 
-            self.assertEqual(result.scanned_files, 2)
-            self.assertEqual(result.matched_posts, 1)
-            self.assertEqual(result.not_found, 1)
-            self.assertEqual(result.errors, 0)
-            self.assertEqual(result.matches, [(str(matching_file), "900150983cd24fb0d6963f7d28e17f72", 12345)])
+                self.assertEqual(result.scanned_files, 2)
+                self.assertEqual(result.matched_posts, 1)
+                self.assertEqual(result.not_found, 1)
+                self.assertEqual(result.errors, 0)
+                self.assertEqual(result.matches, [(str(matching_file), "900150983cd24fb0d6963f7d28e17f72", 12345)])
+                self.assertEqual(len(result.candidates), 2)
+                matched_candidates = [candidate for candidate in result.candidates if candidate.post_id == 12345]
+                self.assertEqual(len(matched_candidates), 1)
+                self.assertEqual(matched_candidates[0].identifier_kind, "file_md5")
+                self.assertEqual(matched_candidates[0].identifier_value, "900150983cd24fb0d6963f7d28e17f72")
+                self.assertTrue(matched_candidates[0].importable)
+                self.assertIsNone(db.execute("SELECT id FROM posts WHERE id = 12345").fetchone())
+            finally:
+                db.close()
+
+    def test_import_folder_can_import_selected_calculated_md5_candidate(self) -> None:
+        from app.services.existing_file_import_service import ExistingFileImportService
+
+        class FakeApi:
+            def get_post_by_md5(self, md5_hash: str):
+                if md5_hash == "900150983cd24fb0d6963f7d28e17f72":
+                    return {
+                        "id": 12345,
+                        "md5": md5_hash,
+                        "rating": "s",
+                        "score": 10,
+                        "fav_count": 2,
+                        "file_ext": "jpg",
+                        "file_url": "https://example.invalid/file.jpg",
+                        "large_file_url": "https://example.invalid/large.jpg",
+                        "preview_file_url": "https://example.invalid/preview.jpg",
+                        "tag_string_general": "sample",
+                    }
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image_path = root / "without_hash_name.jpg"
+            image_path.write_bytes(b"abc")
+
+            config, db = open_temp_database(root / "db")
+            try:
+                category_id = db.create_category("md5-test")
+                service = ExistingFileImportService(config, db)
+                service.api = FakeApi()
+
+                result = service.import_folder(
+                    root,
+                    category_id,
+                    recursive=False,
+                    candidate_paths=[str(image_path)],
+                )
+
+                self.assertEqual(result.imported_posts, 1)
+                self.assertEqual(result.imported_post_ids, [12345])
+                row = db.execute("SELECT status, final_file_path FROM posts WHERE id = 12345").fetchone()
+                self.assertIsNotNone(row)
+                self.assertEqual(row["status"], "saved")
+                self.assertTrue(str(row["final_file_path"]).endswith("without_hash_name.jpg"))
+            finally:
+                db.close()
 
     def test_danbooru_api_retries_after_rate_limit(self) -> None:
         from app.danbooru.api import DanbooruApi

@@ -185,6 +185,7 @@ class ExistingFileMd5LookupTestResult:
     not_found: int = 0
     errors: int = 0
     matches: list[tuple[str, str, int]] = field(default_factory=list)
+    candidates: list[ExistingFileImportCandidate] = field(default_factory=list)
 
 
 class ExistingFileImportService:
@@ -245,7 +246,11 @@ class ExistingFileImportService:
         for index, path in enumerate(files, start=1):
             md5_hash = extract_md5_from_filename(path.name)
             post_id_from_name = extract_post_id_from_filename(path.name)
-            identifier_kind = "md5" if md5_hash else ("post_id" if post_id_from_name is not None else "")
+            if not md5_hash and post_id_from_name is None and candidate_paths is not None:
+                md5_hash = calculate_file_md5(path)
+                identifier_kind = "file_md5"
+            else:
+                identifier_kind = "md5" if md5_hash else ("post_id" if post_id_from_name is not None else "")
             identifier_value = md5_hash or (str(post_id_from_name) if post_id_from_name is not None else "")
             base_progress = ExistingFileImportProgress(
                 phase="file",
@@ -738,6 +743,7 @@ class ExistingFileImportService:
 
         files = self.find_import_files(root, recursive=recursive)
         result = ExistingFileMd5LookupTestResult(scanned_files=len(files))
+        known_tags = self.known_tag_names()
         self.emit_progress(
             ExistingFileImportProgress(
                 phase="start",
@@ -804,12 +810,33 @@ class ExistingFileImportService:
                     post_id = int(post["id"])
                     result.matched_posts += 1
                     result.matches.append((str(path), md5_hash, post_id))
+                    candidate = self.evaluate_candidate(path, post, identifier_kind="md5", known_tags=known_tags)
+                    candidate.identifier_kind = "file_md5"
+                    candidate.identifier_value = md5_hash
+                    result.candidates.append(candidate)
                     message = tr(
                         "import.service.md5_test_match",
                         "Calculated file MD5 matched Danbooru post {post_id}: {filename}",
                         config=self.config,
                         post_id=post_id,
                         filename=path.name,
+                    )
+                if post is None:
+                    result.candidates.append(
+                        ExistingFileImportCandidate(
+                            path=str(path),
+                            filename=path.name,
+                            identifier_kind="file_md5",
+                            identifier_value=md5_hash,
+                            post_id=None,
+                            confidence="mismatch",
+                            reason=tr(
+                                "import.service.md5_test_no_remote_candidate",
+                                "No Danbooru post found for calculated file MD5.",
+                                config=self.config,
+                            ),
+                            importable=False,
+                        )
                     )
 
                 self.emit_progress(
@@ -830,6 +857,17 @@ class ExistingFileImportService:
                 )
             except Exception as exc:
                 result.errors += 1
+                result.candidates.append(
+                    ExistingFileImportCandidate(
+                        path=str(path),
+                        filename=path.name,
+                        identifier_kind="file_md5",
+                        post_id=None,
+                        confidence="mismatch",
+                        reason=str(exc),
+                        importable=False,
+                    )
+                )
                 self.emit_progress(
                     ExistingFileImportProgress(
                         phase="error",

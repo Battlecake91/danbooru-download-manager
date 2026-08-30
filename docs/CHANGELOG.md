@@ -2,7 +2,18 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.200 - Current release
+## 1.3.201 - Current release
+
+### Added
+
+- The calculated MD5 lookup test now opens its matches in the Importer review flow with local/remote comparison candidates.
+- Selected MD5-test candidates can be imported even when the local filename has no embedded MD5 or Danbooru post ID.
+
+See [`RELEASE_NOTES_1.3.201.md`](RELEASE_NOTES_1.3.201.md) for the complete release summary.
+
+---
+
+## 1.3.200
 
 ### Fixed
 

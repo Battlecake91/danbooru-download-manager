@@ -988,6 +988,10 @@ class ImportTab(QWidget):
             self.show_source_page()
             return
         if isinstance(result, ExistingFileMd5LookupTestResult):
+            self.scan_candidates = list(result.candidates)
+            self.populate_candidate_table()
+            self.update_scan_statistics()
+            self.update_process_selection_summary()
             self.progress_bar.setVisible(False)
             summary = tr(
                 "import.md5_test.summary",
@@ -1011,7 +1015,10 @@ class ImportTab(QWidget):
                         path=path,
                     )
                 )
-            self.show_source_page()
+            if self.scan_candidates:
+                self.show_review_page()
+            else:
+                self.show_source_page()
             return
         imported_ids = list(getattr(result, "imported_post_ids", []) or [])
         if imported_ids:
