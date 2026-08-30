@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from importlib.util import find_spec
+from pathlib import Path
 
 from app.services.update_service import (
     app_executable_names,
@@ -63,6 +64,15 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
             ),
             ("https://example.invalid/preview.jpg", "preview"),
         )
+
+    def test_rejected_cache_purge_is_not_run_before_gui_startup(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        main_source = (root / "main.py").read_text(encoding="utf-8")
+        app_window_source = (root / "app" / "gui" / "app_window.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("purge_rejected_cache_files(config)", main_source)
+        self.assertIn("RejectedCachePurgeWorker", app_window_source)
+        self.assertIn("QTimer.singleShot(1000, self.start_rejected_cache_purge)", app_window_source)
 
     @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
     def test_resolution_filter_treats_unknown_dimensions_as_reject_when_limit_is_active(self) -> None:

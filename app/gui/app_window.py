@@ -1,15 +1,48 @@
 from __future__ import annotations
 
+import copy
+import logging
 import time
+import traceback
+from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.database import Database
 from app.gui.fetch_tab import FetchTab
 from app.gui.icon_utils import ensure_app_icon
 from app.i18n.i18n import tr
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+class RejectedCachePurgeWorker(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, database_file: Path, config: dict[str, Any]) -> None:
+        super().__init__()
+        self.database_file = Path(database_file)
+        self.config = copy.deepcopy(config)
+
+    @Slot()
+    def run(self) -> None:
+        worker_db: Database | None = None
+        try:
+            worker_db = Database(self.database_file)
+            worker_db.connect()
+            self.finished.emit(worker_db.purge_rejected_cache_files(self.config))
+        except Exception:
+            self.failed.emit(traceback.format_exc())
+        finally:
+            if worker_db is not None:
+                try:
+                    worker_db.close()
+                except Exception:
+                    pass
 
 
 class AppWindow(QMainWindow):
@@ -41,6 +74,8 @@ class AppWindow(QMainWindow):
         self._tab_indices: dict[str, int] = {}
         self._pending_preview_reload = False
         self._pending_fetch_running = False
+        self._cache_purge_thread: QThread | None = None
+        self._cache_purge_worker: RejectedCachePurgeWorker | None = None
 
         self.setWindowTitle(tr("app.title", config=self.config))
         self.setWindowIcon(ensure_app_icon(config))
@@ -79,6 +114,7 @@ class AppWindow(QMainWindow):
         self._create_menu_bar()
 
         self.tabs.currentChanged.connect(self.on_tab_changed)
+        QTimer.singleShot(1000, self.start_rejected_cache_purge)
         self._startup_log("AppWindow: shown-ready")
 
 
@@ -113,6 +149,56 @@ class AppWindow(QMainWindow):
         super().showEvent(event)
         QTimer.singleShot(0, self.refresh_layout_after_show)
         QTimer.singleShot(150, self.refresh_layout_after_show)
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        thread = self._cache_purge_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+            thread.wait(3000)
+        super().closeEvent(event)
+
+    def start_rejected_cache_purge(self) -> None:
+        if self._cache_purge_thread is not None:
+            return
+
+        database_file = Path(str(self.config["database_file"]))
+        self._cache_purge_thread = QThread(self)
+        self._cache_purge_worker = RejectedCachePurgeWorker(database_file, self.config)
+        self._cache_purge_worker.moveToThread(self._cache_purge_thread)
+
+        self._cache_purge_thread.started.connect(self._cache_purge_worker.run)
+        self._cache_purge_worker.finished.connect(self.on_rejected_cache_purge_finished)
+        self._cache_purge_worker.failed.connect(self.on_rejected_cache_purge_failed)
+        self._cache_purge_worker.finished.connect(self._cache_purge_thread.quit)
+        self._cache_purge_worker.failed.connect(self._cache_purge_thread.quit)
+        self._cache_purge_worker.finished.connect(self._cache_purge_worker.deleteLater)
+        self._cache_purge_worker.failed.connect(self._cache_purge_worker.deleteLater)
+        self._cache_purge_thread.finished.connect(self._cache_purge_thread.deleteLater)
+        self._cache_purge_thread.finished.connect(self._clear_rejected_cache_purge_worker)
+        self._cache_purge_thread.start()
+
+    @Slot(object)
+    def on_rejected_cache_purge_finished(self, result: object) -> None:
+        purge_result = dict(result) if isinstance(result, dict) else {}
+        deleted_files = int(purge_result.get("deleted_files", 0) or 0)
+        cleared_rows = int(purge_result.get("cleared_rows", 0) or 0)
+        retention_days = int(purge_result.get("retention_days", 0) or 0)
+        if deleted_files:
+            LOGGER.info(
+                "Purged rejected cache files: deleted=%s, posts=%s, retention_days=%s",
+                deleted_files,
+                cleared_rows,
+                retention_days,
+            )
+
+    @Slot(str)
+    def on_rejected_cache_purge_failed(self, error: str) -> None:
+        LOGGER.error("Rejected cache purge failed:\n%s", error)
+
+    @Slot()
+    def _clear_rejected_cache_purge_worker(self) -> None:
+        self._cache_purge_thread = None
+        self._cache_purge_worker = None
 
     def _create_menu_bar(self) -> None:
         # The former top-level Help menu was intentionally removed. Help,

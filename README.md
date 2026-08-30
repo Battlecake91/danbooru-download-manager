@@ -1,6 +1,6 @@
 # Danbooru Download Manager
 
-> **Current release:** `1.3.195`
+> **Current release:** `1.3.197`
 > Version `1.3.195` adds Viewer preview-strip controls, Fetch-exclude workflow controls, richer Help guidance, guarded layout/statistics fixes and Linux CI runtime fixes.
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
@@ -125,7 +125,7 @@ Single-executable build for the current platform:
 python scripts/make_release.py --allow-dirty --onefile
 ```
 
-Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.195_win64_portable.zip` or `DanbooruManager_1.3.195_linux_x86_64_onefile.zip`.
+Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.197_win64_portable.zip` or `DanbooruManager_1.3.197_linux_x86_64_onefile.zip`.
 
 ---
 
@@ -255,7 +255,7 @@ See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 | [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
 | [`docs/RELEASE_WORKFLOW.md`](docs/RELEASE_WORKFLOW.md) | Push, build and release workflow |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
-| [`docs/RELEASE_NOTES_1.3.195.md`](docs/RELEASE_NOTES_1.3.195.md) | Changes included in this release |
+| [`docs/RELEASE_NOTES_1.3.197.md`](docs/RELEASE_NOTES_1.3.197.md) | Changes included in this release |
 
 ---
 

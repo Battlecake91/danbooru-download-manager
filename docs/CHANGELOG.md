@@ -2,7 +2,18 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.196 - Current release
+## 1.3.197 - Current release
+
+### Fixed
+
+- Moved rejected-cache cleanup into a background GUI worker so application startup is no longer blocked by cache purging.
+- Added a startup regression guard that keeps rejected-cache cleanup out of the synchronous `main.py` path.
+
+See [`RELEASE_NOTES_1.3.197.md`](RELEASE_NOTES_1.3.197.md) for the complete release summary.
+
+---
+
+## 1.3.196
 
 ### Fixed
 
