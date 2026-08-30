@@ -47,6 +47,24 @@ class ImportAndPackagingGuardTests(unittest.TestCase):
         self.assertTrue(DEFAULT_CONFIG["fetch_excluded_posts_count_toward_limits"])
 
     @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
+    def test_viewer_default_download_uses_preview_before_original(self) -> None:
+        from app.core.config import DEFAULT_CONFIG
+        from app.services.download_service import choose_viewer_download_url
+
+        self.assertEqual(DEFAULT_CONFIG["viewer_download_source"], "preview")
+        self.assertEqual(
+            choose_viewer_download_url(
+                {
+                    "preview_url": "https://example.invalid/preview.jpg",
+                    "large_file_url": "https://example.invalid/large.jpg",
+                    "file_url": "https://example.invalid/original.jpg",
+                },
+                DEFAULT_CONFIG,
+            ),
+            ("https://example.invalid/preview.jpg", "preview"),
+        )
+
+    @unittest.skipIf(find_spec("requests") is None, "requests is not installed in this Python runtime")
     def test_resolution_filter_treats_unknown_dimensions_as_reject_when_limit_is_active(self) -> None:
         from app.services.post_import_service import PostImportService
 

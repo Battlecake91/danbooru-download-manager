@@ -89,6 +89,67 @@ class DatabaseBootstrapTests(unittest.TestCase):
         self.assertIn("app_settings", tables)
         self.assertIn("tag_scores", tables)
 
+    def test_legacy_viewer_file_cache_setting_is_normalized_to_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config, db = open_temp_database(Path(tmp))
+            try:
+                db.set_app_setting("viewer_download_source", '"file"')
+                config["viewer_download_source"] = "large"
+                db.apply_app_settings_to_config(config)
+            finally:
+                db.close()
+
+        self.assertEqual(config["viewer_download_source"], "preview")
+
+    def test_rejected_cache_purge_deletes_only_expired_cache_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            config, db = open_temp_database(base)
+            try:
+                config["workflow"]["rejected_thumbnail_retention_days"] = 7
+                original_cache = Path(config["original_cache_dir"])
+                rejected_thumbnails = Path(config["rejected_thumbnail_dir"])
+                expired_original = original_cache / "10_preview.jpg"
+                fresh_original = original_cache / "11_preview.jpg"
+                outside_file = base / "outside.jpg"
+                expired_thumb = rejected_thumbnails / "10_large.jpg"
+                for path in (expired_original, fresh_original, outside_file, expired_thumb):
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(b"cache")
+
+                db.executemany(
+                    """
+                    INSERT INTO posts (
+                        id, status, rejected_at, original_cache_path,
+                        rejected_thumbnail_path, thumbnail_path
+                    )
+                    VALUES (?, 'rejected', datetime('now', ?), ?, ?, ?)
+                    """,
+                    [
+                        (10, "-8 days", str(expired_original), str(expired_thumb), str(expired_thumb)),
+                        (11, "-6 days", str(fresh_original), "", ""),
+                        (12, "-8 days", str(outside_file), "", ""),
+                    ],
+                )
+                db.commit()
+
+                result = db.purge_rejected_cache_files(config)
+                expired_row = db.get_post_detail(10)
+                fresh_row = db.get_post_detail(11)
+                outside_row = db.get_post_detail(12)
+
+                self.assertFalse(expired_original.exists())
+                self.assertFalse(expired_thumb.exists())
+                self.assertTrue(fresh_original.exists())
+                self.assertTrue(outside_file.exists())
+                self.assertEqual(result["deleted_files"], 2)
+                self.assertIsNone(expired_row["original_cache_path"])
+                self.assertIsNone(expired_row["rejected_thumbnail_path"])
+                self.assertEqual(fresh_row["original_cache_path"], str(fresh_original))
+                self.assertEqual(outside_row["original_cache_path"], str(outside_file))
+            finally:
+                db.close()
+
 
 class CategoryTagHintModeTests(unittest.TestCase):
     def seed_category_hint_fixture(self, db) -> tuple[int, int]:  # noqa: ANN001

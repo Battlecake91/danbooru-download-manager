@@ -2,7 +2,24 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.195 - Current release
+## 1.3.196 - Current release
+
+### Fixed
+
+- Changed Viewer caching so opening a post caches preview-sized media by default instead of the full original file.
+- Normalized older saved `viewer_download_source = file` settings to the safer preview behavior.
+- Avoided slow per-file tag-statistics refreshes during existing-file imports.
+
+### Added
+
+- Added startup cleanup for rejected cache files older than `workflow.rejected_thumbnail_retention_days`.
+- Added regression tests for Viewer cache selection and rejected cache retention.
+
+See [`RELEASE_NOTES_1.3.196.md`](RELEASE_NOTES_1.3.196.md) for the complete release summary.
+
+---
+
+## 1.3.195
 
 ### Fixed
 

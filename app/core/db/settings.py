@@ -88,6 +88,12 @@ class DatabaseSettingsMixin:
             if isinstance(target, dict):
                 target[parts[-1]] = value
 
+        # Older builds used Danbooru's file_url as the viewer cache source.
+        # Viewing a post should only cache a preview-sized asset; final saving
+        # still downloads file_url through ensure_full_original_cached().
+        if str(config.get("viewer_download_source", "preview")).strip().lower() == "file":
+            config["viewer_download_source"] = "preview"
+
     def save_fetch_preset(self, name: str, payload: dict[str, Any]) -> None:
         clean_name = name.strip()
         if not clean_name:

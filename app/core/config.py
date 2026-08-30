@@ -38,7 +38,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "thumbnail_format": "jpg",
     "thumbnail_download_source": "large",
     "thumbnail_redownload_existing": False,
-    "viewer_download_source": "file",
+    "viewer_download_source": "preview",
     "username": None,
     "api_key": None,
     "workflow": {
@@ -211,8 +211,8 @@ def validate_config(config: dict[str, Any]) -> None:
     config["thumbnail_download_source"] = source
 
     viewer_source = str(config.get("viewer_download_source", "file")).lower()
-    if viewer_source not in {"large", "file", "best"}:
-        raise ValueError("viewer_download_source must be large, file, or best")
+    if viewer_source not in {"preview", "large", "file", "best"}:
+        raise ValueError("viewer_download_source must be preview, large, file, or best")
     config["viewer_download_source"] = viewer_source
 
     workflow = config.get("workflow", {}) or {}

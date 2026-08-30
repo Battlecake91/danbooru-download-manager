@@ -76,6 +76,18 @@ def main() -> int:
     archive_root_path(config)
     ensure_runtime_dirs(config)
 
+    try:
+        purge_result = db.purge_rejected_cache_files(config)
+        if purge_result["deleted_files"]:
+            logging.info(
+                "Purged rejected cache files: deleted=%s, posts=%s, retention_days=%s",
+                purge_result["deleted_files"],
+                purge_result["cleared_rows"],
+                purge_result["retention_days"],
+            )
+    except Exception:
+        logging.exception("Rejected cache purge failed")
+
     if args.init_db:
         logging.info("Database initialized: %s", config["database_file"])
 

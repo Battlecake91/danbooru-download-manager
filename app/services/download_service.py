@@ -37,7 +37,7 @@ class DownloadService:
         """Cache a display-quality file for the viewer.
 
         This follows ``viewer_download_source`` and may therefore cache Danbooru's
-        large/sample image. It is intentionally *not* used for final saving.
+        preview/large/sample image. It is intentionally *not* used for final saving.
         Humans naming this "original" was a tiny act of sabotage, naturally.
         """
         row = self.db.get_post_detail(post_id)
@@ -155,21 +155,29 @@ def choose_viewer_download_url(row: dict[str, Any], config: dict[str, Any]) -> t
     source = str(config.get("viewer_download_source", "file")).lower()
 
     candidates_by_source: dict[str, list[tuple[str, str]]] = {
+        "preview": [
+            ("preview", str(row.get("preview_url") or "")),
+            ("large", str(row.get("large_file_url") or "")),
+            ("file", str(row.get("file_url") or "")),
+        ],
         "large": [
             ("large", str(row.get("large_file_url") or "")),
+            ("preview", str(row.get("preview_url") or "")),
             ("file", str(row.get("file_url") or "")),
         ],
         "file": [
             ("file", str(row.get("file_url") or "")),
             ("large", str(row.get("large_file_url") or "")),
+            ("preview", str(row.get("preview_url") or "")),
         ],
         "best": [
             ("file", str(row.get("file_url") or "")),
             ("large", str(row.get("large_file_url") or "")),
+            ("preview", str(row.get("preview_url") or "")),
         ],
     }
 
-    candidates = candidates_by_source.get(source, candidates_by_source["file"])
+    candidates = candidates_by_source.get(source, candidates_by_source["preview"])
     return first_valid_url(candidates)
 
 

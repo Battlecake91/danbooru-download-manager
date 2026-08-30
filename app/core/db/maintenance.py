@@ -150,3 +150,94 @@ class DatabaseMaintenanceMixin:
             self.connection.execute("VACUUM")
         finally:
             self._release_write_gate()
+
+    def purge_rejected_cache_files(self, config: dict[str, Any]) -> dict[str, int]:
+        """Delete stale cache files for rejected posts after the configured retention."""
+        workflow = config.get("workflow", {}) or {}
+        retention_days = max(1, int(workflow.get("rejected_thumbnail_retention_days", 7) or 7))
+        original_cache_dir = Path(str(config.get("original_cache_dir", ""))).expanduser()
+        rejected_thumbnail_dir = Path(str(config.get("rejected_thumbnail_dir", ""))).expanduser()
+        modifier = f"-{retention_days} days"
+
+        rows = self.execute(
+            """
+            SELECT id, thumbnail_path, rejected_thumbnail_path, original_cache_path
+            FROM posts
+            WHERE status = 'rejected'
+              AND rejected_at IS NOT NULL
+              AND rejected_at <= datetime('now', ?)
+            """,
+            (modifier,),
+        ).fetchall()
+
+        deleted_files = 0
+        cleared_rows = 0
+        for row in rows:
+            post_id = int(row["id"])
+            clear_original = False
+            clear_rejected_thumbnail = False
+            clear_thumbnail = False
+
+            original_path = _safe_cache_path(row["original_cache_path"], original_cache_dir)
+            if original_path is not None:
+                if original_path.exists() and original_path.is_file():
+                    original_path.unlink()
+                    deleted_files += 1
+                clear_original = True
+
+            rejected_path = _safe_cache_path(row["rejected_thumbnail_path"], rejected_thumbnail_dir)
+            if rejected_path is not None:
+                if rejected_path.exists() and rejected_path.is_file():
+                    rejected_path.unlink()
+                    deleted_files += 1
+                clear_rejected_thumbnail = True
+
+            thumbnail_path = _safe_cache_path(row["thumbnail_path"], rejected_thumbnail_dir)
+            if thumbnail_path is not None:
+                if thumbnail_path.exists() and thumbnail_path.is_file():
+                    thumbnail_path.unlink()
+                    deleted_files += 1
+                clear_thumbnail = True
+
+            if clear_original or clear_rejected_thumbnail or clear_thumbnail:
+                self.execute(
+                    """
+                    UPDATE posts
+                    SET original_cache_path = CASE WHEN ? THEN NULL ELSE original_cache_path END,
+                        rejected_thumbnail_path = CASE WHEN ? THEN NULL ELSE rejected_thumbnail_path END,
+                        thumbnail_path = CASE WHEN ? THEN NULL ELSE thumbnail_path END
+                    WHERE id = ?
+                    """,
+                    (
+                        1 if clear_original else 0,
+                        1 if clear_rejected_thumbnail else 0,
+                        1 if clear_thumbnail else 0,
+                        post_id,
+                    ),
+                )
+                cleared_rows += 1
+
+        if cleared_rows:
+            self.commit()
+
+        return {
+            "retention_days": retention_days,
+            "checked_posts": len(rows),
+            "deleted_files": deleted_files,
+            "cleared_rows": cleared_rows,
+        }
+
+
+def _safe_cache_path(value: object, cache_dir: Path) -> Path | None:
+    if not value or not str(cache_dir):
+        return None
+
+    path = Path(str(value)).expanduser()
+    try:
+        resolved_path = path.resolve(strict=False)
+        resolved_cache = cache_dir.resolve(strict=False)
+        resolved_path.relative_to(resolved_cache)
+    except Exception:
+        return None
+
+    return resolved_path
