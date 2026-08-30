@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
+from app.core.archive_paths import archive_root_path
 from app.core.config import load_config
 from app.core.database import Database
 from app.core.paths import ensure_runtime_dirs
@@ -72,6 +73,7 @@ def main() -> int:
     # SQLite/app_settings is the leading GUI configuration once the database
     # exists. External config files and .env files are intentionally not read.
     db.apply_app_settings_to_config(config)
+    archive_root_path(config)
     ensure_runtime_dirs(config)
 
     if args.init_db:

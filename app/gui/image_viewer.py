@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
+from app.core.archive_paths import resolve_archive_path
 from app.core.category_engine import CategoryMatch
 from app.core.database import Database
 from app.services.download_service import DownloadService
@@ -1132,7 +1133,7 @@ class ImageViewerWindow(QMainWindow):
         if not final_path:
             return None
 
-        path = Path(str(final_path))
+        path = resolve_archive_path(self.config, final_path) or Path(str(final_path))
         if path.exists():
             return path
 
@@ -1404,8 +1405,11 @@ class ImageViewerWindow(QMainWindow):
             row["thumbnail_path"],
             row["rejected_thumbnail_path"],
         ):
-            if candidate and Path(str(candidate)).exists():
-                return str(candidate)
+            if not candidate:
+                continue
+            path = resolve_archive_path(self.config, candidate) if candidate == row["final_file_path"] else Path(str(candidate))
+            if path is not None and path.exists():
+                return str(path)
         return None
 
     def ensure_image_path(self, post_id: int, row) -> str | None:  # noqa: ANN001
@@ -1595,7 +1599,7 @@ class ImageViewerWindow(QMainWindow):
         post_id = self.current_post_id
         category = self.selected_category()
         row = self.db.get_post_detail(post_id)
-        existing_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
+        existing_path = resolve_archive_path(self.config, row["final_file_path"]) if row is not None and row["final_file_path"] else None
         existing_is_local = existing_path is not None and existing_path.exists()
         overwrite_existing = False
 
@@ -1651,7 +1655,7 @@ class ImageViewerWindow(QMainWindow):
             QMessageBox.information(self, self.t("viewer.delete_local_file_title", "Delete Local File"), self.t("viewer.no_local_save_path", "No local save path is stored for this post."))
             return
 
-        path = Path(str(row["final_file_path"]))
+        path = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"]))
         answer = QMessageBox.question(
             self,
             self.t("viewer.delete_local_file_title", "Delete Local File"),
@@ -2183,9 +2187,10 @@ class ImageViewerWindow(QMainWindow):
         elif self.current_post_id is not None:
             row = self.db.get_post_detail(self.current_post_id)
             if row and row["final_directory"]:
-                path = Path(str(row["final_directory"]))
+                path = resolve_archive_path(self.config, row["final_directory"]) or Path(str(row["final_directory"]))
             elif row and row["final_file_path"]:
-                path = Path(str(row["final_file_path"])).parent
+                resolved = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"]))
+                path = resolved.parent
 
         if path is None:
             QMessageBox.information(self, self.t("viewer.no_target_folder_title", "No Target Folder"), self.t("viewer.no_target_folder_message", "No target folder known yet."))

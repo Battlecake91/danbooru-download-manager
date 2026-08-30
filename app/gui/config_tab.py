@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
+from app.core.archive_paths import archive_root_path, set_archive_root_path
 from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
 from app.gui.thumbnail_grid import ThumbnailGrid
@@ -317,6 +318,15 @@ class ConfigTab(QWidget):
         self.work_dir_edit = QLineEdit(str(config.get("work_dir", "./danbooru_manager_data")))
         self.database_file_edit = QLineEdit(str(config.get("database_file", "./danbooru_manager_data/danbooru_manager.db")))
         self.default_output_dir_edit = QLineEdit(str(config.get("default_output_dir", "./danbooru_saved")))
+        archive_config = config.get("archive_paths", {}) or {}
+        self.archive_storage_mode_combo = QComboBox()
+        self.archive_storage_mode_combo.addItem("Absolute paths in main SQLite", "absolute")
+        self.archive_storage_mode_combo.addItem("Relative paths from archive root", "relative")
+        archive_mode_index = self.archive_storage_mode_combo.findData(str(archive_config.get("storage_mode", "absolute")))
+        if archive_mode_index >= 0:
+            self.archive_storage_mode_combo.setCurrentIndex(archive_mode_index)
+        self.archive_root_edit = QLineEdit(str(archive_root_path(config) or ""))
+        self.archive_root_edit.setPlaceholderText("Local archive root for this device")
         self.original_cache_dir_edit = QLineEdit(str(config.get("original_cache_dir", "./danbooru_manager_data/originals/cache")))
         self.active_thumbnail_dir_edit = QLineEdit(str(config.get("active_thumbnail_dir", config.get("thumbnail_dir", "./danbooru_manager_data/thumbnails/active"))))
         self.saved_thumbnail_dir_edit = QLineEdit(str(config.get("saved_thumbnail_dir", "./danbooru_manager_data/thumbnails/saved")))
@@ -324,6 +334,8 @@ class ConfigTab(QWidget):
         self.work_dir_edit.setToolTip("Base directory for runtime data such as logs, thumbnails and local app files.")
         self.database_file_edit.setToolTip("SQLite database file. Keep this outside the bundled executable.")
         self.default_output_dir_edit.setToolTip("Final destination for saved posts.")
+        self.archive_storage_mode_combo.setToolTip("Controls whether saved archive file paths are stored as absolute paths or relative to the local archive root.")
+        self.archive_root_edit.setToolTip("Per-machine archive root stored in a separate local SQLite database, not in the synchronized main database.")
         self.original_cache_dir_edit.setToolTip("Temporary cache for original files before final save.")
         self.active_thumbnail_dir_edit.setToolTip("Thumbnail cache used for active/new/potential posts.")
         self.saved_thumbnail_dir_edit.setToolTip("Thumbnail cache for posts already saved to the library.")
@@ -332,6 +344,8 @@ class ConfigTab(QWidget):
         self.general_form.addRow("work_dir:", self.work_dir_edit)
         self.general_form.addRow("database_file:", self.database_file_edit)
         self.general_form.addRow("default_output_dir:", self.default_output_dir_edit)
+        self.general_form.addRow("Archive path mode:", self.archive_storage_mode_combo)
+        self.general_form.addRow("Archive root:", self.archive_root_edit)
         self.general_form.addRow("original_cache_dir:", self.original_cache_dir_edit)
         self.general_form.addRow("active_thumbnail_dir:", self.active_thumbnail_dir_edit)
         self.general_form.addRow("saved_thumbnail_dir:", self.saved_thumbnail_dir_edit)
@@ -465,6 +479,18 @@ class ConfigTab(QWidget):
             self.viewer_default_view_combo.setCurrentIndex(index)
         self.viewer_default_view_combo.setToolTip("Default result set opened by Preview/Viewer workflows.")
 
+        self.viewer_tag_hint_category_mode_combo = QComboBox()
+        self.viewer_tag_hint_category_mode_combo.addItem("Never", "never")
+        self.viewer_tag_hint_category_mode_combo.addItem("Only when _unmatched", "only_when_unmatched")
+        self.viewer_tag_hint_category_mode_combo.addItem("Always", "always")
+        tag_hint_mode = str(viewer_config.get("tag_hint_category_mode", "never"))
+        tag_hint_index = self.viewer_tag_hint_category_mode_combo.findData(tag_hint_mode)
+        if tag_hint_index >= 0:
+            self.viewer_tag_hint_category_mode_combo.setCurrentIndex(tag_hint_index)
+        self.viewer_tag_hint_category_mode_combo.setToolTip(
+            "Controls whether the best category tag hint can be used as the automatic category selection."
+        )
+
         self.auto_advance_after_save_checkbox = QCheckBox("Auto-advance after saving")
         self.auto_advance_after_save_checkbox.setChecked(bool(viewer_config.get("auto_advance_after_save", True)))
         self.auto_advance_after_save_checkbox.setToolTip("After saving in Viewer, move to the next post automatically.")
@@ -545,6 +571,7 @@ class ConfigTab(QWidget):
         self.gui_form.addRow("thumbnail_size_max:", self.thumbnail_max_spin)
         self.gui_form.addRow("card_width_extra:", self.card_width_extra_spin)
         self.gui_form.addRow("default_view:", self.viewer_default_view_combo)
+        self.gui_form.addRow("Tag hint category:", self.viewer_tag_hint_category_mode_combo)
         self.gui_form.addRow("", self.auto_advance_after_save_checkbox)
         self.gui_form.addRow("", self.auto_advance_after_reject_checkbox)
         self.gui_form.addRow("Viewer strip previous:", self.viewer_strip_previous_spin)
@@ -1344,6 +1371,10 @@ class ConfigTab(QWidget):
         self.work_dir_edit.setText(str(self.runtime_value("work_dir", "./danbooru_manager_data")))
         self.database_file_edit.setText(str(self.runtime_value("database_file", "./danbooru_manager_data/danbooru_manager.db")))
         self.default_output_dir_edit.setText(str(self.runtime_value("default_output_dir", "./danbooru_saved")))
+        archive_mode_index = self.archive_storage_mode_combo.findData(str(self.runtime_value("archive_paths.storage_mode", "absolute")))
+        if archive_mode_index >= 0:
+            self.archive_storage_mode_combo.setCurrentIndex(archive_mode_index)
+        self.archive_root_edit.setText(str(archive_root_path(self.config) or ""))
         self.original_cache_dir_edit.setText(str(self.runtime_value("original_cache_dir", "./danbooru_manager_data/originals/cache")))
         self.active_thumbnail_dir_edit.setText(str(self.runtime_value("active_thumbnail_dir", self.runtime_value("thumbnail_dir", "./danbooru_manager_data/thumbnails/active"))))
         self.saved_thumbnail_dir_edit.setText(str(self.runtime_value("saved_thumbnail_dir", "./danbooru_manager_data/thumbnails/saved")))
@@ -1376,6 +1407,11 @@ class ConfigTab(QWidget):
         index = self.viewer_default_view_combo.findData(default_view)
         if index >= 0:
             self.viewer_default_view_combo.setCurrentIndex(index)
+
+        tag_hint_mode = str(self.runtime_value("viewer.tag_hint_category_mode", "never"))
+        tag_hint_index = self.viewer_tag_hint_category_mode_combo.findData(tag_hint_mode)
+        if tag_hint_index >= 0:
+            self.viewer_tag_hint_category_mode_combo.setCurrentIndex(tag_hint_index)
 
         self.auto_advance_after_save_checkbox.setChecked(bool(self.runtime_value("viewer.auto_advance_after_save", True)))
         self.auto_advance_after_reject_checkbox.setChecked(bool(self.runtime_value("viewer.auto_advance_after_reject", True)))
@@ -1446,6 +1482,7 @@ class ConfigTab(QWidget):
             "work_dir": self.work_dir_edit.text().strip(),
             "database_file": self.database_file_edit.text().strip(),
             "default_output_dir": self.default_output_dir_edit.text().strip(),
+            "archive_paths.storage_mode": str(self.archive_storage_mode_combo.currentData() or "absolute"),
             "original_cache_dir": self.original_cache_dir_edit.text().strip(),
             "active_thumbnail_dir": self.active_thumbnail_dir_edit.text().strip(),
             "thumbnail_dir": self.active_thumbnail_dir_edit.text().strip(),
@@ -1469,6 +1506,7 @@ class ConfigTab(QWidget):
             **{f"gui.preview_card.{key}": value for key, value in self.preview_card_options_from_form().items()},
 
             "viewer.default_view": str(self.viewer_default_view_combo.currentData()),
+            "viewer.tag_hint_category_mode": str(self.viewer_tag_hint_category_mode_combo.currentData() or "never"),
             "viewer.auto_advance_after_save": self.auto_advance_after_save_checkbox.isChecked(),
             "viewer.auto_advance_after_reject": self.auto_advance_after_reject_checkbox.isChecked(),
             "viewer.preview_strip_previous_count": int(self.viewer_strip_previous_spin.value()),
@@ -1520,6 +1558,7 @@ class ConfigTab(QWidget):
 
         values = self.collect_values()
         database_file = Path(self.db.path)
+        set_archive_root_path(self.config, self.archive_root_edit.text().strip() or None)
 
         self.save_button.setEnabled(False)
         self.save_button.setText(tr("config.saving", "Saving…", config=self.config))

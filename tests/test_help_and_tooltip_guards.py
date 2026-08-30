@@ -32,6 +32,9 @@ def test_advanced_controls_have_contextual_tooltips() -> None:
 
     assert "self.database_file_edit.setToolTip" in config_source
     assert "self.filename_pattern_edit.setToolTip" in config_source
+    assert "self.viewer_tag_hint_category_mode_combo = QComboBox()" in config_source
+    assert "Only when _unmatched" in config_source
+    assert '"viewer.tag_hint_category_mode": str(self.viewer_tag_hint_category_mode_combo.currentData() or "never")' in config_source
     assert "self.llm_tag_export_mode_combo.setToolTip" in config_source
     assert "self.llm_include_legend_checkbox.setToolTip" in config_source
     assert "self.preset_combo.setToolTip" in fetch_source

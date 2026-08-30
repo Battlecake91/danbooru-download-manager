@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
 )
 
+from app.core.archive_paths import resolve_archive_path
 from app.core.database import Database
 from app.core.db.async_writer import enqueue_app_setting
 from app.core.category_engine import build_category_match_groups
@@ -1586,7 +1587,7 @@ class PreviewWindow(QMainWindow):
         missing = []
         for post_id in clean_ids:
             row = self.db.get_post_detail(post_id)
-            final_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
+            final_path = resolve_archive_path(self.config, row["final_file_path"]) if row is not None and row["final_file_path"] else None
             if final_path is None:
                 missing.append(f"{post_id}: " + tr("preview.delete_local.no_path_short", "no local path", config=self.config))
                 continue

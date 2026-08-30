@@ -245,6 +245,7 @@ class HelpTab(QWidget):
                         "Category order decides the winner when multiple categories match.",
                         "Include rules are alternatives; inside one rule, all positive tags must match.",
                         "Tags prefixed with '-' block that rule; global conditions apply to every include rule.",
+                        "Config can allow tag hints to select categories: never, only when no hard rule matches, or always.",
                     ],
                 ),
             ]

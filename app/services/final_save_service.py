@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from app.core.archive_paths import archive_db_value_for_path, resolve_archive_path
 from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
 from app.core.filename_builder import FilenameBuilder, FilenamePreviewDetails
@@ -66,8 +67,8 @@ class FinalSaveService:
         row = self.db.get_post_detail(post_id)
         diag(f"get_post_detail end found={row is not None}")
         if row is not None and row["final_file_path"] and category is None:
-            final_path = Path(str(row["final_file_path"]))
-            source_path = final_path if final_path.exists() else Path(str(row["final_file_path"]))
+            final_path = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"]))
+            source_path = final_path if final_path.exists() else final_path
             diag(f"saved-path branch final_path={str(final_path)!r} exists={final_path.exists()}")
             diag("filename_builder saved-path begin")
             details = self.filename_builder.build_preview_details(post_id, source_path, diagnostic=diagnostic)
@@ -111,7 +112,7 @@ class FinalSaveService:
         overwrite_existing: bool = False,
     ) -> SaveResult:
         row = self.db.get_post_detail(post_id)
-        old_final_path = Path(str(row["final_file_path"])) if row is not None and row["final_file_path"] else None
+        old_final_path = resolve_archive_path(self.config, row["final_file_path"]) if row is not None and row["final_file_path"] else None
 
         if old_final_path is not None and not overwrite_existing:
             raise AlreadySavedError(post_id, str(old_final_path))
@@ -164,7 +165,11 @@ class FinalSaveService:
                 status = 'saved'
             WHERE id = ?
             """,
-            (str(final_path), str(output_dir), post_id),
+            (
+                archive_db_value_for_path(self.config, final_path),
+                archive_db_value_for_path(self.config, output_dir),
+                post_id,
+            ),
         )
 
         if category.id is not None:
@@ -205,7 +210,9 @@ class FinalSaveService:
         if not final_value:
             raise RuntimeError("final_file_path is missing, so no overwrite target is known")
 
-        final_path = Path(str(final_value))
+        final_path = resolve_archive_path(self.config, final_value)
+        if final_path is None:
+            raise RuntimeError("final_file_path is missing, so no overwrite target is known")
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
         source_value = self.download_service.ensure_full_original_cached(post_id, force=force_download)
@@ -229,7 +236,11 @@ class FinalSaveService:
                 status = 'saved'
             WHERE id = ?
             """,
-            (str(final_path), str(final_path.parent), post_id),
+            (
+                archive_db_value_for_path(self.config, final_path),
+                archive_db_value_for_path(self.config, final_path.parent),
+                post_id,
+            ),
         )
         self.db.commit()
         self.db.set_post_status(post_id, "saved", self.config)
@@ -258,7 +269,7 @@ class FinalSaveService:
 
         final_value = row["final_file_path"]
         if prefer_final and final_value:
-            final_path = Path(str(final_value))
+            final_path = resolve_archive_path(self.config, final_value)
             if final_path.exists():
                 return final_path
 

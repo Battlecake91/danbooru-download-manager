@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 import math
 
+from app.core.archive_paths import resolve_archive_path
 from app.core.database import Database
 from app.core.tag_privacy import canonicalize_tag, normalize_tag_token
 
@@ -214,8 +215,40 @@ class CategoryEngine:
             reason="Manual selection",
         )
 
+    def tag_hint_category_mode(self) -> str:
+        viewer_config = self.config.get("viewer", {}) or {}
+        mode = str(viewer_config.get("tag_hint_category_mode", "never")).lower()
+        if mode not in {"never", "only_when_unmatched", "always"}:
+            return "never"
+        return mode
+
+    def category_match_from_influence(self, influence: CategoryInfluence) -> CategoryMatch | None:
+        category = self.category_by_name(influence.name)
+        if category is None:
+            return None
+
+        return CategoryMatch(
+            id=category.id,
+            name=category.name,
+            folder_name=category.folder_name,
+            output_path=category.output_path,
+            matched=True,
+            reason=f"Tag hint selected ({influence.score:g})",
+        )
+
+    def best_tag_hint_category_for_tags(self, tags: set[str]) -> CategoryMatch | None:
+        for influence in self.category_influence_for_tags(tags):
+            if influence.name == "_unmatched":
+                continue
+            category = self.category_match_from_influence(influence)
+            if category is not None:
+                return category
+        return None
+
     def suggest_category_for_post(self, post_id: int) -> CategoryMatch:
         tags = self.get_post_tags(post_id)
+        tag_hint_mode = self.tag_hint_category_mode()
+        tag_hint_category = self.best_tag_hint_category_for_tags(tags) if tag_hint_mode != "never" else None
 
         categories = self.db.list_categories_full()
         all_rules = self.db.list_category_rules()
@@ -243,6 +276,9 @@ class CategoryEngine:
                 if not group_match:
                     continue
 
+                if tag_hint_mode == "always" and tag_hint_category is not None:
+                    return tag_hint_category
+
                 return CategoryMatch(
                     id=category_id,
                     name=str(category["name"]),
@@ -251,6 +287,9 @@ class CategoryEngine:
                     matched=True,
                     reason="Category rule matches",
                 )
+
+        if tag_hint_mode in {"only_when_unmatched", "always"} and tag_hint_category is not None:
+            return tag_hint_category
 
         unmatched = self.category_by_name("_unmatched")
         if unmatched is not None:
@@ -494,13 +533,19 @@ class CategoryEngine:
         influences = self.category_influence_for_tags(tags)
         influence_by_name = {entry.name: entry for entry in influences}
         top_influence = influences[0] if influences else None
+        tag_hint_category = self.best_tag_hint_category_for_tags(tags)
+        tag_hint_mode = self.tag_hint_category_mode()
 
         automatic_name = winner_name or "_unmatched"
+        if tag_hint_category is not None and (tag_hint_mode == "always" or (tag_hint_mode == "only_when_unmatched" and winner_name is None)):
+            automatic_name = tag_hint_category.name
         lines: list[str] = [title]
         lines.append(f"Automatic: {automatic_name}")
         if top_influence is not None:
             lines.append(f"Tag influence: {top_influence.name} (+{top_influence.score:g})")
-            if automatic_name != "_unmatched" and top_influence.name != automatic_name:
+            if tag_hint_category is not None and automatic_name == tag_hint_category.name:
+                lines.append(f"Note: tag hint mode '{tag_hint_mode}' selected the category from tag influence.")
+            elif automatic_name != "_unmatched" and top_influence.name != automatic_name:
                 lines.append("Note: Hard category rules take precedence over tag influence.")
             elif automatic_name == "_unmatched":
                 lines.append("Note: tag influence is currently only a hint and does not replace a rule yet.")
@@ -655,7 +700,7 @@ class CategoryEngine:
 
     def output_directory_for_category(self, category: CategoryMatch) -> Path:
         if category.output_path:
-            return Path(str(category.output_path))
+            return resolve_archive_path(self.config, category.output_path) or Path(str(category.output_path))
 
         default_output_dir = Path(str(self.config.get("default_output_dir", "./danbooru_saved")))
         return default_output_dir / category.folder_name

@@ -10,8 +10,11 @@ from PySide6.QtGui import QColor, QImageReader
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -21,6 +24,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.archive_paths import (
+    archive_root_path,
+    migrate_archive_paths,
+    resolve_archive_path,
+    set_archive_root_path,
+)
 from app.core.database import Database
 from app.danbooru.api import DanbooruApi
 from app.gui.platform_open import open_local_path
@@ -104,6 +113,35 @@ class MaintenanceTab(QWidget):
         self.db_result_text.setMinimumHeight(180)
         self.db_result_text.setPlainText(tr("maintenance.db_no_analysis", config=self.config))
         layout.addWidget(self.db_result_text)
+
+        self.path_migration_group = QWidget()
+        path_migration_layout = QFormLayout(self.path_migration_group)
+        self.path_mode_combo = QComboBox()
+        self.path_mode_combo.addItem("Absolute paths in main SQLite", "absolute")
+        self.path_mode_combo.addItem("Relative paths from archive root", "relative")
+        current_mode = str((self.config.get("archive_paths", {}) or {}).get("storage_mode", "absolute"))
+        index = self.path_mode_combo.findData(current_mode)
+        if index >= 0:
+            self.path_mode_combo.setCurrentIndex(index)
+        self.path_root_edit = QLineEdit(str(archive_root_path(self.config) or ""))
+        self.path_root_edit.setPlaceholderText("Local archive root for this device")
+        self.verify_before_checkbox = QCheckBox("Verify before")
+        self.verify_before_checkbox.setChecked(True)
+        self.verify_after_checkbox = QCheckBox("Verify after")
+        self.verify_after_checkbox.setChecked(True)
+        path_verify_widget = QWidget()
+        path_verify_row = QHBoxLayout(path_verify_widget)
+        path_verify_row.setContentsMargins(0, 0, 0, 0)
+        path_verify_row.addWidget(self.verify_before_checkbox)
+        path_verify_row.addWidget(self.verify_after_checkbox)
+        path_verify_row.addStretch(1)
+        self.migrate_paths_button = QPushButton("Migrate archive paths")
+        self.migrate_paths_button.clicked.connect(self.migrate_archive_paths_clicked)
+        path_migration_layout.addRow("Storage mode:", self.path_mode_combo)
+        path_migration_layout.addRow("Archive root:", self.path_root_edit)
+        path_migration_layout.addRow("Checks:", path_verify_widget)
+        path_migration_layout.addRow("", self.migrate_paths_button)
+        layout.addWidget(self.path_migration_group)
 
         self.info_label = QLabel(tr("maintenance.quality_info", config=self.config))
         self.info_label.setWordWrap(True)
@@ -267,7 +305,7 @@ class MaintenanceTab(QWidget):
     def audit_post(self, row: Any) -> QualityAuditRow:
         post_id = int(row["id"])
         final_value = row["final_file_path"]
-        final_path = Path(str(final_value)) if final_value else None
+        final_path = resolve_archive_path(self.config, final_value) if final_value else None
 
         remote_width = int(row["image_width"]) if row["image_width"] is not None else None
         remote_height = int(row["image_height"]) if row["image_height"] is not None else None
@@ -456,7 +494,7 @@ class MaintenanceTab(QWidget):
         if not final_value:
             raise RuntimeError(tr("maintenance.error.final_file_path_missing", config=self.config))
 
-        final_path = Path(str(final_value))
+        final_path = resolve_archive_path(self.config, final_value) or Path(str(final_value))
         final_path.parent.mkdir(parents=True, exist_ok=True)
 
         original_path_value = self.download_service.ensure_full_original_cached(post_id, force=True)
@@ -478,7 +516,7 @@ class MaintenanceTab(QWidget):
         row = self.db.get_post_detail(post_ids[0])
         if row is None or not row["final_file_path"]:
             return
-        path = Path(str(row["final_file_path"]))
+        path = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"]))
         if path.exists():
             if not open_local_path(path):
                 QMessageBox.warning(
@@ -486,6 +524,42 @@ class MaintenanceTab(QWidget):
                     tr("maintenance.title", config=self.config),
                     tr("maintenance.error.open_failed", "Could not open:\n{path}", config=self.config, path=path),
                 )
+
+    def migrate_archive_paths_clicked(self) -> None:
+        target_mode = str(self.path_mode_combo.currentData() or "absolute")
+        root_value = self.path_root_edit.text().strip()
+        if target_mode == "relative" and not root_value:
+            QMessageBox.warning(self, "Archive Path Migration", "Relative mode needs an archive root.")
+            return
+
+        answer = QMessageBox.warning(
+            self,
+            "Archive Path Migration",
+            "This rewrites saved archive paths in the main SQLite database. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        self.migrate_paths_button.setEnabled(False)
+        try:
+            if root_value:
+                set_archive_root_path(self.config, root_value)
+            report = migrate_archive_paths(
+                self.db,
+                self.config,
+                target_mode=target_mode,
+                archive_root=Path(root_value).expanduser() if root_value else None,
+                verify_before=self.verify_before_checkbox.isChecked(),
+                verify_after=self.verify_after_checkbox.isChecked(),
+            )
+            self.db_result_text.setPlainText(report.summary())
+            QMessageBox.information(self, "Archive Path Migration", report.summary())
+        except Exception as exc:
+            QMessageBox.critical(self, "Archive Path Migration Failed", str(exc))
+        finally:
+            self.migrate_paths_button.setEnabled(True)
 
 
 def read_image_dimensions(path: Path) -> tuple[int | None, int | None]:

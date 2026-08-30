@@ -30,6 +30,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "rejected_thumbnail_dir": "./danbooru_manager_data/thumbnails/rejected",
     "original_cache_dir": "./danbooru_manager_data/originals/cache",
     "default_output_dir": "./danbooru_saved",
+    "archive_paths": {
+        "storage_mode": "absolute",
+    },
     "history_file": "./downloaded_ids.txt",
     "thumbnail_size": 256,
     "thumbnail_format": "jpg",
@@ -49,6 +52,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "fit_to_window": True,
         "auto_advance_after_save": True,
         "auto_advance_after_reject": True,
+        "tag_hint_category_mode": "never",
         "preview_strip_previous_count": 3,
         "preview_strip_next_count": 3,
         "preview_strip_thumbnail_size": 96,
@@ -215,6 +219,19 @@ def validate_config(config: dict[str, Any]) -> None:
     worklist_statuses = workflow.get("worklist_statuses", [])
     if not isinstance(worklist_statuses, list) or not worklist_statuses:
         raise ValueError("workflow.worklist_statuses must be a non-empty list")
+
+    viewer = config.get("viewer", {}) or {}
+    tag_hint_mode = str(viewer.get("tag_hint_category_mode", "never")).lower()
+    if tag_hint_mode not in {"never", "only_when_unmatched", "always"}:
+        raise ValueError("viewer.tag_hint_category_mode must be never, only_when_unmatched, or always")
+    viewer["tag_hint_category_mode"] = tag_hint_mode
+
+    archive_paths = config.get("archive_paths", {}) or {}
+    archive_storage_mode = str(archive_paths.get("storage_mode", "absolute")).lower()
+    if archive_storage_mode not in {"absolute", "relative"}:
+        raise ValueError("archive_paths.storage_mode must be absolute or relative")
+    archive_paths["storage_mode"] = archive_storage_mode
+    config["archive_paths"] = archive_paths
 
     gui = config.get("gui", {}) or {}
     thumb_min = int(gui.get("thumbnail_size_min", 120))

@@ -16,6 +16,7 @@ from app.core.db.common import (
     is_path_like_preview_search_term,
     parse_preview_search_terms,
 )
+from app.core.archive_paths import archive_db_value_for_path, resolve_archive_path
 from app.core.tag_privacy import build_tag_identity, canonicalize_tag, normalize_tag_token, salted_tag_hash
 
 
@@ -712,7 +713,14 @@ class DatabasePostMixin:
 
         self.commit()
 
-    def import_existing_saved_file(self, post_id: int, category_id: int, file_path: str, source: str = "import") -> None:
+    def import_existing_saved_file(
+        self,
+        post_id: int,
+        category_id: int,
+        file_path: str,
+        source: str = "import",
+        config: dict[str, Any] | None = None,
+    ) -> None:
         """Mark an already downloaded local file as saved and feed its tags into scoring.
 
         Used by the legacy-file importer. It deliberately does not move files,
@@ -721,8 +729,8 @@ class DatabasePostMixin:
         earn uninstall privileges.
         """
         path = Path(str(file_path)).expanduser()
-        final_path = str(path)
-        final_directory = str(path.parent)
+        final_path = archive_db_value_for_path(config, path) if config is not None else str(path)
+        final_directory = archive_db_value_for_path(config, path.parent) if config is not None else str(path.parent)
 
         self.execute(
             """
@@ -749,14 +757,15 @@ class DatabasePostMixin:
             (int(post_id), int(category_id), source),
         )
 
-        affected_tags = self._fetch_tags_for_posts([int(post_id)])
-        if affected_tags:
-            self.refresh_tag_statistics_for_tags(affected_tags)
-
+        # Bulk import must stay a cheap write path. Rebuilding tag statistics
+        # per imported file scales badly on large databases; maintenance/tag
+        # overview workflows can refresh the cached counters when needed.
         self.commit()
 
-    def update_post_final_file_path(self, post_id: int, file_path: str) -> None:
+    def update_post_final_file_path(self, post_id: int, file_path: str, config: dict[str, Any] | None = None) -> None:
         path = Path(str(file_path)).expanduser()
+        final_path = archive_db_value_for_path(config, path) if config is not None else str(path)
+        final_directory = archive_db_value_for_path(config, path.parent) if config is not None else str(path.parent)
         self.execute(
             """
             UPDATE posts
@@ -768,7 +777,7 @@ class DatabasePostMixin:
                 last_seen_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (str(path), str(path.parent), str(path), int(post_id)),
+            (final_path, final_directory, final_path, int(post_id)),
         )
         self.commit()
 
@@ -798,6 +807,9 @@ class DatabasePostMixin:
                 parameters,
             ).fetchall()
         )
+
+    def resolve_archive_file_path(self, value: str | Path | None, config: dict[str, Any] | None = None) -> Path | None:
+        return resolve_archive_path(config or {}, value)
 
     def get_assigned_category_for_post(self, post_id: int) -> sqlite3.Row | None:
         return self.execute(

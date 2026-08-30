@@ -4,11 +4,12 @@ import re
 
 import requests
 from PySide6.QtGui import QImageReader
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+from app.core.archive_paths import resolve_archive_path
 from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
 from app.core.filename_builder import FilenameBuilder
@@ -194,7 +195,7 @@ class ExistingFileImportService:
 
     def emit_progress(self, progress: ExistingFileImportProgress) -> None:
         if self.progress_callback is not None:
-            self.progress_callback(progress)
+            self.progress_callback(replace(progress))
 
     def import_folder(
         self,
@@ -254,6 +255,15 @@ class ExistingFileImportService:
                 not_found=result.not_found,
                 errors=result.errors,
             )
+            base_progress.message = tr(
+                "import.service.processing_file",
+                "Processing file {current}/{total}: {filename}",
+                config=self.config,
+                current=index,
+                total=len(files),
+                filename=path.name,
+            )
+            self.emit_progress(base_progress)
 
             if not md5_hash and post_id_from_name is None:
                 result.skipped_no_md5 += 1
@@ -264,14 +274,50 @@ class ExistingFileImportService:
                 continue
 
             try:
+                post: dict[str, Any] | None = None
+                existing = None
                 if md5_hash:
+                    base_progress.message = tr(
+                        "import.service.lookup_md5",
+                        "Looking up Danbooru post by MD5 {md5}: {filename}",
+                        config=self.config,
+                        md5=md5_hash,
+                        filename=path.name,
+                    )
+                    self.emit_progress(base_progress)
                     post = self.api.get_post_by_md5(md5_hash)
                     lookup_description = f"MD5 {md5_hash}"
                 else:
-                    post = self.get_post_by_id_or_none(int(post_id_from_name))
                     lookup_description = f"Post-ID {post_id_from_name}"
+                    existing = self.db.execute(
+                        """
+                        SELECT id, final_file_path
+                        FROM posts
+                        WHERE id = ?
+                        """,
+                        (int(post_id_from_name),),
+                    ).fetchone()
+                    if existing is None:
+                        base_progress.message = tr(
+                            "import.service.lookup_post_id",
+                            "Looking up Danbooru post {post_id}: {filename}",
+                            config=self.config,
+                            post_id=post_id_from_name,
+                            filename=path.name,
+                        )
+                        self.emit_progress(base_progress)
+                        post = self.get_post_by_id_or_none(int(post_id_from_name))
+                    else:
+                        base_progress.message = tr(
+                            "import.service.local_post_id",
+                            "Using local database record for post {post_id}: {filename}",
+                            config=self.config,
+                            post_id=post_id_from_name,
+                            filename=path.name,
+                        )
+                        self.emit_progress(base_progress)
 
-                if post is None:
+                if post is None and existing is None:
                     result.not_found += 1
                     base_progress.phase = "not_found"
                     base_progress.not_found = result.not_found
@@ -279,7 +325,7 @@ class ExistingFileImportService:
                     self.emit_progress(base_progress)
                     continue
 
-                if not md5_hash and self.evaluate_candidate(path, post, identifier_kind="post_id").confidence == "mismatch":
+                if post is not None and not md5_hash and self.evaluate_candidate(path, post, identifier_kind="post_id").confidence == "mismatch":
                     result.skipped_tag_mismatch += 1
                     base_progress.phase = "tag_mismatch"
                     base_progress.skipped_tag_mismatch = result.skipped_tag_mismatch
@@ -287,15 +333,16 @@ class ExistingFileImportService:
                     self.emit_progress(base_progress)
                     continue
 
-                post_id = int(post["id"])
-                existing = self.db.execute(
-                    """
-                    SELECT id, final_file_path
-                    FROM posts
-                    WHERE id = ?
-                    """,
-                    (post_id,),
-                ).fetchone()
+                post_id = int(post["id"]) if post is not None else int(post_id_from_name)
+                if post is not None and existing is None:
+                    existing = self.db.execute(
+                        """
+                        SELECT id, final_file_path
+                        FROM posts
+                        WHERE id = ?
+                        """,
+                        (post_id,),
+                    ).fetchone()
 
                 if existing is not None and not update_existing:
                     result.skipped_existing += 1
@@ -322,16 +369,45 @@ class ExistingFileImportService:
                     )
                     continue
 
-                self.post_import_service.store_post(post)
+                base_progress.post_id = post_id
+                base_progress.message = tr(
+                    "import.service.saving_post",
+                    "Saving Danbooru metadata for post {post_id}: {filename}",
+                    config=self.config,
+                    post_id=post_id,
+                    filename=path.name,
+                )
+                self.emit_progress(base_progress)
+
+                if post is not None:
+                    self.post_import_service.store_post(post)
+
+                base_progress.message = tr(
+                    "import.service.assigning_file",
+                    "Assigning local file to post {post_id}: {filename}",
+                    config=self.config,
+                    post_id=post_id,
+                    filename=path.name,
+                )
+                self.emit_progress(base_progress)
                 self.db.import_existing_saved_file(
                     post_id=post_id,
                     category_id=int(category_id),
                     file_path=str(path),
                     source="existing-file-import-update" if existing is not None else "existing-file-import",
+                    config=self.config,
                 )
                 result.imported_post_ids.append(post_id)
 
-                if fetch_thumbnails:
+                if fetch_thumbnails and post is not None:
+                    base_progress.message = tr(
+                        "import.service.thumbnail_file",
+                        "Caching thumbnail for post {post_id}: {filename}",
+                        config=self.config,
+                        post_id=post_id,
+                        filename=path.name,
+                    )
+                    self.emit_progress(base_progress)
                     thumbnail_path = self.post_import_service.thumbnail_cache.cache_thumbnail(post)
                     if thumbnail_path:
                         self.post_import_service.set_thumbnail_path(post_id, thumbnail_path)
@@ -341,6 +417,14 @@ class ExistingFileImportService:
                         if saved_path:
                             self.post_import_service.set_thumbnail_path(post_id, saved_path)
                         result.cached_thumbnails += 1
+                elif fetch_thumbnails:
+                    base_progress.message = tr(
+                        "import.service.thumbnail_skipped_local",
+                        "Thumbnail skipped for local-only post {post_id}: no fresh Danbooru payload available.",
+                        config=self.config,
+                        post_id=post_id,
+                    )
+                    self.emit_progress(base_progress)
 
                 current_path = path
                 rename_message = ""
@@ -675,7 +759,7 @@ class ExistingFileImportService:
 
         for index, row in enumerate(rows, start=1):
             post_id = int(row["id"])
-            source_path = Path(str(row["final_file_path"] or ""))
+            source_path = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"] or ""))
             try:
                 rename_result = self.rename_saved_post_file(post_id, category=category)
                 if rename_result.renamed:
@@ -746,7 +830,11 @@ class ExistingFileImportService:
         old_category = self.category_match_for_id(old_category_id)
         new_category = self.category_match_for_id(new_category_id)
         candidate_rows = self.db.fetch_saved_file_posts_for_category(old_category_id)
-        rows = [row for row in candidate_rows if path_is_inside_folder(row["final_file_path"], root, recursive=recursive)]
+        rows = [
+            row
+            for row in candidate_rows
+            if path_is_inside_folder(resolve_archive_path(self.config, row["final_file_path"]), root, recursive=recursive)
+        ]
 
         result = ExistingFileImportResult(
             scanned_files=len(rows),
@@ -776,7 +864,7 @@ class ExistingFileImportService:
 
         for index, row in enumerate(rows, start=1):
             post_id = int(row["id"])
-            current_path = Path(str(row["final_file_path"] or ""))
+            current_path = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"] or ""))
             message = tr("import.service.post_category_repaired", config=self.config, post_id=post_id, old_category=old_category.name, new_category=new_category.name)
 
             if rename_after_repair:
@@ -846,7 +934,7 @@ class ExistingFileImportService:
         if not row["final_file_path"]:
             raise RuntimeError(tr("import.error.post_no_saved_path", config=self.config, post_id=post_id))
 
-        source_path = Path(str(row["final_file_path"]))
+        source_path = resolve_archive_path(self.config, row["final_file_path"]) or Path(str(row["final_file_path"]))
         if not source_path.exists():
             raise RuntimeError(tr("import.error.file_missing", config=self.config, path=source_path))
 
@@ -874,14 +962,14 @@ class ExistingFileImportService:
 
         try:
             if source_path.resolve() == desired_path.resolve():
-                self.db.update_post_final_file_path(post_id, str(source_path))
+                self.db.update_post_final_file_path(post_id, str(source_path), config=self.config)
                 return RenameExistingFileResult(post_id, source_path, source_path, renamed=False)
         except OSError:
             pass
 
         target_path = unique_path(desired_path)
         source_path.rename(target_path)
-        self.db.update_post_final_file_path(post_id, str(target_path))
+        self.db.update_post_final_file_path(post_id, str(target_path), config=self.config)
         return RenameExistingFileResult(post_id, source_path, target_path, renamed=True)
 
     @staticmethod
