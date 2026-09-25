@@ -39,6 +39,20 @@ def row_dict(row: Any) -> dict[str, Any]:
     return dict(row) if row is not None else {}
 
 
+def media_post_data(db: Database, post_id: int) -> dict[str, Any] | None:
+    row = db.execute(
+        """
+        SELECT id, thumbnail_path, rejected_thumbnail_path,
+               original_cache_path, original_path, final_file_path,
+               preview_url, large_file_url, file_url
+        FROM posts
+        WHERE id = ?
+        """,
+        (post_id,),
+    ).fetchone()
+    return row_dict(row) if row is not None else None
+
+
 def apply_category_suggestions(db: Database, posts: list[dict[str, Any]]) -> None:
     """Apply the same rule-based category fallback shown by the desktop preview."""
     category_rows = [row_dict(row) for row in db.list_categories_full()]
@@ -397,8 +411,10 @@ def resolve_media_path(config: dict[str, Any], post: dict[str, Any], variant: st
             }
             candidates.extend(root / name for root in allowed_roots for name in portable_names if name)
     post_id = str(post.get("id") or "")
+    extensions = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    suffixes = ("", "_preview", "_large", "_file")
     for root in allowed_roots:
-        candidates.extend(root.glob(f"{post_id}.*"))
+        candidates.extend(root / f"{post_id}{suffix}{extension}" for suffix in suffixes for extension in extensions)
 
     for candidate in candidates:
         try:

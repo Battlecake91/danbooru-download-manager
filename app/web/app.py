@@ -14,7 +14,7 @@ from app.version import __version__
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
-from app.web.repository import list_posts, post_detail, resolve_media_path, row_dict
+from app.web.repository import list_posts, media_post_data, post_detail, resolve_media_path, row_dict
 from app.web.runtime import FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
 
 
@@ -326,13 +326,12 @@ def create_app() -> FastAPI:
     def media(post_id: int, variant: str, request: Request, db=Depends(database)):
         if variant not in {"thumbnail", "viewer"}:
             raise HTTPException(status_code=404, detail="Unknown media variant")
-        row = db.get_post_detail(post_id)
-        if row is None:
+        post_data = media_post_data(db, post_id)
+        if post_data is None:
             raise HTTPException(status_code=404, detail="Post not found")
-        post_data = row_dict(row)
         path = resolve_media_path(request.app.state.config, post_data, variant)
         if path is not None:
-            return FileResponse(path)
+            return FileResponse(path, headers={"Cache-Control": "private, max-age=3600"})
         if variant == "thumbnail" and post_data.get("preview_url"):
             media_config = dict(request.app.state.config)
             media_config["thumbnail_download_source"] = "preview"
@@ -345,7 +344,7 @@ def create_app() -> FastAPI:
             if cached:
                 db.execute("UPDATE posts SET thumbnail_path = ? WHERE id = ?", (cached, post_id))
                 db.commit()
-                return FileResponse(cached)
+                return FileResponse(cached, headers={"Cache-Control": "private, max-age=3600"})
         remote = post_data.get("preview_url") if variant == "thumbnail" else (
             post_data.get("large_file_url") or post_data.get("file_url") or post_data.get("preview_url")
         )
@@ -360,14 +359,18 @@ def create_app() -> FastAPI:
                         response.close()
                         api.session.close()
 
-                return StreamingResponse(chunks(), media_type=response.headers.get("Content-Type"))
+                return StreamingResponse(
+                    chunks(),
+                    media_type=response.headers.get("Content-Type"),
+                    headers={"Cache-Control": "private, max-age=3600"},
+                )
             response.close()
             api.session.close()
 
         if variant == "viewer":
             thumbnail_path = resolve_media_path(request.app.state.config, post_data, "thumbnail")
             if thumbnail_path is not None:
-                return FileResponse(thumbnail_path)
+                return FileResponse(thumbnail_path, headers={"Cache-Control": "private, max-age=3600"})
         if remote:
             raise HTTPException(status_code=502, detail="Remote media could not be loaded")
         raise HTTPException(status_code=404, detail="No media available")

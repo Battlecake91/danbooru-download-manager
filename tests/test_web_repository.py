@@ -4,7 +4,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.core.database import Database
-from app.web.repository import SORT_SQL, build_post_filter, list_posts, matching_post_ids, post_detail, resolve_media_path
+from app.web.repository import (
+    SORT_SQL,
+    build_post_filter,
+    list_posts,
+    matching_post_ids,
+    media_post_data,
+    post_detail,
+    resolve_media_path,
+)
 from app.web.runtime import fetch_overrides_from_payload, open_database
 
 
@@ -190,6 +198,33 @@ def test_media_resolver_maps_windows_database_path_to_container_root(tmp_path: P
     )
 
     assert resolved == thumbnail.resolve()
+
+
+def test_media_lookup_uses_lightweight_row_and_direct_thumbnail_names(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "media-row.db")
+    active = tmp_path / "thumbnails" / "active"
+    active.mkdir(parents=True)
+    thumbnail = active / "3_large.jpg"
+    thumbnail.write_bytes(b"thumbnail")
+
+    try:
+        post = media_post_data(db, 3)
+    finally:
+        db.close()
+
+    assert post is not None
+    assert set(post) == {
+        "id",
+        "thumbnail_path",
+        "rejected_thumbnail_path",
+        "original_cache_path",
+        "original_path",
+        "final_file_path",
+        "preview_url",
+        "large_file_url",
+        "file_url",
+    }
+    assert resolve_media_path({"active_thumbnail_dir": active}, post, "thumbnail") == thumbnail.resolve()
 
 
 def test_viewer_does_not_treat_thumbnail_as_full_image(tmp_path: Path) -> None:

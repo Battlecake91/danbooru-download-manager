@@ -68,6 +68,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Right-click tag actions in the Viewer and Tags tab for filename and Fetch exclusions, manual scores, legacy scoring and all automatic scoring usage flags.
 - Post status, rating and category changes.
 - Category rules supply the same automatic suggestions as the desktop Preview; selecting another Viewer category stores a manual override.
+- Media endpoints use lightweight database lookups and browser caching so large Preview batches do not repeat full Viewer-detail work per thumbnail.
 - Tag aliases, manual scores and exclusion flags.
 - Category creation and deletion.
 - Basic configuration and database maintenance status.

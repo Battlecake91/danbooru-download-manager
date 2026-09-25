@@ -146,7 +146,7 @@ function card(post) {
   const preselection = Number(post.recommendation_score || 0);
   const recommendationDetails = [post.recommendation_positive, post.recommendation_negative].filter(Boolean).join(" | ");
   node.innerHTML = `<a href="/viewer/${post.id}?${params}" data-viewer="${post.id}">
-    <img class="post-image" src="${post.thumbnail_url}" loading="lazy" alt="Post ${post.id}">
+    <img class="post-image" src="${post.thumbnail_url}" loading="lazy" decoding="async" alt="Post ${post.id}">
     <div class="post-meta">
       <div class="post-title"><span>#${post.id}</span><span class="status">${esc(post.status)}</span></div>
       <div class="post-stats"><span>Score ${post.score ?? 0}</span><span>Fav ${post.fav_count ?? 0}</span><span>${post.stars == null ? "Unrated" : `${post.stars}/10`}</span></div>
@@ -317,7 +317,7 @@ async function openViewer(postId, push = true, historyMode = "append") {
     const activeStripIndex = stripItems.findIndex(item => Number(item.id) === Number(data.id));
     const strip = stripItems.map((item, index) => `<button class="viewer-strip-tile ${Number(item.id) === Number(data.id) ? "active" : ""}" data-strip-post="${item.id}" title="Open post ${item.id}">
       <span>${index < activeStripIndex ? "Previous" : index === activeStripIndex ? "Current" : "Next"}</span>
-      <img src="${item.thumbnail_url}" loading="eager" alt="Post ${item.id}">
+      <img src="${item.thumbnail_url}" loading="eager" decoding="async" alt="Post ${item.id}">
       <strong>#${item.id}</strong>
     </button>`).join("");
     const historyPreviousId = state.viewerHistoryIndex > 0 ? state.viewerHistory[state.viewerHistoryIndex - 1] : null;
