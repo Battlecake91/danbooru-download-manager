@@ -15,7 +15,10 @@ RUN pip install --no-cache-dir --upgrade -r requirements-web.txt
 COPY app ./app
 COPY web_main.py ./
 
-RUN mkdir -p /data /archive && useradd --system --uid 10001 --create-home manager && chown -R manager:manager /data /archive
+RUN mkdir -p /data /archive \
+    && groupadd --gid 1000 manager \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin manager \
+    && chown -R manager:manager /data /archive
 USER manager
 
 EXPOSE 8765

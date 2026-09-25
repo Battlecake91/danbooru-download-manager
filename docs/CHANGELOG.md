@@ -17,6 +17,7 @@ This changelog groups development into user-facing milestones instead of preserv
 ### Changed
 
 - Container runtime paths now override desktop-specific absolute paths stored in SQLite so one database can move between Windows and Linux mounts.
+- The Docker container now runs as UID/GID `1000:1000` by default, with optional `PUID` and `PGID` overrides in Compose.
 - The web Viewer now follows the compact working layout of the desktop Manager instead of using a generic details sidebar.
 - Web tag changes use the same database settings as the desktop application, including the filename-allowed display filter and visible scoring/usage markers.
 

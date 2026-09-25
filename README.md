@@ -133,6 +133,8 @@ The web Viewer mirrors the desktop Manager's working layout with typed tags on t
 docker compose up --build
 ```
 
+The container runs as `1000:1000` by default. Bind-mounted data directories must be writable by that UID/GID; `PUID` and `PGID` can override it when needed.
+
 ### Building releases
 
 Portable folder-style build for the current platform:

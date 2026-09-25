@@ -30,6 +30,14 @@ Compose mounts these directories:
 - `./danbooru_manager_data` as `/data` for SQLite, thumbnails and cached originals.
 - `./danbooru_saved` as `/archive` for saved files.
 
+The container runs as UID/GID `1000:1000` by default. Make sure both bind-mounted directories are writable by that account:
+
+```bash
+sudo chown -R 1000:1000 danbooru_manager_data danbooru_saved
+```
+
+For a server using another account, set `PUID` and `PGID` before starting Compose.
+
 It binds port 8765 to localhost only. Put an authenticated reverse proxy in front of the container before exposing it to another machine or the internet.
 
 ## Shared database
@@ -63,3 +71,4 @@ The existing-file importer remains desktop-only in this first web milestone. A l
 | `DANBOORU_DATA_DIR` | `./danbooru_manager_data` | Database and cache root |
 | `DANBOORU_DATABASE_FILE` | `<data>/danbooru_manager.db` | Optional explicit SQLite path |
 | `DANBOORU_OUTPUT_DIR` | `./danbooru_saved` | Saved-file root |
+| `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID used by Docker Compose |
