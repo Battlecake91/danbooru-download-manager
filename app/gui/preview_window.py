@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 import sqlite3
+import time
 import traceback
 from pathlib import Path
 from typing import Any
@@ -199,6 +200,9 @@ class PreviewWindow(QMainWindow):
         self._pending_viewer_query: str | None = None
         self._is_reloading = False
         self._reload_pending = False
+        self._preview_perf_metrics: dict[str, float] | None = None
+        self._preview_perf_total_started_at: float | None = None
+        self._preview_perf_card_started_at: float | None = None
         self._syncing_status_checkboxes = False
         self._fetch_running = False
         self._has_loaded_once = False
@@ -583,6 +587,8 @@ class PreviewWindow(QMainWindow):
             self.start_tag_suggestion_worker(pending)
 
     def on_grid_build_started(self, total: int) -> None:
+        if self._preview_perf_metrics is not None:
+            self._preview_perf_card_started_at = time.perf_counter()
         if total > 0:
             self.show_preview_loading(tr("preview.loading_thumbnails_progress", "Loading thumbnails… {current}/{total}", config=self.config, current=0, total=total))
             self.status_bar.showMessage(tr("preview.loading_cards_progress", "Loading preview cards… {current}/{total}", config=self.config, current=0, total=total))
@@ -596,8 +602,46 @@ class PreviewWindow(QMainWindow):
             QApplication.processEvents()
 
     def on_grid_build_finished(self, total: int) -> None:
+        if self._preview_perf_metrics is not None:
+            if self._preview_perf_card_started_at is not None:
+                self._preview_perf_metrics["card_render"] = (
+                    time.perf_counter() - self._preview_perf_card_started_at
+                ) * 1000.0
+            if self._preview_perf_total_started_at is not None:
+                self._preview_perf_metrics["total"] = (
+                    time.perf_counter() - self._preview_perf_total_started_at
+                ) * 1000.0
+            self.write_preview_performance_log(total, self._preview_perf_metrics)
+            self._preview_perf_metrics = None
+            self._preview_perf_total_started_at = None
+            self._preview_perf_card_started_at = None
         self.status_bar.showMessage(tr("preview.loaded_thumbnails", "Preview loaded: {total} thumbnail(s)", config=self.config, total=total), 5000)
         QTimer.singleShot(0, self.hide_preview_loading)
+
+    def write_preview_performance_log(self, shown: int, metrics: dict[str, float]) -> None:
+        ordered_keys = (
+            "total",
+            "count_query",
+            "navigation_query",
+            "candidate_query",
+            "enrich_rows",
+            "filter_sort_group",
+            "detail_query",
+            "grid_schedule",
+            "card_render",
+        )
+        parts = [f"shown={shown}"]
+        parts.extend(f"{key}={metrics[key]:.1f}ms" for key in ordered_keys if key in metrics)
+        line = "[PERF][preview] " + " ".join(parts)
+        try:
+            log_path = Path(str(self.config.get("work_dir", "."))) / "logs" / "viewer_performance.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{timestamp}] {line}\n")
+        except Exception:
+            pass
+        print(line, flush=True)
 
     @staticmethod
     def is_path_like_search_term(term: str) -> bool:
@@ -751,13 +795,18 @@ class PreviewWindow(QMainWindow):
     def enrich_preview_rows_with_categories(self, rows: list[Any]) -> list[dict[str, Any]]:
         self.load_category_rule_cache()
 
-        enriched: list[dict[str, Any]] = []
-
+        prepared: list[tuple[dict[str, Any], str, set[str]]] = []
         for row in rows:
             data = dict(row)
             tags_text = str(data.get("tags") or "")
             tags = {tag for tag in tags_text.split() if tag}
+            prepared.append((data, tags_text, tags))
 
+        recommendations = self.recommendation_engine.score_tag_sets(
+            tags for _data, _tags_text, tags in prepared
+        )
+        enriched: list[dict[str, Any]] = []
+        for (data, tags_text, _tags), recommendation in zip(prepared, recommendations):
             assigned_category = data.get("assigned_category_name")
             assigned_source = data.get("assigned_category_source")
 
@@ -768,7 +817,6 @@ class PreviewWindow(QMainWindow):
                 data["preview_category_name"] = self.suggest_category_from_tags(tags_text)
                 data["preview_category_source"] = "auto"
 
-            recommendation = self.recommendation_engine.score_tags(tags)
             data["local_score"] = recommendation.score
             data["recommendation_score"] = recommendation.score
             data["recommendation_positive"] = ", ".join(recommendation.positive)
@@ -1083,6 +1131,10 @@ class PreviewWindow(QMainWindow):
 
         self.reload_timer.stop()
         self._is_reloading = True
+        perf_enabled = bool(((self.config.get("viewer", {}) or {}).get("performance", {}) or {}).get("enabled", False))
+        self._preview_perf_metrics = {} if perf_enabled else None
+        self._preview_perf_total_started_at = time.perf_counter() if perf_enabled else None
+        self._preview_perf_card_started_at = None
         self.show_preview_loading(tr("preview.loading", "Loading preview…", config=self.config))
         self.status_bar.showMessage(tr("preview.loading", "Loading preview…", config=self.config))
         QApplication.processEvents()
@@ -1095,10 +1147,12 @@ class PreviewWindow(QMainWindow):
             sort_key = self.selected_sort_key()
             self.current_limit = int(self.limit_spin.value())
 
+            started_at = time.perf_counter()
             base_total = self.count_preview_posts_by_statuses(
                 statuses=statuses,
                 text_filter=text_filter,
             )
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "count_query", started_at)
 
             python_filtered_or_sorted = (
                 category_filter != "__all__"
@@ -1116,6 +1170,7 @@ class PreviewWindow(QMainWindow):
             else:
                 internal_limit = self.current_limit
 
+            started_at = time.perf_counter()
             navigation_rows = self.fetch_preview_navigation_rows(
                 statuses=statuses,
                 text_filter=text_filter,
@@ -1123,7 +1178,9 @@ class PreviewWindow(QMainWindow):
                 offset=self.current_offset,
                 sort_key=sort_key,
             )
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "navigation_query", started_at)
 
+            started_at = time.perf_counter()
             if python_filtered_or_sorted:
                 candidates = self.fetch_preview_analysis_rows(
                     [int(row["id"]) for row in navigation_rows]
@@ -1132,8 +1189,12 @@ class PreviewWindow(QMainWindow):
                 candidates = self.fetch_preview_detail_rows(
                     [int(row["id"]) for row in navigation_rows]
                 )
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "candidate_query", started_at)
 
+            started_at = time.perf_counter()
             enriched = self.enrich_preview_rows_with_categories(candidates)
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "enrich_rows", started_at)
+            started_at = time.perf_counter()
             filtered = [
                 row
                 for row in enriched
@@ -1142,8 +1203,10 @@ class PreviewWindow(QMainWindow):
             ]
             filtered = self.sort_preview_rows_in_python(filtered, sort_key)
             filtered = self.group_related_preview_rows(filtered)
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "filter_sort_group", started_at)
 
             selected = filtered[: self.current_limit]
+            started_at = time.perf_counter()
             if python_filtered_or_sorted:
                 details = self.fetch_preview_detail_rows([int(row["id"]) for row in selected])
                 details_by_id = {int(row["id"]): dict(row) for row in details}
@@ -1154,12 +1217,15 @@ class PreviewWindow(QMainWindow):
                     posts.append(detail)
             else:
                 posts = selected
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "detail_query", started_at)
             total_filtered = len(filtered) if python_filtered_or_sorted else base_total
             total_suffix = ""
             if python_filtered_or_sorted and base_total > internal_limit:
                 total_suffix = "+"
 
+            started_at = time.perf_counter()
             self.grid.set_posts(posts)
+            PreviewWindow.viewer_open_perf_add(self._preview_perf_metrics, "grid_schedule", started_at)
             self._has_loaded_once = True
             self._filters_dirty = False
 
@@ -1175,6 +1241,14 @@ class PreviewWindow(QMainWindow):
             else:
                 self.hide_preview_loading()
                 self.status_bar.showMessage(tr("preview.loaded_no_hits", "Preview loaded: no hits", config=self.config), 5000)
+                if self._preview_perf_metrics is not None:
+                    if self._preview_perf_total_started_at is not None:
+                        self._preview_perf_metrics["total"] = (
+                            time.perf_counter() - self._preview_perf_total_started_at
+                        ) * 1000.0
+                    self.write_preview_performance_log(0, self._preview_perf_metrics)
+                    self._preview_perf_metrics = None
+                    self._preview_perf_total_started_at = None
 
         except sqlite3.OperationalError as exc:
             if "database is locked" in str(exc).lower() or "database table is locked" in str(exc).lower():
@@ -1726,6 +1800,9 @@ class PreviewWindow(QMainWindow):
 
     def open_viewer(self, post_id: int) -> None:
         post_id = int(post_id)
+        perf_enabled = bool(((self.config.get("viewer", {}) or {}).get("performance", {}) or {}).get("enabled", False))
+        metrics: dict[str, float] | None = {} if perf_enabled else None
+        total_started_at = time.perf_counter()
 
         existing = self.viewer_windows_by_post_id.get(post_id)
         if existing is not None and existing.isVisible():
@@ -1737,10 +1814,15 @@ class PreviewWindow(QMainWindow):
             tr("preview.viewer_loading_all", "Preparing all matching posts for the viewer…", config=self.config)
         )
         QApplication.processEvents()
-        post_ids = self.all_matching_viewer_post_ids()
+        started_at = time.perf_counter()
+        post_ids = self.all_matching_viewer_post_ids(metrics)
+        self.viewer_open_perf_add(metrics, "matching_posts", started_at)
         if post_id not in post_ids:
             post_ids = self.grid.visible_post_ids()
+
+        started_at = time.perf_counter()
         viewer = ImageViewerWindow(self.config, self.db, post_ids, post_id)
+        self.viewer_open_perf_add(metrics, "viewer_init", started_at)
         viewer.status_changed.connect(self.on_status_changed)
         viewer.query_requested.connect(self.schedule_viewer_query)
         viewer.destroyed.connect(lambda *_args, pid=post_id: self.remove_viewer(pid))
@@ -1750,13 +1832,51 @@ class PreviewWindow(QMainWindow):
         viewer.resize(1500, 950)
         viewer.show()
 
-    def all_matching_viewer_post_ids(self) -> list[int]:
+        if metrics is not None:
+            metrics["total"] = (time.perf_counter() - total_started_at) * 1000.0
+            self.write_viewer_open_performance_log(post_id, len(post_ids), metrics)
+
+    @staticmethod
+    def viewer_open_perf_add(metrics: dict[str, float] | None, key: str, started_at: float) -> None:
+        if metrics is not None:
+            metrics[key] = metrics.get(key, 0.0) + ((time.perf_counter() - started_at) * 1000.0)
+
+    def write_viewer_open_performance_log(
+        self,
+        post_id: int,
+        result_count: int,
+        metrics: dict[str, float],
+    ) -> None:
+        ordered_keys = (
+            "total",
+            "matching_posts",
+            "navigation_query",
+            "analysis_query",
+            "enrich_rows",
+            "filter_sort_group",
+            "viewer_init",
+        )
+        parts = [f"post={post_id}", f"results={result_count}"]
+        parts.extend(f"{key}={metrics[key]:.1f}ms" for key in ordered_keys if key in metrics)
+        line = "[PERF][viewer-open] " + " ".join(parts)
+        try:
+            log_path = Path(str(self.config.get("work_dir", "."))) / "logs" / "viewer_performance.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{timestamp}] {line}\n")
+        except Exception:
+            pass
+        print(line, flush=True)
+
+    def all_matching_viewer_post_ids(self, metrics: dict[str, float] | None = None) -> list[int]:
         statuses = self.selected_statuses()
         text_filter = self.current_search_text()
         category_filter = self.selected_category_filter()
         recommendation_minimum = self.selected_recommendation_minimum()
         sort_key = self.selected_sort_key()
 
+        started_at = time.perf_counter()
         navigation_rows = self.fetch_preview_navigation_rows(
             statuses=statuses,
             text_filter=text_filter,
@@ -1764,6 +1884,7 @@ class PreviewWindow(QMainWindow):
             offset=0,
             sort_key=sort_key,
         )
+        PreviewWindow.viewer_open_perf_add(metrics, "navigation_query", started_at)
         if not navigation_rows:
             return []
 
@@ -1773,13 +1894,20 @@ class PreviewWindow(QMainWindow):
             or sort_key in {"category", "recommendation_desc", "recommendation_asc"}
         )
         if not python_filtered_or_sorted:
+            started_at = time.perf_counter()
             grouped = self.group_related_preview_rows([dict(row) for row in navigation_rows])
+            PreviewWindow.viewer_open_perf_add(metrics, "filter_sort_group", started_at)
             return [int(row["id"]) for row in grouped]
 
+        started_at = time.perf_counter()
         candidates = self.fetch_preview_analysis_rows(
             [int(row["id"]) for row in navigation_rows]
         )
+        PreviewWindow.viewer_open_perf_add(metrics, "analysis_query", started_at)
+        started_at = time.perf_counter()
         enriched = self.enrich_preview_rows_with_categories(candidates)
+        PreviewWindow.viewer_open_perf_add(metrics, "enrich_rows", started_at)
+        started_at = time.perf_counter()
         filtered = [
             row
             for row in enriched
@@ -1788,6 +1916,7 @@ class PreviewWindow(QMainWindow):
         ]
         ordered = self.sort_preview_rows_in_python(filtered, sort_key)
         grouped = self.group_related_preview_rows(ordered)
+        PreviewWindow.viewer_open_perf_add(metrics, "filter_sort_group", started_at)
         return [int(row["id"]) for row in grouped]
 
     def remove_viewer(self, post_id: int) -> None:

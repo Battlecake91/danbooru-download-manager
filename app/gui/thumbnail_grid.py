@@ -239,6 +239,7 @@ class ThumbnailGrid(QScrollArea):
         self._restore_current_id: int | None = None
         self._build_generation = 0
         self.batch_size = int(gui_config.get("preview_render_batch_size", 16))
+        self.initial_batch_size = int(gui_config.get("preview_initial_render_batch_size", 8))
 
         self.selected_ids: set[int] = set()
         self.current_index: int = -1
@@ -458,6 +459,8 @@ class ThumbnailGrid(QScrollArea):
 
         self.hide_empty_message()
         batch_size = max(1, int(self.batch_size))
+        if not self.items:
+            batch_size = min(batch_size, max(1, int(self.initial_batch_size)))
         batch = self._pending_rows[:batch_size]
         self._pending_rows = self._pending_rows[batch_size:]
 

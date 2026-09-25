@@ -40,7 +40,27 @@ class RecommendationEngine:
         if not clean_tags:
             return RecommendationScore(score=0.0, positive=[], negative=[], ignored=[], used_count=0)
 
-        metadata = self.db.fetch_tag_display_metadata(clean_tags)
+        metadata = self.db.fetch_recommendation_metadata(clean_tags)
+        return self._score_clean_tags(clean_tags, metadata)
+
+    def score_tag_sets(self, tag_sets: Iterable[Iterable[str]]) -> list[RecommendationScore]:
+        """Score many posts after loading shared tag metadata only once."""
+        clean_sets = [
+            sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+            for tags in tag_sets
+        ]
+        all_tags = {tag for tags in clean_sets for tag in tags}
+        metadata = self.db.fetch_recommendation_metadata(all_tags)
+        return [self._score_clean_tags(tags, metadata) for tags in clean_sets]
+
+    def _score_clean_tags(
+        self,
+        clean_tags: Iterable[str],
+        metadata: dict[str, dict[str, Any]],
+    ) -> RecommendationScore:
+        clean_tags = list(clean_tags)
+        if not clean_tags:
+            return RecommendationScore(score=0.0, positive=[], negative=[], ignored=[], used_count=0)
 
         # Avoid counting ten color variants as ten independent signals once they
         # collapse to the same canonical tag. Keep the strongest signal per

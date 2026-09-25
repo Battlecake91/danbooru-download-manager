@@ -35,6 +35,14 @@ If a performance test fails, inspect the failure message first. Query-plan failu
 
 These tests are not a replacement for profiling a very large personal collection, but they give the project a repeatable tripwire for the DB paths that have historically hurt responsiveness.
 
+With Viewer performance logging enabled, `viewer_performance.log` contains three complementary records:
+
+- `[PERF][viewer-open]` measures result construction and Viewer initialization from the Preview card click until the window is shown.
+- `[PERF][viewer]` measures loading and rendering an individual post inside the Viewer.
+- `[PERF][preview]` measures Preview queries, filtering, detail hydration and card rendering.
+
+This separation is important because a delay before the Viewer constructor starts cannot appear in the per-post `[PERF][viewer]` line.
+
 ---
 
 ## Manual validation notes

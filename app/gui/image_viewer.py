@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from app.core.archive_paths import resolve_archive_path
 from app.core.category_engine import CategoryMatch
 from app.core.database import Database
+from app.core.db.async_writer import enqueue_app_setting
 from app.services.download_service import DownloadService
 from app.danbooru.api import DanbooruApi
 from app.gui.icon_utils import ensure_app_icon
@@ -402,6 +403,7 @@ class ImageViewerWindow(QMainWindow):
                 path=self.viewer_perf_log_path,
             )
         )
+        self.performance_checkbox.toggled.connect(self.on_performance_logging_toggled)
         self.toolbar.addWidget(self.performance_checkbox)
 
         self.toolbar.addSeparator()
@@ -744,6 +746,16 @@ class ImageViewerWindow(QMainWindow):
         if checkbox is not None:
             return bool(checkbox.isChecked())
         return bool(self.viewer_perf_config.get("enabled", False))
+
+    def on_performance_logging_toggled(self, enabled: bool) -> None:
+        viewer_config = self.config.setdefault("viewer", {})
+        performance_config = viewer_config.setdefault("performance", {})
+        performance_config["enabled"] = bool(enabled)
+        self.viewer_perf_config = performance_config
+        try:
+            enqueue_app_setting(Path(self.db.path), "viewer.performance.enabled", bool(enabled))
+        except Exception:
+            pass
 
     def perf_add(self, metrics: dict[str, float] | None, key: str, started_at: float) -> None:
         if metrics is not None:

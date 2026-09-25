@@ -422,6 +422,46 @@ class DatabaseTagMixin:
             }
         return result
 
+    def fetch_recommendation_metadata(self, tags: Iterable[str]) -> dict[str, dict[str, Any]]:
+        """Load only the fields needed to score many posts in one pass."""
+        clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+        if not clean_tags:
+            return {}
+
+        aliases = self.list_tag_alias_map()
+        rows_by_tag: dict[str, sqlite3.Row] = {}
+        for start in range(0, len(clean_tags), 900):
+            chunk = clean_tags[start : start + 900]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.execute(
+                f"""
+                SELECT
+                    tag,
+                    manual_score,
+                    COALESCE(computed_score, 0) AS computed_score,
+                    COALESCE(scoring_excluded, 0) AS scoring_excluded,
+                    COALESCE(ignore_recommendation_score, 0) AS ignore_recommendation_score
+                FROM tag_scores
+                WHERE tag IN ({placeholders})
+                """,
+                chunk,
+            ).fetchall()
+            rows_by_tag.update({str(row["tag"] or ""): row for row in rows})
+
+        result: dict[str, dict[str, Any]] = {}
+        for tag in clean_tags:
+            row = rows_by_tag.get(tag)
+            scoring_excluded = bool(row["scoring_excluded"]) if row is not None else False
+            manual_score = row["manual_score"] if row is not None else None
+            computed_score = float(row["computed_score"] or 0.0) if row is not None else 0.0
+            result[tag] = {
+                "canonical_tag": canonicalize_tag(tag, aliases),
+                "score": 0.0 if scoring_excluded else (manual_score if manual_score is not None else computed_score),
+                "scoring_excluded": scoring_excluded,
+                "ignore_recommendation_score": bool(row["ignore_recommendation_score"]) if row is not None else False,
+            }
+        return result
+
     def fetch_tag_metadata(self, tags: Iterable[str]) -> dict[str, dict[str, Any]]:
         clean_tags = sorted({str(tag).strip() for tag in tags if str(tag).strip()})
         if not clean_tags:

@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from app.gui.preview_window import PreviewWindow
+from app.core.recommendation_engine import RecommendationEngine
 from tests.helpers import assert_plan_uses_index, explain_plan, open_temp_database, seed_posts_with_tags, timed
 
 
@@ -89,6 +90,18 @@ class DatabasePerformanceTests(unittest.TestCase):
         self.assertTrue(rows[0]["tags"])
         self.assertTrue(rows[0]["tags_general"])
         self.assertLess(elapsed, 0.25, msg=f"100 preview details took {elapsed:.3f}s")
+
+    def test_bulk_recommendation_scoring_stays_bounded(self) -> None:
+        engine = RecommendationEngine(self.db)
+        tag_sets = [
+            {f"tag_{(post_id + index) % 500:03d}" for index in range(5)}
+            for post_id in range(1, 3001)
+        ]
+
+        scores, elapsed = timed(lambda: engine.score_tag_sets(tag_sets))
+
+        self.assertEqual(len(scores), 3000)
+        self.assertLess(elapsed, 0.35, msg=f"bulk recommendation scoring took {elapsed:.3f}s")
 
     def test_exact_tag_preview_search_uses_post_tag_index(self) -> None:
         where_sql, parameters = self.db._build_preview_where(  # noqa: SLF001

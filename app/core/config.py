@@ -60,6 +60,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "preview_strip_previous_count": 3,
         "preview_strip_next_count": 3,
         "preview_strip_thumbnail_size": 96,
+        "performance": {
+            "enabled": False,
+            "threshold_ms": 0,
+        },
     },
     "gui": {
         "thumbnail_size": 340,
@@ -68,7 +72,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "thumbnail_size_step": 20,
         "card_width_extra": 100,
         "preview_sample_post_id": 11199825,
-        "preview_render_batch_size": 40,
+        "preview_render_batch_size": 16,
+        "preview_initial_render_batch_size": 8,
         "preview_limit": 100,
         "status_colors": {
             "new": "#666666",

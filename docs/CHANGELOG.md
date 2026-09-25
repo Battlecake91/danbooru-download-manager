@@ -2,7 +2,23 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.204 - Current release
+## 1.3.205 - Current release
+
+### Fixed
+
+- Removed the per-post recommendation metadata query loop used while opening the Viewer with category or recommendation filtering. Shared tag metadata is now loaded in batches and reused across the complete result set.
+- Preview rendering now exposes a small first batch immediately even when an older configuration still specifies a large general render batch.
+
+### Changed
+
+- Performance logging now records the complete Preview-to-Viewer opening path as `[PERF][viewer-open]` and Preview preparation/rendering as `[PERF][preview]`.
+- Added a bulk recommendation performance regression test covering thousands of posts.
+
+See [`RELEASE_NOTES_1.3.205.md`](RELEASE_NOTES_1.3.205.md) for the complete release summary.
+
+---
+
+## 1.3.204
 
 ### Changed
 
