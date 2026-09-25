@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Danbooru Manager</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">Danbooru Manager <span id="version"></span></div>
+    <div id="global-status" class="global-status">Ready</div>
+  </header>
+
+  <nav id="tabs" class="tabs" aria-label="Main navigation">
+    <button data-tab="fetch">Fetch</button>
+    <button data-tab="preview" class="active">Preview</button>
+    <button data-tab="import">Importer</button>
+    <button data-tab="tags">Tags</button>
+    <button data-tab="categories">Categories</button>
+    <button data-tab="config">Configuration</button>
+    <button data-tab="maintenance">Maintenance</button>
+    <button data-tab="help">Help</button>
+  </nav>
+
+  <main id="app">
+    <section id="view-fetch" class="view hidden">
+      <div class="toolbar section-toolbar">
+        <label class="wide">Query <input id="fetch-query" value="order:id_desc"></label>
+        <label>Per query <input id="fetch-per-query" type="number" min="1" value="200"></label>
+        <label>Total <input id="fetch-total" type="number" min="1" value="500"></label>
+        <label>Known streak <input id="fetch-known" type="number" min="0" value="0"></label>
+        <button id="fetch-start" class="primary">Start fetch</button>
+        <button id="fetch-cancel" class="danger" disabled>Cancel</button>
+      </div>
+      <div class="split-band">
+        <section>
+          <h2>Current run</h2>
+          <dl id="fetch-state" class="metrics"></dl>
+          <pre id="fetch-result" class="log-output"></pre>
+        </section>
+        <section>
+          <h2>Automatic fetch</h2>
+          <form id="schedule-form" class="stack-form">
+            <label class="toggle"><input id="schedule-enabled" type="checkbox"> Enabled</label>
+            <label>Interval in hours <input id="schedule-hours" type="number" min="0.25" step="0.25" value="6"></label>
+            <label>Preview load batch <input id="schedule-batch" type="number" min="8" max="200" value="32"></label>
+            <button type="submit">Save schedule</button>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <section id="view-preview" class="view">
+      <div class="toolbar sticky-toolbar">
+        <label>Status
+          <select id="preview-status">
+            <option value="worklist">Worklist</option><option value="all">All</option>
+            <option value="new">New</option><option value="potential">Potential</option>
+            <option value="saved">Saved</option><option value="rejected">Rejected</option>
+            <option value="already_known">Known</option>
+          </select>
+        </label>
+        <label class="wide">Search <input id="preview-search" placeholder="tags, post ID, -excluded_tag"></label>
+        <label>Sort
+          <select id="preview-sort">
+            <option value="id_desc">Newest</option><option value="id_asc">Oldest</option>
+            <option value="score_desc">Score</option><option value="favorites_desc">Favorites</option>
+            <option value="local_score_desc">Recommendation</option>
+          </select>
+        </label>
+        <label>Load <input id="preview-batch" type="number" min="8" max="200" value="32"></label>
+        <button id="preview-apply" class="primary">Apply</button>
+        <span id="preview-count" class="counter"></span>
+      </div>
+      <div id="post-grid" class="post-grid"></div>
+      <div id="preview-sentinel" class="sentinel">Loading...</div>
+    </section>
+
+    <section id="view-import" class="view hidden empty-state">
+      <h2>Importer</h2>
+      <p>The web importer will work with files mounted on the server. Until that workflow is added, importing remains available in the desktop application.</p>
+    </section>
+
+    <section id="view-tags" class="view hidden">
+      <div class="toolbar section-toolbar">
+        <label class="wide">Search <input id="tag-search"></label>
+        <label>Type <select id="tag-type"><option value="all">All</option><option>general</option><option>artist</option><option>copyright</option><option>character</option><option>meta</option></select></label>
+        <button id="tag-load" class="primary">Load</button>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Tag</th><th>Type</th><th>Posts</th><th>Average</th><th>Manual</th><th>Alias</th><th>Score off</th><th>Fetch off</th><th></th></tr></thead><tbody id="tag-rows"></tbody></table></div>
+    </section>
+
+    <section id="view-categories" class="view hidden">
+      <form id="category-form" class="toolbar section-toolbar">
+        <label>Name <input id="category-name" required></label>
+        <label>Folder <input id="category-folder"></label>
+        <button type="submit" class="primary">Add category</button>
+      </form>
+      <div id="category-list" class="list-panel"></div>
+    </section>
+
+    <section id="view-config" class="view hidden narrow-view">
+      <h2>Configuration</h2>
+      <form id="config-form" class="stack-form"></form>
+    </section>
+
+    <section id="view-maintenance" class="view hidden">
+      <div class="toolbar section-toolbar"><button id="maintenance-refresh" class="primary">Refresh</button><button id="maintenance-checkpoint">Checkpoint WAL</button></div>
+      <div id="maintenance-report" class="metric-grid"></div>
+    </section>
+
+    <section id="view-help" class="view hidden narrow-view">
+      <h2>Danbooru Download Manager Web</h2>
+      <dl class="metrics"><dt>API</dt><dd><a href="/docs">OpenAPI</a></dd><dt>Desktop</dt><dd><code>python main.py</code></dd><dt>Web</dt><dd><code>python web_main.py</code></dd></dl>
+    </section>
+
+    <section id="viewer" class="viewer hidden"></section>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

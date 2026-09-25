@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+build
+dist
+release
+danbooru_manager_data
+danbooru_saved
+__pycache__
+*.pyc
+*.pyo
+*.db
+*.db-wal
+*.db-shm

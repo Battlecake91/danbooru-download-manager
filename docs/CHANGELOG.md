@@ -2,6 +2,24 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
+## Unreleased
+
+### Added
+
+- Added an independent FastAPI web application with its own source entry point and dependency set; the desktop application remains a separate selectable runtime.
+- Added a Docker image and Compose setup with persistent SQLite/cache and archive mounts.
+- Added manual and scheduled Fetch execution, cooperative cancellation and shared consecutive-known-post stopping.
+- Added an endless-loading Preview feed with configurable batches and a dedicated Viewer route that navigates the complete active result set.
+- Added the desktop-style web Viewer layout with typed tag columns, tag scoring metadata, status actions, star rating, category assignment and a clickable previous/current/next thumbnail strip.
+- Added desktop-style tag context actions to the web Viewer and Tags tab for filename/fetch exclusions, manual and legacy scores, category influence, preselection and LLM usage.
+- Added initial web tabs and APIs for tags, categories, configuration and maintenance.
+
+### Changed
+
+- Container runtime paths now override desktop-specific absolute paths stored in SQLite so one database can move between Windows and Linux mounts.
+- The web Viewer now follows the compact working layout of the desktop Manager instead of using a generic details sidebar.
+- Web tag changes use the same database settings as the desktop application, including the filename-allowed display filter and visible scoring/usage markers.
+
 ## 1.3.205 - Current release
 
 ### Fixed

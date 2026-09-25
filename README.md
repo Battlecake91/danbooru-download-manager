@@ -1,7 +1,7 @@
 # Danbooru Download Manager
 
 > **Current release:** `1.3.205`
-> Version `1.3.205` removes the remaining per-post metadata loop from large filtered Viewer result sets and expands end-to-end performance diagnostics. The planned web application is not part of this release.
+> Version `1.3.205` removes the remaining per-post metadata loop from large filtered Viewer result sets and expands end-to-end performance diagnostics. Development after this release includes the first independent Docker web application.
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
 Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
@@ -112,6 +112,25 @@ Install dependencies first:
 
 ```bash
 pip install -r requirements.txt
+```
+
+### Web application from source
+
+The web interface is an independent runtime, not a webserver embedded into the desktop application:
+
+```bash
+pip install -r requirements-web.txt
+python web_main.py
+```
+
+Open `http://127.0.0.1:8765`. See [Web application](docs/WEB_APP.md) for Docker, volume and shared-database details.
+
+The web Viewer mirrors the desktop Manager's working layout with typed tags on the right, a nearby-post thumbnail strip below the image and controls for status, rating and category. Right-clicking a tag opens the shared filename-exclusion and scoring/usage actions. Its navigation still covers the complete active filter result rather than only the currently loaded Preview batch.
+
+### Docker web application
+
+```bash
+docker compose up --build
 ```
 
 ### Building releases

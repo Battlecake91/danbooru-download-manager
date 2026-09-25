@@ -1,0 +1,15 @@
+services:
+  danbooru-manager-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: danbooru-manager-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      DANBOORU_DATA_DIR: /data
+      DANBOORU_OUTPUT_DIR: /archive
+    volumes:
+      - ./danbooru_manager_data:/data
+      - ./danbooru_saved:/archive

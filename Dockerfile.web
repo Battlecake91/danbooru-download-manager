@@ -1,0 +1,24 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DANBOORU_WEB_HOST=0.0.0.0 \
+    DANBOORU_WEB_PORT=8765 \
+    DANBOORU_DATA_DIR=/data \
+    DANBOORU_OUTPUT_DIR=/archive
+
+WORKDIR /app
+
+COPY requirements-web.txt ./
+RUN pip install --no-cache-dir --upgrade -r requirements-web.txt
+
+COPY app ./app
+COPY web_main.py ./
+
+RUN mkdir -p /data /archive && useradd --system --uid 10001 --create-home manager && chown -R manager:manager /data /archive
+USER manager
+
+EXPOSE 8765
+VOLUME ["/data", "/archive"]
+
+CMD ["python", "web_main.py"]
