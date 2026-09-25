@@ -243,16 +243,17 @@ class FetchScheduler:
         return {
             "enabled": bool(values.get("web.auto_fetch_enabled", False)),
             "interval_hours": max(0.25, float(values.get("web.fetch_interval_hours", 6) or 6)),
-            "batch_size": max(8, min(200, int(values.get("web.preview_batch_size", 32) or 32))),
+            "batch_size": max(50, min(200, int(values.get("web.preview_batch_size", 75) or 75))),
             "last_started_at": values.get("web.fetch_last_started_at"),
         }
 
-    def update(self, *, enabled: bool, interval_hours: float, batch_size: int) -> dict[str, Any]:
+    def update(self, *, enabled: bool, interval_hours: float, batch_size: int | None = None) -> dict[str, Any]:
         db = open_database(self.config)
         try:
             db.set_app_setting("web.auto_fetch_enabled", str(bool(enabled)).lower())
             db.set_app_setting("web.fetch_interval_hours", str(max(0.25, float(interval_hours))))
-            db.set_app_setting("web.preview_batch_size", str(max(8, min(200, int(batch_size)))))
+            if batch_size is not None:
+                db.set_app_setting("web.preview_batch_size", str(max(50, min(200, int(batch_size)))))
         finally:
             db.close()
         return self.settings()

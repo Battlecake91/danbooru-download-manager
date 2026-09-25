@@ -16,6 +16,8 @@ This changelog groups development into user-facing milestones instead of preserv
 - Added initial web tabs and APIs for tags, categories, configuration and maintenance.
 - Added the desktop Viewer keyboard shortcuts to the web Viewer, including real final saving with `F` through the shared archive service.
 - Added a persistent web Viewer option to advance to the next filtered post after any successful status change.
+- Added the complete desktop Preview sort set to the web app, including live Preselection best/worst ordering and a Best/Worst/Average summary.
+- Added persisted web Preview controls for 50-200 posts per endless-scroll batch and 120-600 px thumbnail sizing.
 
 ### Changed
 
@@ -23,6 +25,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - The Docker container now runs as UID/GID `1000:1000` by default, with optional `PUID` and `PGID` overrides in Compose.
 - The web Viewer now follows the compact working layout of the desktop Manager instead of using a generic details sidebar.
 - Web tag changes use the same database settings as the desktop application, including the filename-allowed display filter and visible scoring/usage markers.
+- Renamed the ambiguous web Recommendation sort to Preselection and calculate it from current tag scores just like the desktop Manager.
 
 ### Fixed
 

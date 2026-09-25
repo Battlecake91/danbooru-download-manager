@@ -4,15 +4,34 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from app.core.database import Database
+from app.core.recommendation_engine import RecommendationEngine, RecommendationScore
 
 
 SORT_SQL = {
     "id_desc": "p.id DESC",
     "id_asc": "p.id ASC",
-    "score_desc": "COALESCE(p.score, 0) DESC, p.id DESC",
+    "score_desc": "COALESCE(p.score, -999999) DESC, p.id DESC",
+    "score_asc": "COALESCE(p.score, 999999) ASC, p.id DESC",
     "favorites_desc": "COALESCE(p.fav_count, 0) DESC, p.id DESC",
-    "local_score_desc": "COALESCE(p.local_score, 0) DESC, p.id DESC",
+    "llm_score_desc": "COALESCE(p.llm_score, -999999) DESC, p.id DESC",
+    "llm_score_asc": "COALESCE(p.llm_score, 999999) ASC, p.id DESC",
+    "personal_desc": "COALESCE(pr.stars, -1) DESC, p.id DESC",
+    "personal_asc": "COALESCE(pr.stars, 999) ASC, p.id DESC",
+    "rating": "CASE p.rating WHEN 'g' THEN 0 WHEN 's' THEN 1 WHEN 'q' THEN 2 WHEN 'e' THEN 3 ELSE 9 END ASC, p.id DESC",
+    "status": "CASE p.status WHEN 'new' THEN 0 WHEN 'potential' THEN 1 WHEN 'saved' THEN 2 WHEN 'already_known' THEN 3 WHEN 'rejected' THEN 4 ELSE 9 END ASC, p.id DESC",
+    "category": "COALESCE(c.name, '_unmatched') COLLATE NOCASE ASC, p.id DESC",
+    "saved_desc": "COALESCE(p.saved_at, '') DESC, p.id DESC",
+    "seen_desc": "COALESCE(p.last_seen_at, '') DESC, p.id DESC",
+    "resolution_desc": "COALESCE(p.image_width, 0) * COALESCE(p.image_height, 0) DESC, p.id DESC",
+    "filesize_desc": "COALESCE(p.file_size, 0) DESC, p.id DESC",
 }
+
+RECOMMENDATION_SORTS = {"recommendation_desc", "recommendation_asc", "local_score_desc"}
+POST_JOINS = """
+LEFT JOIN post_reviews pr ON pr.post_id = p.id
+LEFT JOIN post_categories pc ON pc.post_id = p.id
+LEFT JOIN categories c ON c.id = pc.category_id
+"""
 
 
 def row_dict(row: Any) -> dict[str, Any]:
@@ -49,6 +68,89 @@ def build_post_filter(status: str, search: str) -> tuple[str, list[Any]]:
     return ("WHERE " + " AND ".join(parts), params) if parts else ("", params)
 
 
+def recommendation_results(
+    db: Database,
+    where_sql: str,
+    params: list[Any],
+) -> dict[int, RecommendationScore]:
+    rows = db.execute(
+        f"""
+        SELECT p.id,
+               (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
+        FROM posts p
+        {where_sql}
+        ORDER BY p.id DESC
+        """,
+        params,
+    ).fetchall()
+    tag_sets = [str(row["tags"] or "").split() for row in rows]
+    scores = RecommendationEngine(db).score_tag_sets(tag_sets)
+    return {int(row["id"]): score for row, score in zip(rows, scores)}
+
+
+def recommendation_summary(results: dict[int, RecommendationScore]) -> dict[str, float] | None:
+    if not results:
+        return None
+    scores = [float(result.score) for result in results.values()]
+    return {
+        "best": max(scores),
+        "worst": min(scores),
+        "average": round(sum(scores) / len(scores), 2),
+    }
+
+
+def recommendation_order(results: dict[int, RecommendationScore], sort: str) -> list[int]:
+    ascending = sort == "recommendation_asc"
+    if ascending:
+        return sorted(results, key=lambda post_id: (results[post_id].score, -post_id))
+    return sorted(results, key=lambda post_id: (-results[post_id].score, -post_id))
+
+
+def apply_recommendations(posts: list[dict[str, Any]], results: dict[int, RecommendationScore]) -> None:
+    for post in posts:
+        result = results.get(int(post["id"]))
+        if result is None:
+            continue
+        post["local_score"] = result.score
+        post["recommendation_score"] = result.score
+        post["recommendation_positive"] = ", ".join(result.positive)
+        post["recommendation_negative"] = ", ".join(result.negative)
+        post["recommendation_ignored_count"] = len(result.ignored)
+        post["recommendation_used_count"] = result.used_count
+
+
+def select_post_rows(
+    db: Database,
+    where_sql: str,
+    params: list[Any],
+    *,
+    order_sql: str,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    pagination = "" if limit is None else "LIMIT ? OFFSET ?"
+    query_params = params if limit is None else [*params, limit, offset]
+    rows = db.execute(
+        f"""
+        SELECT
+            p.id, p.rating, p.score, p.fav_count, p.image_width, p.image_height,
+            p.file_size, p.status, p.local_score, p.llm_score, p.final_score,
+            p.saved_at, p.last_seen_at, p.thumbnail_path, p.rejected_thumbnail_path,
+            p.preview_url, p.large_file_url, p.file_url, p.final_file_path,
+            pr.stars,
+            c.name AS category,
+            (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
+        FROM posts p
+        {POST_JOINS}
+        {where_sql}
+        ORDER BY {order_sql}
+        {pagination}
+        """,
+        query_params,
+    ).fetchall()
+    return [row_dict(row) for row in rows]
+
+
 def list_posts(
     db: Database,
     *,
@@ -59,28 +161,39 @@ def list_posts(
     limit: int,
 ) -> dict[str, Any]:
     where_sql, params = build_post_filter(status, search)
-    order_sql = SORT_SQL.get(sort, SORT_SQL["id_desc"])
     count_row = db.execute(f"SELECT COUNT(*) AS total FROM posts p {where_sql}", params).fetchone()
-    rows = db.execute(
-        f"""
-        SELECT
-            p.id, p.rating, p.score, p.fav_count, p.image_width, p.image_height,
-            p.status, p.local_score, p.thumbnail_path, p.rejected_thumbnail_path,
-            p.preview_url, p.large_file_url, p.file_url, p.final_file_path,
-            pr.stars,
-            c.name AS category,
-            (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
-        FROM posts p
-        LEFT JOIN post_reviews pr ON pr.post_id = p.id
-        LEFT JOIN post_categories pc ON pc.post_id = p.id
-        LEFT JOIN categories c ON c.id = pc.category_id
-        {where_sql}
-        ORDER BY {order_sql}
-        LIMIT ? OFFSET ?
-        """,
-        [*params, limit, offset],
-    ).fetchall()
-    posts = [row_dict(row) for row in rows]
+    all_recommendations: dict[int, RecommendationScore] | None = None
+    if sort in RECOMMENDATION_SORTS:
+        all_recommendations = recommendation_results(db, where_sql, params)
+        ordered_ids = recommendation_order(all_recommendations, "recommendation_asc" if sort == "recommendation_asc" else "recommendation_desc")
+        page_ids = ordered_ids[offset : offset + limit]
+        if page_ids:
+            placeholders = ", ".join("?" for _ in page_ids)
+            posts = select_post_rows(
+                db,
+                f"WHERE p.id IN ({placeholders})",
+                page_ids,
+                order_sql="p.id DESC",
+            )
+            positions = {post_id: index for index, post_id in enumerate(page_ids)}
+            posts.sort(key=lambda post: positions[int(post["id"])])
+        else:
+            posts = []
+    else:
+        order_sql = SORT_SQL.get(sort, SORT_SQL["id_desc"])
+        posts = select_post_rows(db, where_sql, params, order_sql=order_sql, limit=limit, offset=offset)
+
+    if all_recommendations is None and offset == 0:
+        all_recommendations = recommendation_results(db, where_sql, params)
+    page_recommendations = all_recommendations
+    if page_recommendations is None:
+        page_ids = [int(post["id"]) for post in posts]
+        if page_ids:
+            placeholders = ", ".join("?" for _ in page_ids)
+            page_recommendations = recommendation_results(db, f"WHERE p.id IN ({placeholders})", page_ids)
+        else:
+            page_recommendations = {}
+    apply_recommendations(posts, page_recommendations)
     for post in posts:
         post["thumbnail_url"] = f"/api/media/{post['id']}/thumbnail"
     total = int(count_row["total"] if count_row else 0)
@@ -90,13 +203,20 @@ def list_posts(
         "offset": offset,
         "limit": limit,
         "has_more": offset + len(posts) < total,
+        "preselection_summary": recommendation_summary(all_recommendations or {}) if offset == 0 else None,
     }
 
 
 def matching_post_ids(db: Database, *, status: str, search: str, sort: str) -> list[int]:
     where_sql, params = build_post_filter(status, search)
+    if sort in RECOMMENDATION_SORTS:
+        results = recommendation_results(db, where_sql, params)
+        return recommendation_order(results, "recommendation_asc" if sort == "recommendation_asc" else "recommendation_desc")
     order_sql = SORT_SQL.get(sort, SORT_SQL["id_desc"])
-    rows = db.execute(f"SELECT p.id FROM posts p {where_sql} ORDER BY {order_sql}", params).fetchall()
+    rows = db.execute(
+        f"SELECT p.id FROM posts p {POST_JOINS} {where_sql} ORDER BY {order_sql}",
+        params,
+    ).fetchall()
     return [int(row["id"]) for row in rows]
 
 
@@ -143,6 +263,13 @@ def post_detail(
         "meta": [],
     }
     tag_names = [str(item["tag"]) for item in tag_rows]
+    recommendation = RecommendationEngine(db).score_tags(tag_names)
+    post["local_score"] = recommendation.score
+    post["recommendation_score"] = recommendation.score
+    post["recommendation_positive"] = ", ".join(recommendation.positive)
+    post["recommendation_negative"] = ", ".join(recommendation.negative)
+    post["recommendation_ignored_count"] = len(recommendation.ignored)
+    post["recommendation_used_count"] = recommendation.used_count
     tag_metadata = db.fetch_tag_display_metadata(tag_names)
     for item in tag_rows:
         tag = str(item["tag"])

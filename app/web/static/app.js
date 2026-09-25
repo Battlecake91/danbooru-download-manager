@@ -1,4 +1,4 @@
-const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 32, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
+const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -33,6 +33,29 @@ function queryString(extra = {}) {
   return new URLSearchParams({...queryState(), ...extra}).toString();
 }
 
+function signedScore(value) {
+  const score = Number(value || 0);
+  return `${score >= 0 ? "+" : ""}${score.toFixed(1)}`;
+}
+
+function applyPreviewThumbnailSize(size) {
+  state.thumbnailSize = Math.max(120, Math.min(600, Number(size) || 280));
+  document.documentElement.style.setProperty("--preview-thumbnail-size", `${state.thumbnailSize}px`);
+  $("#preview-thumbnail-size").value = state.thumbnailSize;
+}
+
+async function savePreviewSettings() {
+  state.batch = Math.max(50, Math.min(200, Number($("#preview-batch").value) || 75));
+  applyPreviewThumbnailSize($("#preview-thumbnail-size").value);
+  const saved = await api("/api/preview/settings", {
+    method: "PUT",
+    body: JSON.stringify({batch_size: state.batch, thumbnail_size: state.thumbnailSize}),
+  });
+  state.batch = saved.batch_size;
+  $("#preview-batch").value = saved.batch_size;
+  applyPreviewThumbnailSize(saved.thumbnail_size);
+}
+
 function showTab(tab) {
   if (location.pathname.startsWith("/viewer/")) history.pushState({}, "", "/");
   state.tab = tab;
@@ -54,16 +77,18 @@ async function bootstrap() {
   applySchedule(data.scheduler);
   renderFetch(data.fetch);
   state.nextAfterStatusChange = data.viewer?.next_after_status_change !== false;
-  $("#preview-batch").value = data.scheduler.batch_size;
-  state.batch = data.scheduler.batch_size;
+  state.batch = data.preview?.batch_size || 75;
+  $("#preview-batch").value = state.batch;
+  applyPreviewThumbnailSize(data.preview?.thumbnail_size || 280);
 }
 
 async function resetPreview() {
   state.offset = 0;
   state.total = 0;
   state.hasMore = true;
-  state.batch = Math.max(8, Math.min(200, Number($("#preview-batch").value) || 32));
+  state.batch = Math.max(50, Math.min(200, Number($("#preview-batch").value) || 75));
   $("#post-grid").replaceChildren();
+  $("#preview-score-summary").textContent = "Preselection: calculating...";
   await loadMorePosts();
 }
 
@@ -71,11 +96,15 @@ function card(post) {
   const params = queryString();
   const node = document.createElement("article");
   node.className = "post-card";
+  const preselection = Number(post.recommendation_score || 0);
+  const recommendationDetails = [post.recommendation_positive, post.recommendation_negative].filter(Boolean).join(" | ");
   node.innerHTML = `<a href="/viewer/${post.id}?${params}" data-viewer="${post.id}">
     <img class="post-image" src="${post.thumbnail_url}" loading="lazy" alt="Post ${post.id}">
     <div class="post-meta">
       <div class="post-title"><span>#${post.id}</span><span class="status">${esc(post.status)}</span></div>
       <div class="post-stats"><span>Score ${post.score ?? 0}</span><span>Fav ${post.fav_count ?? 0}</span><span>${post.stars == null ? "Unrated" : `${post.stars}/10`}</span></div>
+      <div class="post-preselection ${preselection < 0 ? "negative" : ""}" title="${esc(recommendationDetails || "No contributing tag scores")}"><strong>Preselection ${signedScore(preselection)}</strong><span>${post.llm_score == null ? "LLM -" : `LLM ${signedScore(post.llm_score)}`}</span></div>
+      <div class="post-category">${esc(post.category || "_unmatched")} | ${post.image_width || 0} x ${post.image_height || 0}</div>
       <div class="post-tags">${esc(post.tags || "No tags")}</div>
     </div></a>`;
   return node;
@@ -94,6 +123,10 @@ async function loadMorePosts() {
     state.total = data.total;
     state.hasMore = data.has_more;
     $("#preview-count").textContent = `${state.offset} / ${state.total}`;
+    if (data.preselection_summary) {
+      const summary = data.preselection_summary;
+      $("#preview-score-summary").textContent = `Preselection: Best ${signedScore(summary.best)} | Worst ${signedScore(summary.worst)} | Average ${signedScore(summary.average)}`;
+    }
     $("#preview-sentinel").textContent = state.hasMore ? "Scroll to load more" : "End of results";
   } catch (error) { toast(error.message); }
   finally { state.loading = false; }
@@ -247,7 +280,7 @@ async function openViewer(postId, push = true) {
       <span class="viewer-toolbar-spacer"></span>
       <strong>Post #${data.id}</strong>
     </div>
-    <div class="viewer-info">ID ${data.id} - ${esc(ratingLabel(data.rating))} - Score: ${data.score ?? 0} | Favorites: ${data.fav_count ?? 0} | Parent: ${data.parent_id ?? "-"} | Parent/Child known: ${(data.known_parent_loaded || 0) + (data.known_child_count || 0)} | locally saved: ${data.final_file_path ? 1 : 0}</div>
+    <div class="viewer-info">ID ${data.id} - ${esc(ratingLabel(data.rating))} - Score: ${data.score ?? 0} | Preselection: ${signedScore(data.recommendation_score)} | LLM: ${data.llm_score == null ? "-" : signedScore(data.llm_score)} | Favorites: ${data.fav_count ?? 0} | Parent: ${data.parent_id ?? "-"} | Parent/Child known: ${(data.known_parent_loaded || 0) + (data.known_child_count || 0)} | locally saved: ${data.final_file_path ? 1 : 0}</div>
     <div class="viewer-layout">
       <div class="viewer-content">
         <div class="viewer-stage" id="viewer-stage"><img id="viewer-image" src="${data.image_url}" alt="Post ${data.id}"></div>
@@ -383,7 +416,6 @@ async function pollFetch() {
 function applySchedule(data) {
   $("#schedule-enabled").checked = data.enabled;
   $("#schedule-hours").value = data.interval_hours;
-  $("#schedule-batch").value = data.batch_size;
 }
 
 function updateFetchSourceFields() {
@@ -509,7 +541,8 @@ document.addEventListener("contextmenu", event => {
   else $("#tag-context-menu").classList.add("hidden");
 });
 
-$("#preview-apply").onclick = resetPreview;
+$("#preview-apply").onclick = () => savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
+$("#preview-thumbnail-size").onchange = () => savePreviewSettings().catch(error => toast(error.message));
 $("#fetch-source").onchange = updateFetchSourceFields;
 $("#fetch-preset").onchange = event => {
   const name = event.target.value;
@@ -527,7 +560,7 @@ $("#fetch-start").onclick = async () => {
   catch (error) { toast(error.message); }
 };
 $("#fetch-cancel").onclick = () => api("/api/fetch/cancel", {method:"POST"}).then(renderFetch).catch(error => toast(error.message));
-$("#schedule-form").onsubmit = async event => { event.preventDefault(); try { applySchedule(await api("/api/scheduler", {method:"PUT", body:JSON.stringify({enabled:$("#schedule-enabled").checked, interval_hours:Number($("#schedule-hours").value), batch_size:Number($("#schedule-batch").value)})})); toast("Schedule saved"); } catch(error) { toast(error.message); } };
+$("#schedule-form").onsubmit = async event => { event.preventDefault(); try { applySchedule(await api("/api/scheduler", {method:"PUT", body:JSON.stringify({enabled:$("#schedule-enabled").checked, interval_hours:Number($("#schedule-hours").value)})})); toast("Schedule saved"); } catch(error) { toast(error.message); } };
 $("#category-form").onsubmit = async event => { event.preventDefault(); try { await api("/api/categories", {method:"POST", body:JSON.stringify({name:$("#category-name").value, folder_name:$("#category-folder").value || null})}); event.target.reset(); loadCategories(); } catch(error) { toast(error.message); } };
 $("#config-form").onsubmit = async event => { event.preventDefault(); const form = new FormData(event.target); const payload = Object.fromEntries(form.entries()); if (!payload.api_key) delete payload.api_key; payload.request_timeout_seconds = Number(payload.request_timeout_seconds); payload.request_min_interval_seconds = Number(payload.request_min_interval_seconds); try { await api("/api/settings", {method:"PATCH", body:JSON.stringify(payload)}); toast("Configuration saved"); } catch(error) { toast(error.message); } };
 

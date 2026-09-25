@@ -87,3 +87,20 @@ def test_web_viewer_persists_and_applies_status_auto_advance() -> None:
     assert "state.nextAfterStatusChange && nav.next_id != null" in web_source
     assert '@app.put("/api/viewer/settings")' in api_source
     assert 'db.set_app_setting("web.viewer_next_after_status_change"' in api_source
+
+
+def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:
+    html_source = read_source("app/web/static/index.html")
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert 'value="recommendation_desc">Preselection: best first' in html_source
+    assert 'value="recommendation_asc">Preselection: worst first' in html_source
+    assert 'value="personal_desc"' in html_source
+    assert 'value="resolution_desc"' in html_source
+    assert 'id="preview-thumbnail-size"' in html_source
+    assert 'id="preview-score-summary"' in html_source
+    assert 'api("/api/preview/settings"' in web_source
+    assert 'Preselection ${signedScore(preselection)}' in web_source
+    assert '@app.put("/api/preview/settings")' in api_source
+    assert 'db.set_app_setting("web.preview_thumbnail_size"' in api_source

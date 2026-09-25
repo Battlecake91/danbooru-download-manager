@@ -56,6 +56,9 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Automatic Fetch with a configurable interval.
 - Consecutive-known-post stopping through the shared Fetch service.
 - Endless Preview loading with a configurable batch size.
+- Persisted Preview controls for 50-200 posts per endless-scroll request and 120-600 px thumbnail tiles.
+- Desktop-equivalent sorting for post ID, Danbooru score, live tag-based Preselection, LLM score, personal rating, rating class, status, category, save/seen time, resolution and file size.
+- Preselection scores on cards and Viewer details plus Best, Worst and Average values for the complete active filter result.
 - Viewer navigation across all posts matching the active status, search and sorting.
 - Desktop-style Viewer with the surrounding-post thumbnail strip, typed tag panels, tag metadata, status actions, rating and category controls.
 - Desktop Viewer shortcuts: arrow keys for navigation, `1`-`5` for rating, `H`/`N`/`Delete` for status, `O` for the original post, `F` for the real final-save workflow and `Esc` to return.

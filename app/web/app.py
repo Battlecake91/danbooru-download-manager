@@ -47,7 +47,7 @@ class FetchPresetRequest(BaseModel):
 class SchedulerRequest(BaseModel):
     enabled: bool = False
     interval_hours: float = Field(default=6, ge=0.25, le=8760)
-    batch_size: int = Field(default=32, ge=8, le=200)
+    batch_size: int | None = Field(default=None, ge=50, le=200)
 
 
 class PostActionRequest(BaseModel):
@@ -63,6 +63,11 @@ class PostSaveRequest(BaseModel):
 
 class ViewerSettingsRequest(BaseModel):
     next_after_status_change: bool = True
+
+
+class PreviewSettingsRequest(BaseModel):
+    batch_size: int = Field(default=75, ge=50, le=200)
+    thumbnail_size: int = Field(default=280, ge=120, le=600)
 
 
 class TagUpdateRequest(BaseModel):
@@ -130,6 +135,16 @@ def create_app() -> FastAPI:
             "viewer": {
                 "next_after_status_change": bool(
                     (request.app.state.config.get("web", {}) or {}).get("viewer_next_after_status_change", True)
+                ),
+            },
+            "preview": {
+                "batch_size": max(
+                    50,
+                    min(200, int((request.app.state.config.get("web", {}) or {}).get("preview_batch_size", 75) or 75)),
+                ),
+                "thumbnail_size": max(
+                    120,
+                    min(600, int((request.app.state.config.get("web", {}) or {}).get("preview_thumbnail_size", 280) or 280)),
                 ),
             },
         }
@@ -279,6 +294,21 @@ def create_app() -> FastAPI:
         web_config = request.app.state.config.setdefault("web", {})
         web_config["viewer_next_after_status_change"] = value
         return {"next_after_status_change": value}
+
+    @app.put("/api/preview/settings")
+    def update_preview_settings(
+        payload: PreviewSettingsRequest,
+        request: Request,
+        db=Depends(database),
+    ) -> dict[str, Any]:
+        batch_size = int(payload.batch_size)
+        thumbnail_size = int(payload.thumbnail_size)
+        db.set_app_setting("web.preview_batch_size", json.dumps(batch_size))
+        db.set_app_setting("web.preview_thumbnail_size", json.dumps(thumbnail_size))
+        web_config = request.app.state.config.setdefault("web", {})
+        web_config["preview_batch_size"] = batch_size
+        web_config["preview_thumbnail_size"] = thumbnail_size
+        return {"batch_size": batch_size, "thumbnail_size": thumbnail_size}
 
     @app.get("/api/media/{post_id}/{variant}")
     def media(post_id: int, variant: str, request: Request, db=Depends(database)):

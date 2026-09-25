@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=web-viewer-status-next-4">
+  <link rel="stylesheet" href="/app.css?v=web-preview-parity-6">
 </head>
 <body>
   <header class="app-header">
@@ -53,7 +53,6 @@
           <form id="schedule-form" class="stack-form">
             <label class="toggle"><input id="schedule-enabled" type="checkbox"> Enabled</label>
             <label>Interval in hours <input id="schedule-hours" type="number" min="0.25" step="0.25" value="6"></label>
-            <label>Preview load batch <input id="schedule-batch" type="number" min="8" max="200" value="32"></label>
             <button type="submit">Save schedule</button>
           </form>
         </section>
@@ -73,15 +72,31 @@
         <label class="wide">Search <input id="preview-search" placeholder="tags, post ID, -excluded_tag"></label>
         <label>Sort
           <select id="preview-sort">
-            <option value="id_desc">Newest</option><option value="id_asc">Oldest</option>
-            <option value="score_desc">Score</option><option value="favorites_desc">Favorites</option>
-            <option value="local_score_desc">Recommendation</option>
+            <option value="id_desc">Post ID: newest first</option>
+            <option value="id_asc">Post ID: oldest first</option>
+            <option value="score_desc">Danbooru Score: high to low</option>
+            <option value="score_asc">Danbooru Score: low to high</option>
+            <option value="recommendation_desc">Preselection: best first</option>
+            <option value="recommendation_asc">Preselection: worst first</option>
+            <option value="llm_score_desc">LLM Score: high to low</option>
+            <option value="llm_score_asc">LLM Score: low to high</option>
+            <option value="personal_desc">Personal Rating: high to low</option>
+            <option value="personal_asc">Personal Rating: low to high</option>
+            <option value="rating">Danbooru Rating: general to explicit</option>
+            <option value="status">Status</option>
+            <option value="category">Category</option>
+            <option value="saved_desc">Last saved</option>
+            <option value="seen_desc">Last seen</option>
+            <option value="resolution_desc">Resolution: large to small</option>
+            <option value="filesize_desc">File size: large to small</option>
+            <option value="favorites_desc">Favorites: high to low</option>
           </select>
         </label>
-        <label>Load <input id="preview-batch" type="number" min="8" max="200" value="32"></label>
+        <label>Load batch <input id="preview-batch" type="number" min="50" max="200" step="25" value="75"></label>
+        <label>Thumbnail <input id="preview-thumbnail-size" type="number" min="120" max="600" step="20" value="280"></label>
         <button id="preview-apply" class="primary">Apply</button>
-        <span id="preview-count" class="counter"></span>
       </div>
+      <div class="preview-summary"><span id="preview-count"></span><span id="preview-score-summary">Preselection: Best - | Worst - | Average -</span></div>
       <div id="post-grid" class="post-grid"></div>
       <div id="preview-sentinel" class="sentinel">Loading...</div>
     </section>
@@ -129,6 +144,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=web-viewer-status-next-4" defer></script>
+  <script src="/app.js?v=web-preview-parity-6" defer></script>
 </body>
 </html>

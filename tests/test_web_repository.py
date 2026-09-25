@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.database import Database
-from app.web.repository import build_post_filter, list_posts, matching_post_ids, post_detail, resolve_media_path
+from app.web.repository import SORT_SQL, build_post_filter, list_posts, matching_post_ids, post_detail, resolve_media_path
 from app.web.runtime import fetch_overrides_from_payload
 
 
@@ -42,6 +42,33 @@ def test_web_viewer_navigation_uses_complete_filtered_result(tmp_path: Path) -> 
     finally:
         db.close()
     assert ids == [2, 3]
+
+
+def test_web_preselection_sort_and_summary_use_live_tag_scores(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "preselection.db")
+    db.set_tag_manual_score("blue_hair", 2.5)
+    db.set_tag_manual_score("red_hair", -3.0)
+    try:
+        best_first = list_posts(db, status="all", search="", sort="recommendation_desc", offset=0, limit=8)
+        worst_first = list_posts(db, status="all", search="", sort="recommendation_asc", offset=0, limit=8)
+    finally:
+        db.close()
+
+    assert [item["id"] for item in best_first["items"]] == [3, 2, 1]
+    assert [item["recommendation_score"] for item in best_first["items"]] == [2.5, 2.5, -3.0]
+    assert [item["id"] for item in worst_first["items"]] == [1, 3, 2]
+    assert best_first["preselection_summary"] == {"best": 2.5, "worst": -3.0, "average": 0.67}
+
+
+def test_every_web_preview_sort_executes(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "sorts.db")
+    try:
+        for sort in [*SORT_SQL, "recommendation_desc", "recommendation_asc"]:
+            result = list_posts(db, status="all", search="", sort=sort, offset=0, limit=8)
+            assert result["total"] == 3, sort
+            assert len(result["items"]) == 3, sort
+    finally:
+        db.close()
 
 
 def test_web_viewer_returns_typed_tags_and_preview_strip(tmp_path: Path) -> None:
