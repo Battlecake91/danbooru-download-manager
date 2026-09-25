@@ -9,7 +9,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QAction, QGuiApplication, QKeyEvent, QMouseEvent, QPixmap
+from PySide6.QtGui import QAction, QGuiApplication, QImageReader, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -138,18 +138,27 @@ def cached_scaled_pixmap(path_text: str, size: int) -> QPixmap | None:
         PIXMAP_CACHE.move_to_end(cache_key)
         return QPixmap(cached)
 
-    pixmap = QPixmap(str(path))
-    if pixmap.isNull():
+    reader = QImageReader(str(path))
+    reader.setAutoTransform(True)
+    source_size = reader.size()
+    if source_size.isValid():
+        reader.setScaledSize(source_size.scaled(size, size, Qt.KeepAspectRatio))
+
+    image = reader.read()
+    if image.isNull():
         return None
 
-    scaled = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-    PIXMAP_CACHE[cache_key] = scaled
+    pixmap = QPixmap.fromImage(image)
+    if pixmap.width() > size or pixmap.height() > size:
+        pixmap = pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+    PIXMAP_CACHE[cache_key] = pixmap
     PIXMAP_CACHE.move_to_end(cache_key)
 
     while len(PIXMAP_CACHE) > MAX_PIXMAP_CACHE_ITEMS:
         PIXMAP_CACHE.popitem(last=False)
 
-    return QPixmap(scaled)
+    return QPixmap(pixmap)
 
 
 def clear_cached_pixmap_for_path(path_text: str) -> None:
@@ -229,7 +238,7 @@ class ThumbnailGrid(QScrollArea):
         self._restore_selected_ids: set[int] = set()
         self._restore_current_id: int | None = None
         self._build_generation = 0
-        self.batch_size = int(gui_config.get("preview_render_batch_size", 40))
+        self.batch_size = int(gui_config.get("preview_render_batch_size", 16))
 
         self.selected_ids: set[int] = set()
         self.current_index: int = -1

@@ -20,7 +20,7 @@ Fetch-control regression tests additionally verify:
 
 - cancellation before the next post is processed,
 - reset and activation of the consecutive-known-post limit,
-- Viewer result construction using the full filtered count instead of the visible Preview limit.
+- Viewer result construction using the complete filtered result instead of the visible Preview limit.
 
 ## Performance diagnostics
 
@@ -29,7 +29,7 @@ Database performance tests live in `tests/test_database_performance.py`.
 They combine two checks:
 
 - `EXPLAIN QUERY PLAN` assertions for important indexes, so regressions identify whether SQLite stopped using a hot-path index.
-- bounded runtime checks on a synthetic medium-size dataset, so unexpectedly expensive preview, tag completion, category influence, and tag-statistics paths fail early.
+- bounded runtime checks on a synthetic medium-size dataset, so unexpectedly expensive Viewer navigation, Preview detail loading, tag completion, category influence, and tag-statistics paths fail early.
 
 If a performance test fails, inspect the failure message first. Query-plan failures print the plan SQLite chose; timing failures name the method that exceeded its budget.
 

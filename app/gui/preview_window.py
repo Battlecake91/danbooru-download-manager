@@ -589,6 +589,8 @@ class PreviewWindow(QMainWindow):
 
     def on_grid_build_progress(self, current: int, total: int) -> None:
         if total > 0:
+            if current > 0 and self.content_stack.currentWidget() is self.loading_panel:
+                self.hide_preview_loading()
             self.loading_label.setText(tr("preview.loading_thumbnails_progress", "Loading thumbnails… {current}/{total}", config=self.config, current=current, total=total))
             self.status_bar.showMessage(tr("preview.loading_cards_progress", "Loading preview cards… {current}/{total}", config=self.config, current=current, total=total))
             QApplication.processEvents()
@@ -1114,13 +1116,23 @@ class PreviewWindow(QMainWindow):
             else:
                 internal_limit = self.current_limit
 
-            candidates = self.fetch_preview_posts_by_statuses(
+            navigation_rows = self.fetch_preview_navigation_rows(
                 statuses=statuses,
                 text_filter=text_filter,
                 limit=internal_limit,
                 offset=self.current_offset,
                 sort_key=sort_key,
             )
+
+            if python_filtered_or_sorted:
+                candidates = self.fetch_preview_analysis_rows(
+                    [int(row["id"]) for row in navigation_rows]
+                )
+            else:
+                candidates = self.fetch_preview_detail_rows(
+                    [int(row["id"]) for row in navigation_rows]
+                )
+
             enriched = self.enrich_preview_rows_with_categories(candidates)
             filtered = [
                 row
@@ -1131,7 +1143,17 @@ class PreviewWindow(QMainWindow):
             filtered = self.sort_preview_rows_in_python(filtered, sort_key)
             filtered = self.group_related_preview_rows(filtered)
 
-            posts = filtered[: self.current_limit]
+            selected = filtered[: self.current_limit]
+            if python_filtered_or_sorted:
+                details = self.fetch_preview_detail_rows([int(row["id"]) for row in selected])
+                details_by_id = {int(row["id"]): dict(row) for row in details}
+                posts = []
+                for row in selected:
+                    detail = details_by_id.get(int(row["id"]), {})
+                    detail.update(row)
+                    posts.append(detail)
+            else:
+                posts = selected
             total_filtered = len(filtered) if python_filtered_or_sorted else base_total
             total_suffix = ""
             if python_filtered_or_sorted and base_total > internal_limit:
@@ -1287,7 +1309,6 @@ class PreviewWindow(QMainWindow):
             f"""
             SELECT COUNT(DISTINCT p.id) AS total
             FROM posts p
-            LEFT JOIN post_reviews pr ON pr.post_id = p.id
             {where_sql}
             """,
             parameters,
@@ -1305,12 +1326,92 @@ class PreviewWindow(QMainWindow):
         sort_key: str = "id_desc",
         resolution_filters: dict[str, int] | None = None,
     ) -> list[Any]:
+        navigation_rows = self.fetch_preview_navigation_rows(
+            statuses=statuses,
+            text_filter=text_filter,
+            limit=limit,
+            offset=offset,
+            sort_key=sort_key,
+            resolution_filters=resolution_filters,
+        )
+        return self.fetch_preview_detail_rows([int(row["id"]) for row in navigation_rows])
+
+    def fetch_preview_navigation_rows(
+        self,
+        statuses: list[str],
+        text_filter: str | None,
+        limit: int,
+        offset: int,
+        sort_key: str = "id_desc",
+        resolution_filters: dict[str, int] | None = None,
+    ) -> list[Any]:
         where_sql, parameters = self.build_preview_where(statuses, text_filter, resolution_filters)
         order_sql = SQL_SORT_ORDER.get(sort_key, SQL_SORT_ORDER["id_desc"])
         parameters.extend([limit, offset])
 
         return list(
             self.db.execute(
+                f"""
+                SELECT p.id, p.parent_id
+                FROM posts p
+                LEFT JOIN post_reviews pr ON pr.post_id = p.id
+                {where_sql}
+                ORDER BY {order_sql}
+                LIMIT ?
+                OFFSET ?
+                """,
+                parameters,
+            ).fetchall()
+        )
+
+    def fetch_preview_analysis_rows(self, post_ids: list[int]) -> list[dict[str, Any]]:
+        if not post_ids:
+            return []
+
+        rows_by_id: dict[int, dict[str, Any]] = {}
+        for start in range(0, len(post_ids), 900):
+            chunk = post_ids[start : start + 900]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.db.execute(
+                f"""
+                SELECT
+                    p.id,
+                    p.parent_id,
+                    p.final_score,
+                    (
+                        SELECT c.name
+                        FROM post_categories pc
+                        JOIN categories c ON c.id = pc.category_id
+                        WHERE pc.post_id = p.id
+                        LIMIT 1
+                    ) AS assigned_category_name,
+                    (
+                        SELECT pc.source
+                        FROM post_categories pc
+                        WHERE pc.post_id = p.id
+                        LIMIT 1
+                    ) AS assigned_category_source,
+                    GROUP_CONCAT(pt.tag, ' ') AS tags
+                FROM posts p
+                LEFT JOIN post_tags pt ON pt.post_id = p.id
+                WHERE p.id IN ({placeholders})
+                GROUP BY p.id
+                """,
+                chunk,
+            ).fetchall()
+            rows_by_id.update({int(row["id"]): dict(row) for row in rows})
+
+        return [rows_by_id[post_id] for post_id in post_ids if post_id in rows_by_id]
+
+    def fetch_preview_detail_rows(self, post_ids: list[int]) -> list[dict[str, Any]]:
+        if not post_ids:
+            return []
+
+        rows_by_id: dict[int, dict[str, Any]] = {}
+        for start in range(0, len(post_ids), 900):
+            chunk = post_ids[start : start + 900]
+            placeholders = ", ".join("?" for _ in chunk)
+            rows = self.db.execute(
                 f"""
                 SELECT
                     p.id,
@@ -1341,81 +1442,46 @@ class PreviewWindow(QMainWindow):
                     p.rejected_at,
                     p.saved_at,
                     p.already_known_at,
-
-                    assigned_category.name AS assigned_category_name,
-                    pc.source AS assigned_category_source,
-
+                    (
+                        SELECT c.name
+                        FROM post_categories pc
+                        JOIN categories c ON c.id = pc.category_id
+                        WHERE pc.post_id = p.id
+                        LIMIT 1
+                    ) AS assigned_category_name,
+                    (
+                        SELECT pc.source
+                        FROM post_categories pc
+                        WHERE pc.post_id = p.id
+                        LIMIT 1
+                    ) AS assigned_category_source,
                     CASE
                         WHEN p.parent_id IS NOT NULL
                          AND EXISTS (SELECT 1 FROM posts parent WHERE parent.id = p.parent_id)
                         THEN 1
                         ELSE 0
                     END AS known_parent_loaded,
-
                     (
                         SELECT COUNT(*)
                         FROM posts child
                         WHERE child.parent_id = p.id
                     ) AS known_child_count,
-
-                    (
-                        SELECT GROUP_CONCAT(pt.tag, ' ')
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id
-                        ORDER BY
-                            CASE pt.tag_type
-                                WHEN 'copyright' THEN 1
-                                WHEN 'character' THEN 2
-                                WHEN 'artist' THEN 3
-                                WHEN 'general' THEN 4
-                                WHEN 'meta' THEN 5
-                                ELSE 9
-                            END,
-                            pt.tag
-                    ) AS tags,
-                    (
-                        SELECT GROUP_CONCAT(pt.tag, ' ')
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id AND pt.tag_type = 'general'
-                        ORDER BY pt.tag
-                    ) AS tags_general,
-                    (
-                        SELECT GROUP_CONCAT(pt.tag, ' ')
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id AND pt.tag_type = 'character'
-                        ORDER BY pt.tag
-                    ) AS tags_character,
-                    (
-                        SELECT GROUP_CONCAT(pt.tag, ' ')
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id AND pt.tag_type = 'copyright'
-                        ORDER BY pt.tag
-                    ) AS tags_copyright,
-                    (
-                        SELECT GROUP_CONCAT(pt.tag, ' ')
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id AND pt.tag_type = 'artist'
-                        ORDER BY pt.tag
-                    ) AS tags_artist,
-                    (
-                        SELECT GROUP_CONCAT(pt.tag, ' ')
-                        FROM post_tags pt
-                        WHERE pt.post_id = p.id AND pt.tag_type = 'meta'
-                        ORDER BY pt.tag
-                    ) AS tags_meta
+                    GROUP_CONCAT(pt.tag, ' ') AS tags,
+                    GROUP_CONCAT(CASE WHEN pt.tag_type = 'general' THEN pt.tag END, ' ') AS tags_general,
+                    GROUP_CONCAT(CASE WHEN pt.tag_type = 'character' THEN pt.tag END, ' ') AS tags_character,
+                    GROUP_CONCAT(CASE WHEN pt.tag_type = 'copyright' THEN pt.tag END, ' ') AS tags_copyright,
+                    GROUP_CONCAT(CASE WHEN pt.tag_type = 'artist' THEN pt.tag END, ' ') AS tags_artist,
+                    GROUP_CONCAT(CASE WHEN pt.tag_type = 'meta' THEN pt.tag END, ' ') AS tags_meta
                 FROM posts p
-                LEFT JOIN post_categories pc ON pc.post_id = p.id
-                LEFT JOIN categories assigned_category ON assigned_category.id = pc.category_id
-                LEFT JOIN post_reviews pr ON pr.post_id = p.id
-                {where_sql}
+                LEFT JOIN post_tags pt ON pt.post_id = p.id
+                WHERE p.id IN ({placeholders})
                 GROUP BY p.id
-                ORDER BY {order_sql}
-                LIMIT ?
-                OFFSET ?
                 """,
-                parameters,
+                chunk,
             ).fetchall()
-        )
+            rows_by_id.update({int(row["id"]): dict(row) for row in rows})
+
+        return [rows_by_id[post_id] for post_id in post_ids if post_id in rows_by_id]
 
     # -------------------------------------------------------------------------
     # Thumbnail repair from preview
@@ -1691,19 +1757,27 @@ class PreviewWindow(QMainWindow):
         recommendation_minimum = self.selected_recommendation_minimum()
         sort_key = self.selected_sort_key()
 
-        total = self.count_preview_posts_by_statuses(
+        navigation_rows = self.fetch_preview_navigation_rows(
             statuses=statuses,
             text_filter=text_filter,
-        )
-        if total <= 0:
-            return []
-
-        candidates = self.fetch_preview_posts_by_statuses(
-            statuses=statuses,
-            text_filter=text_filter,
-            limit=total,
+            limit=-1,
             offset=0,
             sort_key=sort_key,
+        )
+        if not navigation_rows:
+            return []
+
+        python_filtered_or_sorted = (
+            category_filter != "__all__"
+            or recommendation_minimum is not None
+            or sort_key in {"category", "recommendation_desc", "recommendation_asc"}
+        )
+        if not python_filtered_or_sorted:
+            grouped = self.group_related_preview_rows([dict(row) for row in navigation_rows])
+            return [int(row["id"]) for row in grouped]
+
+        candidates = self.fetch_preview_analysis_rows(
+            [int(row["id"]) for row in navigation_rows]
         )
         enriched = self.enrich_preview_rows_with_categories(candidates)
         filtered = [

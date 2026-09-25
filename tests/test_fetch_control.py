@@ -125,10 +125,7 @@ class FetchControlTests(unittest.TestCase):
             def selected_sort_key(self):
                 return "id_desc"
 
-            def count_preview_posts_by_statuses(self, **_kwargs):
-                return 350
-
-            def fetch_preview_posts_by_statuses(self, **kwargs):
+            def fetch_preview_navigation_rows(self, **kwargs):
                 self.fetch_arguments = kwargs
                 return [{"id": 350}, {"id": 349}, {"id": 348}]
 
@@ -152,7 +149,7 @@ class FetchControlTests(unittest.TestCase):
         post_ids = PreviewWindow.all_matching_viewer_post_ids(preview)
 
         self.assertEqual(post_ids, [350, 349, 348])
-        self.assertEqual(preview.fetch_arguments["limit"], 350)
+        self.assertEqual(preview.fetch_arguments["limit"], -1)
         self.assertEqual(preview.fetch_arguments["offset"], 0)
 
 

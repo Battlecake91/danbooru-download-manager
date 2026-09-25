@@ -1,7 +1,7 @@
 # Danbooru Download Manager
 
-> **Current release:** `1.3.203`
-> Version `1.3.203` adds Fetch cancellation, a consecutive-known-post stop condition and full-result Viewer navigation to the desktop application. The planned web application is not part of this release.
+> **Current release:** `1.3.204`
+> Version `1.3.204` substantially reduces Viewer startup and Preview loading time for large filtered result sets. The planned web application is not part of this release.
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
 Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
@@ -128,7 +128,7 @@ Single-executable build for the current platform:
 python scripts/make_release.py --allow-dirty --onefile
 ```
 
-Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.203_win64_portable.zip` or `DanbooruManager_1.3.203_linux_x86_64_onefile.zip`.
+Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.204_win64_portable.zip` or `DanbooruManager_1.3.204_linux_x86_64_onefile.zip`.
 
 ---
 
@@ -176,7 +176,7 @@ See [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md).
 
 The Previewer is the main triage view. It supports status filters, text search, sorting, configurable card information, structured tag display and category/recommendation information.
 
-The Viewer opens the complete result set represented by the active Previewer statuses, search, category filter, recommendation threshold and sorting. The Preview card limit only controls how many cards are displayed and no longer limits Viewer navigation.
+The Viewer opens the complete result set represented by the active Previewer statuses, search, category filter, recommendation threshold and sorting. The Preview card limit only controls how many cards are displayed and no longer limits Viewer navigation. Navigation IDs are loaded independently from card details, while the Previewer fetches full metadata only for visible cards and renders them progressively.
 
 The Viewer provides the detailed decision workflow:
 
@@ -263,7 +263,7 @@ See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 | [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
 | [`docs/RELEASE_WORKFLOW.md`](docs/RELEASE_WORKFLOW.md) | Push, build and release workflow |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
-| [`docs/RELEASE_NOTES_1.3.203.md`](docs/RELEASE_NOTES_1.3.203.md) | Changes included in this release |
+| [`docs/RELEASE_NOTES_1.3.204.md`](docs/RELEASE_NOTES_1.3.204.md) | Changes included in this release |
 
 ---
 

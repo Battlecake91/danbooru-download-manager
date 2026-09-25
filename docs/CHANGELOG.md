@@ -2,7 +2,20 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.203 - Current release
+## 1.3.204 - Current release
+
+### Changed
+
+- Viewer startup now builds its navigation from lightweight post IDs instead of loading full Preview card details for every matching post.
+- Category and recommendation filtering use a compact analysis query; full tag groups and card metadata are loaded only for visible Preview cards.
+- Preview thumbnails are decoded near their display size, and the first card batch becomes visible while the remaining cards continue rendering.
+- Added performance regression coverage for full-result Viewer navigation and batched Preview detail loading.
+
+See [`RELEASE_NOTES_1.3.204.md`](RELEASE_NOTES_1.3.204.md) for the complete release summary.
+
+---
+
+## 1.3.203
 
 ### Added
 

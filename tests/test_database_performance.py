@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app.gui.preview_window import PreviewWindow
 from tests.helpers import assert_plan_uses_index, explain_plan, open_temp_database, seed_posts_with_tags, timed
 
 
@@ -47,6 +48,47 @@ class DatabasePerformanceTests(unittest.TestCase):
         )
         self.assertEqual(len(rows), 100)
         self.assertLess(elapsed, 0.75, msg=f"fetch_preview_posts took {elapsed:.3f}s")
+
+    def test_viewer_navigation_does_not_load_preview_details(self) -> None:
+        class PreviewQueryHarness:
+            build_preview_where = PreviewWindow.build_preview_where
+            is_path_like_search_term = staticmethod(PreviewWindow.is_path_like_search_term)
+            fetch_preview_navigation_rows = PreviewWindow.fetch_preview_navigation_rows
+
+            def __init__(self, db) -> None:
+                self.db = db
+
+        preview = PreviewQueryHarness(self.db)
+        rows, elapsed = timed(
+            lambda: preview.fetch_preview_navigation_rows(
+                statuses=["new", "potential", "saved", "rejected", "already_known"],
+                text_filter=None,
+                limit=-1,
+                offset=0,
+                sort_key="id_desc",
+            )
+        )
+
+        self.assertEqual(len(rows), 3000)
+        self.assertEqual(set(rows[0].keys()), {"id", "parent_id"})
+        self.assertLess(elapsed, 0.25, msg=f"viewer navigation took {elapsed:.3f}s")
+
+    def test_preview_details_aggregate_tags_only_for_selected_posts(self) -> None:
+        class PreviewQueryHarness:
+            fetch_preview_detail_rows = PreviewWindow.fetch_preview_detail_rows
+
+            def __init__(self, db) -> None:
+                self.db = db
+
+        preview = PreviewQueryHarness(self.db)
+        rows, elapsed = timed(
+            lambda: preview.fetch_preview_detail_rows(list(range(3000, 2900, -1)))
+        )
+
+        self.assertEqual(len(rows), 100)
+        self.assertTrue(rows[0]["tags"])
+        self.assertTrue(rows[0]["tags_general"])
+        self.assertLess(elapsed, 0.25, msg=f"100 preview details took {elapsed:.3f}s")
 
     def test_exact_tag_preview_search_uses_post_tag_index(self) -> None:
         where_sql, parameters = self.db._build_preview_where(  # noqa: SLF001
