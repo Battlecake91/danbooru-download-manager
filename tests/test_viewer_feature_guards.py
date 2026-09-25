@@ -56,3 +56,16 @@ def test_web_viewer_carries_desktop_shortcuts_and_final_save() -> None:
     assert 'id="viewer-save"' in web_source
     assert '@app.post("/api/posts/{post_id}/save")' in api_source
     assert "FinalSaveService(request.app.state.config, db)" in api_source
+
+
+def test_web_viewer_fit_constrains_both_image_dimensions() -> None:
+    web_source = read_source("app/web/static/app.js")
+    css_source = read_source("app/web/static/app.css")
+    html_source = read_source("app/web/static/index.html")
+
+    assert 'class="viewer-stage" id="viewer-stage"' in web_source
+    assert '$("#viewer-stage").classList.toggle("native-size", nativeSize)' in web_source
+    assert ".viewer-stage img { display: block; width: 100%; height: 100%;" in css_source
+    assert ".viewer-stage.native-size { place-items: start; overflow: auto; }" in css_source
+    assert 'href="/app.css?v=' in html_source
+    assert 'src="/app.js?v=' in html_source

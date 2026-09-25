@@ -27,6 +27,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 - Web media lookup now recognizes Windows paths stored in SQLite when the same thumbnail files are mounted into a Linux container.
 - The web Viewer no longer selects a cached grid thumbnail when a local full image or larger Danbooru image is available.
+- The web Viewer Fit mode now constrains portrait and landscape images by both the available width and height, preventing tall images from being clipped below the viewport.
 
 ## 1.3.205 - Current release
 

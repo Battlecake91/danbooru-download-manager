@@ -249,7 +249,7 @@ async function openViewer(postId, push = true) {
     <div class="viewer-info">ID ${data.id} - ${esc(ratingLabel(data.rating))} - Score: ${data.score ?? 0} | Favorites: ${data.fav_count ?? 0} | Parent: ${data.parent_id ?? "-"} | Parent/Child known: ${(data.known_parent_loaded || 0) + (data.known_child_count || 0)} | locally saved: ${data.final_file_path ? 1 : 0}</div>
     <div class="viewer-layout">
       <div class="viewer-content">
-        <div class="viewer-stage"><img id="viewer-image" src="${data.image_url}" alt="Post ${data.id}"></div>
+        <div class="viewer-stage" id="viewer-stage"><img id="viewer-image" src="${data.image_url}" alt="Post ${data.id}"></div>
         <div class="viewer-strip" aria-label="Nearby posts">${strip}</div>
         <div class="viewer-controls">
           <div class="viewer-rating"><span id="viewer-rating-label">Personal Rating: ${rating}/10</span><div class="viewer-stars">${Array.from({length: 10}, (_, i) => `<button type="button" data-rating="${i + 1}" class="${i < rating ? "active" : ""}" title="Rate ${i + 1} of 10">&#9733;</button>`).join("")}</div></div>
@@ -283,7 +283,11 @@ async function openViewer(postId, push = true) {
     $("#viewer-back").onclick = () => showTab("preview");
     $("#viewer-prev").onclick = () => nav.previous_id && openViewer(nav.previous_id);
     $("#viewer-next").onclick = () => nav.next_id && openViewer(nav.next_id);
-    $("#viewer-fit").onchange = event => $("#viewer-image").classList.toggle("native-size", !event.target.checked);
+    $("#viewer-fit").onchange = event => {
+      const nativeSize = !event.target.checked;
+      $("#viewer-stage").classList.toggle("native-size", nativeSize);
+      $("#viewer-image").classList.toggle("native-size", nativeSize);
+    };
     $("#viewer-copy-link").onclick = () => navigator.clipboard.writeText(data.original_post_url).then(() => toast("Link copied"));
     $("#viewer-save").onclick = async () => {
       const button = $("#viewer-save");
