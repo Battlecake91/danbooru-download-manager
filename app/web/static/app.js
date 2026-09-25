@@ -151,7 +151,7 @@ function card(post) {
       <div class="post-title"><span>#${post.id}</span><span class="status">${esc(post.status)}</span></div>
       <div class="post-stats"><span>Score ${post.score ?? 0}</span><span>Fav ${post.fav_count ?? 0}</span><span>${post.stars == null ? "Unrated" : `${post.stars}/10`}</span></div>
       <div class="post-preselection ${preselection < 0 ? "negative" : ""}" title="${esc(recommendationDetails || "No contributing tag scores")}"><strong>Preselection ${signedScore(preselection)}</strong><span>${post.llm_score == null ? "LLM -" : `LLM ${signedScore(post.llm_score)}`}</span></div>
-      <div class="post-category">${esc(post.category || "_unmatched")} | ${post.image_width || 0} x ${post.image_height || 0}</div>
+      <div class="post-category" title="${esc(post.category_source === "automatic" ? "Automatically selected from category rules" : "Stored category assignment")}">${esc(post.category || "_unmatched")}${post.category_source === "automatic" ? " (suggested)" : ""} | ${post.image_width || 0} x ${post.image_height || 0}</div>
       <div class="post-tags">${esc(post.tags || "No tags")}</div>
     </div></a>`;
   return node;
@@ -347,7 +347,7 @@ async function openViewer(postId, push = true, historyMode = "append") {
           <button class="viewer-nav-button" id="viewer-prev" ${previousId == null ? "disabled" : ""}>&#8249; Previous</button>
           <strong class="viewer-position">${positionText}</strong>
           <button class="viewer-nav-button" id="viewer-next" ${nextId == null ? "disabled" : ""}>Next &#8250;</button>
-          <label class="viewer-category">Category <select id="viewer-category"><option value="">Unassigned</option>${data.categories.map(c => `<option value="${c.id}" ${c.name === data.category ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+          <label class="viewer-category">Category <select id="viewer-category"><option value="">Unassigned</option>${data.categories.map(c => `<option value="${c.id}" ${Number(c.id) === Number(data.category_id) ? "selected" : ""}>${esc(c.name)}${Number(c.id) === Number(data.category_id) && data.category_source === "automatic" ? " (suggested)" : ""}</option>`).join("")}</select></label>
         </div>
         <div class="viewer-path"><strong>Target Path</strong><span>${esc(data.final_file_path || "Not saved locally")}</span></div>
       </div>
@@ -452,9 +452,24 @@ async function openViewer(postId, push = true, historyMode = "append") {
     });
     $("#viewer-category").onchange = async event => {
       event.target.blur();
-      if (!event.target.value) return;
-      await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({category_id: Number(event.target.value)})});
-      toast("Category saved");
+      const select = event.target;
+      if (!select.value) return;
+      select.disabled = true;
+      try {
+        const result = await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({category_id: Number(select.value)})});
+        data.category_id = result.category_id;
+        data.category = result.category;
+        data.category_source = result.category_source;
+        [...select.options].forEach(option => {
+          option.textContent = option.textContent.replace(/ \(suggested\)$/, "");
+        });
+        toast(`Category saved: ${result.category}`);
+      } catch (error) {
+        select.value = data.category_id == null ? "" : String(data.category_id);
+        toast(error.message);
+      } finally {
+        select.disabled = false;
+      }
     };
   } catch (error) { toast(error.message); }
 }

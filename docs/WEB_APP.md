@@ -67,6 +67,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Final saving through the shared desktop service, including category selection, filename rules, original download and the mounted archive directory.
 - Right-click tag actions in the Viewer and Tags tab for filename and Fetch exclusions, manual scores, legacy scoring and all automatic scoring usage flags.
 - Post status, rating and category changes.
+- Category rules supply the same automatic suggestions as the desktop Preview; selecting another Viewer category stores a manual override.
 - Tag aliases, manual scores and exclusion flags.
 - Category creation and deletion.
 - Basic configuration and database maintenance status.

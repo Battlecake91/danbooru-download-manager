@@ -55,6 +55,32 @@ def test_web_post_batches_are_not_capped_to_desktop_preview_limit(tmp_path: Path
     assert result["has_more"] is False
 
 
+def test_web_categories_show_rule_suggestions_and_persist_manual_override(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "web-categories.db")
+    blue_id = db.create_category("Blue", "blue")
+    red_id = db.create_category("Red", "red")
+    db.add_category_rule(blue_id, "include", "blue_hair")
+    db.add_category_rule(red_id, "include", "red_hair")
+
+    try:
+        preview = list_posts(db, status="all", search="", sort="id_desc", offset=0, limit=20)
+        by_id = {int(item["id"]): item for item in preview["items"]}
+        assert by_id[3]["category_id"] == blue_id
+        assert by_id[3]["category"] == "Blue"
+        assert by_id[3]["category_source"] == "automatic"
+        assert by_id[1]["category_id"] == red_id
+
+        db.assign_post_category(3, red_id, source="manual-web")
+        detail = post_detail(db, 3, status="all", search="", sort="id_desc")
+    finally:
+        db.close()
+
+    assert detail is not None
+    assert detail["category_id"] == red_id
+    assert detail["category"] == "Red"
+    assert detail["category_source"] == "manual-web"
+
+
 def test_web_viewer_navigation_uses_complete_filtered_result(tmp_path: Path) -> None:
     db = make_db(tmp_path / "viewer.db")
     try:

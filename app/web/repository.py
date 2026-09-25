@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
+from app.core.category_engine import build_category_match_groups
 from app.core.database import Database
 from app.core.recommendation_engine import RecommendationEngine, RecommendationScore
 
@@ -36,6 +37,51 @@ LEFT JOIN categories c ON c.id = pc.category_id
 
 def row_dict(row: Any) -> dict[str, Any]:
     return dict(row) if row is not None else {}
+
+
+def apply_category_suggestions(db: Database, posts: list[dict[str, Any]]) -> None:
+    """Apply the same rule-based category fallback shown by the desktop preview."""
+    category_rows = [row_dict(row) for row in db.list_categories_full()]
+    rules_by_category: dict[int, list[Any]] = {}
+    for rule in db.list_category_rules():
+        rules_by_category.setdefault(int(rule["category_id"]), []).append(rule)
+
+    prepared: list[tuple[int, str, list[tuple[set[str], set[str]]]]] = []
+    fallback = next((row for row in category_rows if str(row["name"]) == "_unmatched"), None)
+    for category in category_rows:
+        category_id = int(category["id"])
+        groups = build_category_match_groups(rules_by_category.get(category_id, []))
+        if groups:
+            prepared.append((category_id, str(category["name"]), groups))
+
+    for post in posts:
+        if post.get("category_id") is not None:
+            post["category_id"] = int(post["category_id"])
+            post["category_source"] = str(post.get("category_source") or "manual")
+            continue
+
+        tags = {tag for tag in str(post.get("tags") or "").split() if tag}
+        suggestion: tuple[int, str] | None = None
+        for category_id, name, groups in prepared:
+            if any(
+                required.issubset(tags) and not forbidden.intersection(tags)
+                for required, forbidden in groups
+                if required
+            ):
+                suggestion = (category_id, name)
+                break
+
+        if suggestion is not None:
+            post["category_id"], post["category"] = suggestion
+            post["category_source"] = "automatic"
+        elif fallback is not None:
+            post["category_id"] = int(fallback["id"])
+            post["category"] = str(fallback["name"])
+            post["category_source"] = "automatic"
+        else:
+            post["category_id"] = None
+            post["category"] = None
+            post["category_source"] = "unassigned"
 
 
 def build_post_filter(status: str, search: str) -> tuple[str, list[Any]]:
@@ -138,7 +184,9 @@ def select_post_rows(
             p.saved_at, p.last_seen_at, p.thumbnail_path, p.rejected_thumbnail_path,
             p.preview_url, p.large_file_url, p.file_url, p.final_file_path,
             pr.stars,
+            c.id AS category_id,
             c.name AS category,
+            pc.source AS category_source,
             (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
         FROM posts p
         {POST_JOINS}
@@ -194,6 +242,7 @@ def list_posts(
         else:
             page_recommendations = {}
     apply_recommendations(posts, page_recommendations)
+    apply_category_suggestions(db, posts)
     for post in posts:
         post["thumbnail_url"] = f"/api/media/{post['id']}/thumbnail"
     total = int(count_row["total"] if count_row else 0)
@@ -233,7 +282,9 @@ def post_detail(
         return None
     post = row_dict(row)
     category = db.get_assigned_category_for_post(post_id)
+    post["category_id"] = int(category["id"]) if category is not None else None
     post["category"] = str(category["name"]) if category is not None else None
+    post["category_source"] = str(category["assignment_source"] or "manual") if category is not None else None
     post["categories"] = [row_dict(item) for item in db.list_categories_full()]
     post["image_url"] = f"/api/media/{post_id}/viewer"
 
@@ -263,6 +314,8 @@ def post_detail(
         "meta": [],
     }
     tag_names = [str(item["tag"]) for item in tag_rows]
+    post["tags"] = " ".join(tag_names)
+    apply_category_suggestions(db, [post])
     recommendation = RecommendationEngine(db).score_tags(tag_names)
     post["local_score"] = recommendation.score
     post["recommendation_score"] = recommendation.score

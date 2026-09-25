@@ -245,7 +245,19 @@ def create_app() -> FastAPI:
         if payload.stars is not None:
             db.set_post_review(post_id, stars=payload.stars)
         if payload.category_id is not None:
+            category = next(
+                (row for row in db.list_categories_full() if int(row["id"]) == payload.category_id),
+                None,
+            )
+            if category is None:
+                raise HTTPException(status_code=404, detail="Category not found")
             db.assign_post_category(post_id, payload.category_id, source="manual-web")
+            return {
+                "ok": True,
+                "category_id": int(category["id"]),
+                "category": str(category["name"]),
+                "category_source": "manual-web",
+            }
         return {"ok": True}
 
     @app.post("/api/posts/{post_id}/save")

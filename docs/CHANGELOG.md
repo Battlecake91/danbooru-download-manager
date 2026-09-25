@@ -35,6 +35,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Viewer shortcuts remain active after using Fit and filename-filter checkboxes instead of being suppressed by the retained checkbox focus.
 - Recently reviewed posts remain reachable in the web Viewer after a status change removes them from the active filter, allowing accidental rejection to be corrected.
 - Web request database connections now tolerate FastAPI worker-thread handoffs, preventing intermittent HTTP 500 responses during parallel thumbnail loading.
+- Web Preview and Viewer category controls now show desktop-compatible automatic rule suggestions and persist manual selections by category ID.
 
 ## 1.3.205 - Current release
 
