@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import requests
 
@@ -25,16 +25,27 @@ class LLMBatchRunResult:
     skipped_reason: str | None = None
     batch_summaries: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    cancelled: bool = False
 
 
 class LLMBatchPreselectionService:
     """Run LLM preselection for many posts in configurable batches."""
 
-    def __init__(self, config: dict[str, Any], db: Database, log_callback: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        db: Database,
+        log_callback: Any | None = None,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> None:
         self.config = config
         self.db = db
         self.log_callback = log_callback
+        self.cancel_requested = cancel_requested
         self.payload_service = LLMPayloadService(config, db)
+
+    def is_cancel_requested(self) -> bool:
+        return bool(self.cancel_requested is not None and self.cancel_requested())
 
     def _tr(self, key: str, default: str | None = None, **kwargs: Any) -> str:
         return tr(key, default, config=self.config, **kwargs)
@@ -46,6 +57,11 @@ class LLMBatchPreselectionService:
     def run_for_post_ids(self, post_ids: Iterable[int]) -> LLMBatchRunResult:
         llm_config = self.config.get("llm", {}) or {}
         result = LLMBatchRunResult()
+
+        if self.is_cancel_requested():
+            result.cancelled = True
+            result.skipped_reason = self._tr("llm.batch.reason.cancelled", "LLM batch cancelled.")
+            return result
 
         input_ids = self._clean_post_ids(post_ids)
         result.input_posts = len(input_ids)
@@ -85,6 +101,11 @@ class LLMBatchPreselectionService:
             self._store_last_fetch_summary(result, input_ids=input_ids, candidates=candidates, payloads=[])
             return result
 
+        if self.is_cancel_requested():
+            result.cancelled = True
+            result.skipped_reason = self._tr("llm.batch.reason.cancelled", "LLM batch cancelled.")
+            return result
+
         payloads = self.payload_service.build_payload_batches(candidates)
         result.batches_total = len(payloads)
         result.payloads_prepared = len(payloads)
@@ -112,6 +133,10 @@ class LLMBatchPreselectionService:
 
         model = str(llm_config.get("model", "") or "").strip()
         for index, payload in enumerate(payloads, start=1):
+            if self.is_cancel_requested():
+                result.cancelled = True
+                result.skipped_reason = self._tr("llm.batch.reason.cancelled", "LLM batch cancelled.")
+                break
             self.log(self._tr("llm.batch.log.sending", "Sending LLM batch {index}/{total}...", index=index, total=len(payloads)))
             try:
                 decisions = self._send_payload(payload, backend=backend)
@@ -125,6 +150,9 @@ class LLMBatchPreselectionService:
                 text = self._tr("llm.batch.log.failed", "LLM batch {index}/{total} failed: {error}", index=index, total=len(payloads), error=exc)
                 result.errors.append(text)
                 self.log(text)
+        if self.is_cancel_requested():
+            result.cancelled = True
+            result.skipped_reason = self._tr("llm.batch.reason.cancelled", "LLM batch cancelled.")
         return result
 
     @staticmethod

@@ -14,7 +14,13 @@ For a dependency-free smoke run in environments where `pytest` is not installed 
 python -m unittest discover -v
 ```
 
-The automated suite intentionally avoids network access and GUI startup. It covers core parsing/scoring helpers, database bootstrap, selected fetch/update helpers, release-asset selection, and SQLite performance guardrails.
+The automated suite does not require live network access or a visible GUI. It covers core parsing/scoring helpers, database bootstrap, selected fetch/update helpers, release-asset selection, and SQLite performance guardrails.
+
+Fetch-control regression tests additionally verify:
+
+- cancellation before the next post is processed,
+- reset and activation of the consecutive-known-post limit,
+- Viewer result construction using the full filtered count instead of the visible Preview limit.
 
 ## Performance diagnostics
 
@@ -33,7 +39,7 @@ These tests are not a replacement for profiling a very large personal collection
 
 ## Manual validation notes
 
-Danbooru Download Manager `1.3.189` was developed through incremental patches and manual functional validation of the affected workflows.
+Danbooru Download Manager is developed through incremental patches and manual functional validation of affected workflows.
 
 This is not a claim of mathematical perfection. It means the important paths were repeatedly exercised instead of being assembled in one majestic, untested rewrite.
 
@@ -56,6 +62,8 @@ This is not a claim of mathematical perfection. It means the important paths wer
 - Fetch-exclude tags,
 - resolution filters,
 - known-post updates and thumbnail loading,
+- cancellation with completed work retained,
+- stopping each query after a configured consecutive-known-post sequence,
 - repeated Fetch runs,
 - Fetch followed by Previewer opening and another Fetch.
 
@@ -64,6 +72,7 @@ This is not a claim of mathematical perfection. It means the important paths wer
 - status filters, search and sorting,
 - structured tags and configurable card data,
 - image loading and navigation,
+- navigation across the complete filtered/sorted result set beyond the Preview card limit,
 - ratings, statuses and category decisions,
 - tag aliases, scores, filename exclusions and Fetch exclusions.
 
@@ -107,6 +116,7 @@ Testing remains primarily manual and Windows-focused. More validation is still u
 
 - very large databases and collections,
 - interrupted or unstable network connections,
+- cancellation timing during unusually slow individual HTTP responses,
 - unusual Danbooru API errors,
 - non-Windows packaged builds,
 - every possible LLM provider configuration,

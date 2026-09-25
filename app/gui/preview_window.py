@@ -1667,7 +1667,13 @@ class PreviewWindow(QMainWindow):
             existing.activateWindow()
             return
 
-        post_ids = self.grid.visible_post_ids()
+        self.status_bar.showMessage(
+            tr("preview.viewer_loading_all", "Preparing all matching posts for the viewer…", config=self.config)
+        )
+        QApplication.processEvents()
+        post_ids = self.all_matching_viewer_post_ids()
+        if post_id not in post_ids:
+            post_ids = self.grid.visible_post_ids()
         viewer = ImageViewerWindow(self.config, self.db, post_ids, post_id)
         viewer.status_changed.connect(self.on_status_changed)
         viewer.query_requested.connect(self.schedule_viewer_query)
@@ -1677,6 +1683,38 @@ class PreviewWindow(QMainWindow):
 
         viewer.resize(1500, 950)
         viewer.show()
+
+    def all_matching_viewer_post_ids(self) -> list[int]:
+        statuses = self.selected_statuses()
+        text_filter = self.current_search_text()
+        category_filter = self.selected_category_filter()
+        recommendation_minimum = self.selected_recommendation_minimum()
+        sort_key = self.selected_sort_key()
+
+        total = self.count_preview_posts_by_statuses(
+            statuses=statuses,
+            text_filter=text_filter,
+        )
+        if total <= 0:
+            return []
+
+        candidates = self.fetch_preview_posts_by_statuses(
+            statuses=statuses,
+            text_filter=text_filter,
+            limit=total,
+            offset=0,
+            sort_key=sort_key,
+        )
+        enriched = self.enrich_preview_rows_with_categories(candidates)
+        filtered = [
+            row
+            for row in enriched
+            if self.category_matches_filter(row, category_filter)
+            and self.recommendation_matches_filter(row, recommendation_minimum)
+        ]
+        ordered = self.sort_preview_rows_in_python(filtered, sort_key)
+        grouped = self.group_related_preview_rows(ordered)
+        return [int(row["id"]) for row in grouped]
 
     def remove_viewer(self, post_id: int) -> None:
         self.viewer_windows_by_post_id.pop(int(post_id), None)

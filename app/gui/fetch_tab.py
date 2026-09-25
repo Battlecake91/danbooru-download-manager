@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import threading
 import traceback
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,10 @@ class FetchWorker(QObject):
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
         self.config = config
+        self.cancel_event = threading.Event()
+
+    def request_cancel(self) -> None:
+        self.cancel_event.set()
 
     @Slot()
     def run(self) -> None:
@@ -92,25 +97,34 @@ class FetchWorker(QObject):
                 worker_db,
                 progress_callback=self.progress.emit,
                 log_callback=self.log.emit,
+                cancel_requested=self.cancel_event.is_set,
             )
             result = service.fetch_and_store()
 
-            llm_ids = list(getattr(result, "inserted_post_ids", []) or [])
-            if not llm_ids:
-                llm_ids = list(getattr(result, "fetched_post_ids", []) or [])
-            llm_service = LLMBatchPreselectionService(self.config, worker_db, log_callback=self.log.emit)
-            llm_result = llm_service.run_for_post_ids(llm_ids)
-            result.llm_input_posts = llm_result.input_posts
-            result.llm_candidate_posts = llm_result.candidate_posts
-            result.llm_skipped_posts = llm_result.skipped_posts
-            result.llm_batches_total = llm_result.batches_total
-            result.llm_payloads_prepared = llm_result.payloads_prepared
-            result.llm_batch_summaries = llm_result.batch_summaries
-            result.llm_requests_sent = llm_result.requests_sent
-            result.llm_decisions_received = llm_result.decisions_received
-            result.llm_decisions_saved = llm_result.decisions_saved
-            result.llm_skipped_reason = llm_result.skipped_reason
-            result.llm_errors = llm_result.errors
+            if not result.cancelled and not self.cancel_event.is_set():
+                llm_ids = list(getattr(result, "inserted_post_ids", []) or [])
+                if not llm_ids:
+                    llm_ids = list(getattr(result, "fetched_post_ids", []) or [])
+                llm_service = LLMBatchPreselectionService(
+                    self.config,
+                    worker_db,
+                    log_callback=self.log.emit,
+                    cancel_requested=self.cancel_event.is_set,
+                )
+                llm_result = llm_service.run_for_post_ids(llm_ids)
+                if llm_result.cancelled:
+                    result.cancelled = True
+                result.llm_input_posts = llm_result.input_posts
+                result.llm_candidate_posts = llm_result.candidate_posts
+                result.llm_skipped_posts = llm_result.skipped_posts
+                result.llm_batches_total = llm_result.batches_total
+                result.llm_payloads_prepared = llm_result.payloads_prepared
+                result.llm_batch_summaries = llm_result.batch_summaries
+                result.llm_requests_sent = llm_result.requests_sent
+                result.llm_decisions_received = llm_result.decisions_received
+                result.llm_decisions_saved = llm_result.decisions_saved
+                result.llm_skipped_reason = llm_result.skipped_reason
+                result.llm_errors = llm_result.errors
 
         except Exception:
             failure = traceback.format_exc()
@@ -572,6 +586,22 @@ class FetchTab(QWidget):
         self.min_unknown_per_query_spin.setToolTip(tr("fetch.options.min_unknown_tip", config=self.config))
         self.options_layout.addRow(tr("fetch.options.min_unknown", config=self.config), self.min_unknown_per_query_spin)
 
+        self.max_consecutive_known_spin = QSpinBox()
+        self.max_consecutive_known_spin.setRange(0, 100000)
+        self.max_consecutive_known_spin.setValue(int(config.get("max_consecutive_known_posts", 0) or 0))
+        self.max_consecutive_known_spin.setKeyboardTracking(False)
+        self.max_consecutive_known_spin.setToolTip(
+            tr(
+                "fetch.options.known_streak_tip",
+                "Stop the current query after this many consecutive known posts. 0 disables the limit.",
+                config=self.config,
+            )
+        )
+        self.options_layout.addRow(
+            tr("fetch.options.known_streak", "Known posts in a row:", config=self.config),
+            self.max_consecutive_known_spin,
+        )
+
         self.max_total_posts_spin = QSpinBox()
         self.max_total_posts_spin.setRange(1, 100000)
         self.max_total_posts_spin.setValue(int(config.get("max_total_posts", 500)))
@@ -595,6 +625,14 @@ class FetchTab(QWidget):
         self.fetch_button.setToolTip("Start Fetch with the current source, filters and limits.")
         self.fetch_button.clicked.connect(self.start_fetch)
         self.button_row.addWidget(self.fetch_button)
+
+        self.cancel_fetch_button = QPushButton(tr("fetch.cancel", "Cancel", config=self.config))
+        self.cancel_fetch_button.setToolTip(
+            tr("fetch.cancel_tooltip", "Stop the running fetch after the current network operation.", config=self.config)
+        )
+        self.cancel_fetch_button.clicked.connect(self.cancel_fetch)
+        self.cancel_fetch_button.setVisible(False)
+        self.button_row.addWidget(self.cancel_fetch_button)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
@@ -751,6 +789,7 @@ class FetchTab(QWidget):
             "rating_states": self.rating_states(),
             "max_posts_per_query": int(self.max_posts_per_query_spin.value()),
             "min_unknown_posts_per_query": int(self.min_unknown_per_query_spin.value()),
+            "max_consecutive_known_posts": int(self.max_consecutive_known_spin.value()),
             "max_total_posts": int(self.max_total_posts_spin.value()),
             "llm_enabled": self.llm_enabled_checkbox.isChecked(),
             "fetch_exclude_enabled": self.fetch_exclude_enabled_checkbox.isChecked(),
@@ -777,6 +816,9 @@ class FetchTab(QWidget):
         )
         self.min_unknown_per_query_spin.setValue(
             int(payload.get("min_unknown_posts_per_query") or self.config.get("min_unknown_posts_per_query", 0) or 0)
+        )
+        self.max_consecutive_known_spin.setValue(
+            int(payload.get("max_consecutive_known_posts", self.config.get("max_consecutive_known_posts", 0)) or 0)
         )
         self.max_total_posts_spin.setValue(
             int(payload.get("max_total_posts") or self.config.get("max_total_posts", 500))
@@ -885,6 +927,7 @@ class FetchTab(QWidget):
 
         fetch_config["max_posts_per_query"] = int(self.max_posts_per_query_spin.value())
         fetch_config["min_unknown_posts_per_query"] = int(self.min_unknown_per_query_spin.value())
+        fetch_config["max_consecutive_known_posts"] = int(self.max_consecutive_known_spin.value())
         fetch_config["max_total_posts"] = int(self.max_total_posts_spin.value())
         fetch_config.setdefault("llm", {})["enabled"] = self.llm_enabled_checkbox.isChecked()
         fetch_config["fetch_exclude_enabled"] = self.fetch_exclude_enabled_checkbox.isChecked()
@@ -1022,6 +1065,8 @@ class FetchTab(QWidget):
 
         self.save_last_fetch_payload()
         self.fetch_button.setEnabled(False)
+        self.cancel_fetch_button.setEnabled(True)
+        self.cancel_fetch_button.setVisible(True)
         self.save_preset_button.setEnabled(False)
         self.delete_preset_button.setEnabled(False)
         self.progress_bar.setRange(0, 0)
@@ -1052,6 +1097,16 @@ class FetchTab(QWidget):
 
         self.thread.start()
 
+    def cancel_fetch(self) -> None:
+        if self.worker is None:
+            return
+        self.worker.request_cancel()
+        self.cancel_fetch_button.setEnabled(False)
+        self.fetch_progress_label.setText(
+            tr("fetch.progress.cancelling", "Cancelling after the current operation…", config=self.config)
+        )
+        self.fetch_progress_label.setVisible(True)
+
 
     def on_fetch_progress(self, progress: object) -> None:
         if not isinstance(progress, FetchProgress):
@@ -1079,6 +1134,15 @@ class FetchTab(QWidget):
         known_part = f"{tr('fetch.progress.known', 'Known', config=self.config)}: {int(progress.known_posts or 0)}"
         inserted_part = f"{tr('fetch.progress.new', 'New', config=self.config)}: {inserted_total}"
         thumb_part = f"{tr('fetch.progress.thumbs', 'Thumbs', config=self.config)}: {int(progress.cached_thumbnails or 0)}"
+        streak_limit = max(0, int(getattr(progress, "known_streak_limit", 0) or 0))
+        streak_value = max(0, int(getattr(progress, "consecutive_known_posts", 0) or 0))
+        streak_part = ""
+        if streak_limit > 0:
+            streak_part = (
+                " | "
+                + tr("fetch.progress.known_streak", "Known in a row", config=self.config)
+                + f": {streak_value}/{streak_limit}"
+            )
 
         if target_unknown > 0:
             post_part = f"{tr('fetch.progress.unknown_query', 'Unknown this query', config=self.config)}: {inserted_for_query}/{target_unknown}"
@@ -1089,6 +1153,8 @@ class FetchTab(QWidget):
             post_part = f"{post_word} {seen_total}/{planned_total}"
             self.progress_bar.setFormat(f"{query_part} | {post_part} | {known_part}")
             detail = f"{query_part} | {post_part} | {known_part} | {inserted_part} | {thumb_part}"
+
+        detail += streak_part
 
         if query_text:
             detail += f" | {query_text[:90]}"
@@ -1102,6 +1168,8 @@ class FetchTab(QWidget):
         seen_posts = int(getattr(result, "seen_posts", 0) or 0)
         inserted_posts = int(getattr(result, "inserted_posts", 0) or 0)
         known_posts = int(getattr(result, "updated_posts", 0) or 0)
+        cancelled = bool(getattr(result, "cancelled", False))
+        stopped_queries = list(getattr(result, "known_streak_stopped_queries", []) or [])
         cached_thumbnails = int(getattr(result, "cached_thumbnails", 0) or 0)
         fetch_excluded_posts = int(getattr(result, "fetch_excluded_posts", 0) or 0)
         resolution_excluded_posts = int(getattr(result, "resolution_excluded_posts", 0) or 0)
@@ -1122,7 +1190,9 @@ class FetchTab(QWidget):
             )
 
         lines = [
-            tr("fetch.summary.title", "Fetch summary", config=self.config),
+            tr("fetch.summary.cancelled", "Fetch cancelled", config=self.config)
+            if cancelled
+            else tr("fetch.summary.title", "Fetch summary", config=self.config),
             f"  {query_line}",
             f"  {tr('fetch.summary.posts_checked', 'Posts checked', config=self.config)}: {seen_posts}",
             new_unknown_line,
@@ -1131,6 +1201,10 @@ class FetchTab(QWidget):
             f"  {tr('fetch.summary.resolution_excluded', 'Resolution-excluded', config=self.config)}: {resolution_excluded_posts}",
             f"  {tr('fetch.summary.thumbnails', 'Thumbnails', config=self.config)}: {cached_thumbnails}",
         ]
+        if stopped_queries:
+            lines.append(
+                f"  {tr('fetch.summary.known_streak_stops', 'Queries stopped by known-post limit', config=self.config)}: {len(stopped_queries)}"
+            )
 
         llm_input = int(getattr(result, "llm_input_posts", 0) or 0)
         llm_candidates = int(getattr(result, "llm_candidate_posts", 0) or 0)
@@ -1216,6 +1290,8 @@ class FetchTab(QWidget):
         self.worker = None
 
         self.fetch_button.setEnabled(True)
+        self.cancel_fetch_button.setVisible(False)
+        self.cancel_fetch_button.setEnabled(True)
         self.save_preset_button.setEnabled(True)
         self.delete_preset_button.setEnabled(True)
         self.progress_bar.setVisible(False)

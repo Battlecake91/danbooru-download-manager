@@ -16,6 +16,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "fetch_excluded_posts_count_toward_limits": True,
     "limit": 100,
     "max_posts_per_query": 200,
+    "max_consecutive_known_posts": 0,
     "max_total_posts": 500,
     "request_timeout_seconds": 30,
     "request_min_interval_seconds": 0.35,

@@ -1,7 +1,7 @@
 # Danbooru Download Manager
 
-> **Current release:** `1.3.202`
-> Version `1.3.195` adds Viewer preview-strip controls, Fetch-exclude workflow controls, richer Help guidance, guarded layout/statistics fixes and Linux CI runtime fixes.
+> **Current release:** `1.3.203`
+> Version `1.3.203` adds Fetch cancellation, a consecutive-known-post stop condition and full-result Viewer navigation to the desktop application. The planned web application is not part of this release.
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
 Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
@@ -22,13 +22,16 @@ The central workflow is deliberately metadata-first:
   Track pending, saved, rejected, imported and downloaded posts, including tags, ratings, categories, parent/child information and local file paths.
 
 - **Fetch presets and saved searches**  
-  Use manual Danbooru queries, reusable presets or authenticated saved searches with per-preset limits, rating selection, optional LLM processing and original-resolution limits.
+  Use manual Danbooru queries, reusable presets or authenticated saved searches with per-preset limits, rating selection, optional LLM processing, original-resolution limits and an early stop after consecutive known posts.
+
+- **Controllable Fetch runs**
+  Cancel a running Fetch without discarding completed database work. Cancellation also prevents or stops optional LLM follow-up processing between batches.
 
 - **Fetch exclusion blacklist**  
   Exclude unwanted tags before posts enter the database or thumbnail cache. Tags can be added through the Viewer or managed in the Tag tab.
 
 - **Previewer and Viewer workflow**  
-  Filter, sort and search fetched posts, then rate, categorize, reject, save or inspect them in detail.
+  Filter, sort and search fetched posts, then rate, categorize, reject, save or inspect them in detail. Viewer navigation covers the complete matching result set instead of only the currently visible Preview cards.
 
 - **Three-step importer**  
   Scan a folder, review likely matches, compare local and remote images, then choose the final import actions such as renaming and thumbnail fetching.
@@ -125,7 +128,7 @@ Single-executable build for the current platform:
 python scripts/make_release.py --allow-dirty --onefile
 ```
 
-Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.202_win64_portable.zip` or `DanbooruManager_1.3.202_linux_x86_64_onefile.zip`.
+Release ZIPs are written to `release/` and include the platform and bundle type in the filename, for example `DanbooruManager_1.3.203_win64_portable.zip` or `DanbooruManager_1.3.203_linux_x86_64_onefile.zip`.
 
 ---
 
@@ -155,12 +158,15 @@ A fetch preset can contain:
 - General, Sensitive, Questionable and Explicit rating choices,
 - maximum posts per query and total posts,
 - minimum unknown posts per query,
+- maximum consecutive known posts before the current query is stopped,
 - LLM enable state,
 - minimum and maximum width and height.
 
 Empty resolution fields or `0` mean unrestricted. Posts outside active limits are rejected before database insertion and thumbnail download.
 
 The persistent **Fetch exclude** list acts as a tag blacklist. Any post containing an excluded tag is skipped before it enters the local review workflow.
+
+Set **Known posts in a row** to stop an individual query after that many consecutive database-known posts. Finding a new post resets the counter. `0` disables this behavior. A running Fetch can be cancelled from the Fetch tab; completed post updates remain stored, and cancellation takes effect after the current network operation.
 
 See [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md).
 
@@ -169,6 +175,8 @@ See [`docs/FETCH_WORKFLOW.md`](docs/FETCH_WORKFLOW.md).
 ## Previewer and Viewer
 
 The Previewer is the main triage view. It supports status filters, text search, sorting, configurable card information, structured tag display and category/recommendation information.
+
+The Viewer opens the complete result set represented by the active Previewer statuses, search, category filter, recommendation threshold and sorting. The Preview card limit only controls how many cards are displayed and no longer limits Viewer navigation.
 
 The Viewer provides the detailed decision workflow:
 
@@ -255,7 +263,7 @@ See [`docs/DATABASE_ACCESS.md`](docs/DATABASE_ACCESS.md).
 | [`docs/TESTING.md`](docs/TESTING.md) | Functional testing scope and limitations |
 | [`docs/RELEASE_WORKFLOW.md`](docs/RELEASE_WORKFLOW.md) | Push, build and release workflow |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Milestone-oriented project history |
-| [`docs/RELEASE_NOTES_1.3.202.md`](docs/RELEASE_NOTES_1.3.202.md) | Changes included in this release |
+| [`docs/RELEASE_NOTES_1.3.203.md`](docs/RELEASE_NOTES_1.3.203.md) | Changes included in this release |
 
 ---
 

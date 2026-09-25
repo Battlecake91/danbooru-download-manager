@@ -1,6 +1,6 @@
 # Configuration
 
-Danbooru Download Manager `1.3.189` stores normal runtime configuration in the local SQLite database. YAML is not the leading configuration source for everyday use.
+Danbooru Download Manager stores normal runtime configuration in the local SQLite database. YAML is not the leading configuration source for everyday use.
 
 ---
 
@@ -45,11 +45,14 @@ Run-specific values belong to Fetch presets instead:
 - Max posts per query,
 - Max total posts,
 - Minimum unknown posts per query,
+- Known posts in a row,
 - rating selection,
 - resolution limits,
 - LLM enable state.
 
 This avoids having two different fields pretending to control the same run, a traditional source of software folklore.
+
+`max_consecutive_known_posts` backs the **Known posts in a row** preset field. It is evaluated separately for each generated query. `0` disables the early stop; any newly inserted post resets the running known-post count.
 
 ### Saved-search extra tags
 
@@ -71,6 +74,8 @@ Preview cards can be configured to show selected metadata:
 Tags can be shown as raw Danbooru text or grouped into typed, formatted sections.
 
 The Previewer toolbar and nested layouts are recalculated after startup and tab changes so controls remain visible at different window sizes.
+
+The Preview card limit controls rendering only. Opening a card builds the Viewer navigation list from every post matching the active status, text, category, recommendation and sort settings.
 
 ---
 

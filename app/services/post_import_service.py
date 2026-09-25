@@ -25,6 +25,8 @@ class FetchResult:
     target_unknown_total: int = 0
     fetched_post_ids: list[int] = field(default_factory=list)
     inserted_post_ids: list[int] = field(default_factory=list)
+    cancelled: bool = False
+    known_streak_stopped_queries: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -41,6 +43,8 @@ class FetchProgress:
     inserted_posts: int = 0
     known_posts: int = 0
     cached_thumbnails: int = 0
+    consecutive_known_posts: int = 0
+    known_streak_limit: int = 0
     phase: str = "running"
 
 
@@ -51,6 +55,7 @@ class PostImportService:
         db: Database,
         progress_callback: Callable[[FetchProgress], None] | None = None,
         log_callback: Callable[[str], None] | None = None,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> None:
         self.config = config
         self.db = db
@@ -58,6 +63,7 @@ class PostImportService:
         self.thumbnail_cache = ThumbnailCache(config, self.api.session)
         self.progress_callback = progress_callback
         self.log_callback = log_callback
+        self.cancel_requested = cancel_requested
 
     def emit_log(self, message: str) -> None:
         if self.log_callback is not None:
@@ -67,12 +73,19 @@ class PostImportService:
         if self.progress_callback is not None:
             self.progress_callback(progress)
 
+    def is_cancel_requested(self) -> bool:
+        return bool(self.cancel_requested is not None and self.cancel_requested())
+
     def fetch_and_store(self) -> FetchResult:
+        if self.is_cancel_requested():
+            return FetchResult(cancelled=True)
+
         queries = build_search_queries(self.config, self.api)
         if not queries:
             raise RuntimeError("No search queries available")
 
         min_unknown_per_query = max(0, int(self.config.get("min_unknown_posts_per_query", 0) or 0))
+        known_streak_limit = max(0, int(self.config.get("max_consecutive_known_posts", 0) or 0))
         result = FetchResult(
             queries=len(queries),
             target_unknown_per_query=min_unknown_per_query,
@@ -99,11 +112,15 @@ class PostImportService:
                 planned_total=planned_total,
                 planned_for_query=planned_for_query,
                 target_unknown_for_query=min_unknown_per_query,
+                known_streak_limit=known_streak_limit,
                 phase="start",
             )
         )
 
         for query_index, query in enumerate(queries, start=1):
+            if self.is_cancel_requested():
+                result.cancelled = True
+                break
             if total_seen >= max_total_posts:
                 break
 
@@ -113,6 +130,8 @@ class PostImportService:
             page = None
             seen_for_query = 0
             inserted_for_query = 0
+            consecutive_known_posts = 0
+            stop_current_query = False
             self.emit_progress(
                 FetchProgress(
                     query_index=query_index,
@@ -124,6 +143,7 @@ class PostImportService:
                     planned_for_query=planned_for_query,
                     inserted_for_query=inserted_for_query,
                     target_unknown_for_query=min_unknown_per_query,
+                    known_streak_limit=known_streak_limit,
                     inserted_posts=result.inserted_posts,
                     known_posts=result.updated_posts,
                     cached_thumbnails=result.cached_thumbnails,
@@ -132,6 +152,9 @@ class PostImportService:
             )
 
             while total_seen < max_total_posts:
+                if self.is_cancel_requested():
+                    result.cancelled = True
+                    break
                 if min_unknown_per_query > 0:
                     if inserted_for_query >= min_unknown_per_query:
                         break
@@ -139,10 +162,16 @@ class PostImportService:
                     break
 
                 page_data = self.api.get_posts(query, limit=limit, page=page)
+                if self.is_cancel_requested():
+                    result.cancelled = True
+                    break
                 if not page_data.posts:
                     break
 
                 for post in page_data.posts:
+                    if self.is_cancel_requested():
+                        result.cancelled = True
+                        break
                     if total_seen >= max_total_posts:
                         break
                     if min_unknown_per_query > 0:
@@ -174,12 +203,17 @@ class PostImportService:
                         result.inserted_posts += 1
                         result.inserted_post_ids.append(post_id)
                         inserted_for_query += 1
+                        consecutive_known_posts = 0
                     else:
                         result.updated_posts += 1
+                        consecutive_known_posts += 1
 
                     # Do not reload active thumbnails for posts that already have a decision.
                     status = self.get_status(post_id)
                     if status in {"new", "potential", "review", "selected_save"}:
+                        if self.is_cancel_requested():
+                            result.cancelled = True
+                            break
                         thumbnail_path = self.thumbnail_cache.cache_thumbnail(post)
                         if thumbnail_path:
                             self.set_thumbnail_path(post_id, thumbnail_path)
@@ -199,14 +233,33 @@ class PostImportService:
                             inserted_posts=result.inserted_posts,
                             known_posts=result.updated_posts,
                             cached_thumbnails=result.cached_thumbnails,
+                            consecutive_known_posts=consecutive_known_posts,
+                            known_streak_limit=known_streak_limit,
                             phase="post",
                         )
                     )
+
+                    if known_streak_limit > 0 and consecutive_known_posts >= known_streak_limit:
+                        result.known_streak_stopped_queries.append(query)
+                        stop_current_query = True
+                        self.emit_log(
+                            f"Stopped query after {consecutive_known_posts} consecutive known posts: {query}"
+                        )
+                        break
+
+                if result.cancelled or stop_current_query:
+                    break
 
                 if not page_data.next_page:
                     break
 
                 page = page_data.next_page
+
+            if result.cancelled:
+                break
+
+        if self.is_cancel_requested():
+            result.cancelled = True
 
         self.emit_progress(
             FetchProgress(
@@ -219,7 +272,8 @@ class PostImportService:
                 inserted_posts=result.inserted_posts,
                 known_posts=result.updated_posts,
                 cached_thumbnails=result.cached_thumbnails,
-                phase="done",
+                known_streak_limit=known_streak_limit,
+                phase="cancelled" if result.cancelled else "done",
             )
         )
         return result

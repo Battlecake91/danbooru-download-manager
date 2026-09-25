@@ -1,6 +1,6 @@
 # Fetch Workflow
 
-This document describes the Fetch workflow in Danbooru Download Manager `1.3.189`.
+This document describes the current desktop Fetch workflow in Danbooru Download Manager.
 
 Fetch discovers Danbooru posts and stores their metadata and thumbnails in the local database. Original files are normally downloaded later, after review. This keeps unwanted posts out of the final collection instead of downloading first and developing judgment afterward.
 
@@ -28,6 +28,7 @@ Presets store reusable Fetch settings, including:
 - rating selection,
 - posts-per-query and total limits,
 - minimum unknown-post target,
+- consecutive-known-post stop limit,
 - resolution limits,
 - LLM enable state.
 
@@ -95,7 +96,8 @@ Per-preset limits in the Fetch tab are:
 
 - **Max posts per query**,
 - **Max total posts**,
-- **Minimum unknown posts per query**.
+- **Minimum unknown posts per query**,
+- **Known posts in a row**.
 
 The Danbooru API page size is a global transport setting under **Configuration → Fetch**.
 
@@ -105,6 +107,25 @@ These values have different purposes:
 - Max posts per query limits how many posts are examined for each generated query.
 - Max total posts limits the complete run.
 - Minimum unknown posts can continue pagination until enough previously unseen posts have been found, subject to the other limits.
+- Known posts in a row stops only the current generated query after the configured number of consecutive existing database posts. A new post resets the counter, and `0` disables the condition.
+
+This early-stop condition is especially useful for recurring searches ordered from newest to oldest. Once a sufficiently long uninterrupted block of already-known posts is reached, Fetch moves to the next tag query or saved search instead of walking through a large known history.
+
+---
+
+## Cancelling a Fetch
+
+While a Fetch is active, the normal Fetch button is disabled and an additional **Cancel** action is shown.
+
+Cancellation is cooperative:
+
+- the current database operation is allowed to finish,
+- an active HTTP request may run until it returns or reaches its configured timeout,
+- no new API page or post is started afterward,
+- completed metadata, tags and thumbnails remain stored,
+- optional LLM follow-up is skipped, or stops between batches when it has already started.
+
+The final summary identifies a cancelled run and retains the counts completed before cancellation.
 
 ---
 
@@ -128,7 +149,8 @@ For every returned post, Fetch roughly performs this sequence:
 4. Decide whether the post is new or already known.
 5. Store or update metadata and tags.
 6. Cache the thumbnail when required.
-7. Optionally include new candidates in LLM processing.
+7. Update the consecutive-known counter and, when its limit is reached, continue with the next query.
+8. Optionally include new candidates in LLM processing.
 
 Filtering before storage prevents excluded posts from appearing in the Previewer and avoids unnecessary thumbnail downloads.
 
@@ -145,6 +167,8 @@ After a run, the summary includes values such as:
 - Fetch-excluded posts,
 - resolution-excluded posts,
 - thumbnails loaded,
+- queries stopped by the consecutive-known-post limit,
+- whether the run was cancelled,
 - LLM input and decisions when enabled.
 
 ---
@@ -171,3 +195,5 @@ After Fetch finishes:
 4. Open promising posts in the Viewer.
 5. Rate, categorize, reject or save them.
 6. Download originals only for posts worth keeping.
+
+The Viewer receives all posts matching the active Previewer filters and sorting. Its Previous/Next navigation is therefore independent of the visible Preview card limit.

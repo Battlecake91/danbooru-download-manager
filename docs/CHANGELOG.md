@@ -2,7 +2,25 @@
 
 This changelog groups development into user-facing milestones instead of preserving every internal patch as a separate archaeological layer.
 
-## 1.3.202 - Current release
+## 1.3.203 - Current release
+
+### Added
+
+- Added a Fetch cancellation action that stops cooperatively after the current network or database operation and preserves completed work.
+- Added a per-preset **Known posts in a row** limit. Reaching the configured consecutive-known count stops the current query and continues with the next one; finding a new post resets the counter.
+- Added progress and summary information for cancellation and queries stopped by the known-post limit.
+- Added regression coverage for Fetch cancellation, consecutive-known handling and full-result Viewer construction.
+
+### Changed
+
+- Viewer navigation now uses every post matching the active Previewer filters and sorting instead of only the currently rendered Preview cards.
+- Fetch cancellation is propagated into optional LLM follow-up processing between batches.
+
+See [`RELEASE_NOTES_1.3.203.md`](RELEASE_NOTES_1.3.203.md) for the complete release summary.
+
+---
+
+## 1.3.202
 
 ### Added
 
