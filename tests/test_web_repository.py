@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.core.database import Database
 from app.web.repository import SORT_SQL, build_post_filter, list_posts, matching_post_ids, post_detail, resolve_media_path
-from app.web.runtime import fetch_overrides_from_payload
+from app.web.runtime import fetch_overrides_from_payload, open_database
 
 
 def make_db(path: Path) -> Database:
@@ -22,6 +23,25 @@ def make_db(path: Path) -> Database:
     )
     db.commit()
     return db
+
+
+def test_web_database_connection_can_cross_fastapi_worker_threads(tmp_path: Path) -> None:
+    database_file = tmp_path / "threaded-web.db"
+    setup = Database(database_file)
+    setup.connect()
+    setup.initialize_schema()
+    setup.close()
+
+    db = open_database({"database_file": str(database_file)})
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            count = executor.submit(
+                lambda: int(db.execute("SELECT COUNT(*) FROM posts").fetchone()[0])
+            ).result()
+    finally:
+        db.close()
+
+    assert count == 0
 
 
 def test_web_post_batches_are_not_capped_to_desktop_preview_limit(tmp_path: Path) -> None:

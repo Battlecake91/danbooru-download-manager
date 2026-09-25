@@ -26,8 +26,12 @@ class DatabaseConnectionMixin:
         self._write_owner = object()
         self._write_gate_held = False
         self._write_ticket: int | None = None
-    def connect(self) -> None:
-        self.connection = sqlite3.connect(self.path, timeout=30.0)
+    def connect(self, *, check_same_thread: bool = True) -> None:
+        self.connection = sqlite3.connect(
+            self.path,
+            timeout=30.0,
+            check_same_thread=check_same_thread,
+        )
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA busy_timeout = 30000")
         self.connection.execute("PRAGMA foreign_keys = ON")

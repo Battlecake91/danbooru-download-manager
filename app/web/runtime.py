@@ -65,7 +65,9 @@ def build_web_config() -> dict[str, Any]:
 
 def open_database(config: dict[str, Any]) -> Database:
     db = Database(Path(str(config["database_file"])))
-    db.connect()
+    # FastAPI may create, use and finalize a sync dependency on different
+    # worker threads. Each request still owns its connection exclusively.
+    db.connect(check_same_thread=False)
     return db
 
 
