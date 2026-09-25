@@ -98,6 +98,25 @@ def test_media_resolver_maps_windows_database_path_to_container_root(tmp_path: P
     assert resolved == thumbnail.resolve()
 
 
+def test_viewer_does_not_treat_thumbnail_as_full_image(tmp_path: Path) -> None:
+    active = tmp_path / "thumbnails" / "active"
+    active.mkdir(parents=True)
+    thumbnail = active / "12345_large.jpg"
+    thumbnail.write_bytes(b"thumbnail")
+
+    resolved = resolve_media_path(
+        {
+            "active_thumbnail_dir": active,
+            "original_cache_dir": tmp_path / "originals",
+            "default_output_dir": tmp_path / "archive",
+        },
+        {"id": 12345, "thumbnail_path": str(thumbnail)},
+        "viewer",
+    )
+
+    assert resolved is None
+
+
 def test_desktop_fetch_preset_translates_for_web_runtime() -> None:
     overrides = fetch_overrides_from_payload(
         {

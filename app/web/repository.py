@@ -197,12 +197,10 @@ def resolve_media_path(config: dict[str, Any], post: dict[str, Any], variant: st
             config.get("rejected_thumbnail_dir"),
         )
     else:
-        fields = ("original_cache_path", "original_path", "final_file_path", "thumbnail_path")
+        fields = ("original_cache_path", "original_path", "final_file_path")
         roots = (
             config.get("original_cache_dir"),
             config.get("default_output_dir"),
-            config.get("active_thumbnail_dir"),
-            config.get("saved_thumbnail_dir"),
         )
 
     allowed_roots = [Path(str(root)).resolve() for root in roots if root]

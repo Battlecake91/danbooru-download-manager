@@ -248,19 +248,24 @@ def create_app() -> FastAPI:
         if remote:
             api = DanbooruApi(request.app.state.config)
             response = api.session.get(str(remote), stream=True, timeout=api.timeout)
-            if not response.ok:
-                response.close()
-                api.session.close()
-                raise HTTPException(status_code=502, detail="Remote media could not be loaded")
+            if response.ok:
+                def chunks():
+                    try:
+                        yield from response.iter_content(chunk_size=1024 * 128)
+                    finally:
+                        response.close()
+                        api.session.close()
 
-            def chunks():
-                try:
-                    yield from response.iter_content(chunk_size=1024 * 128)
-                finally:
-                    response.close()
-                    api.session.close()
+                return StreamingResponse(chunks(), media_type=response.headers.get("Content-Type"))
+            response.close()
+            api.session.close()
 
-            return StreamingResponse(chunks(), media_type=response.headers.get("Content-Type"))
+        if variant == "viewer":
+            thumbnail_path = resolve_media_path(request.app.state.config, post_data, "thumbnail")
+            if thumbnail_path is not None:
+                return FileResponse(thumbnail_path)
+        if remote:
+            raise HTTPException(status_code=502, detail="Remote media could not be loaded")
         raise HTTPException(status_code=404, detail="No media available")
 
     @app.get("/api/tags")

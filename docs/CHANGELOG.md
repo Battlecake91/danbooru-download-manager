@@ -25,6 +25,7 @@ This changelog groups development into user-facing milestones instead of preserv
 ### Fixed
 
 - Web media lookup now recognizes Windows paths stored in SQLite when the same thumbnail files are mounted into a Linux container.
+- The web Viewer no longer selects a cached grid thumbnail when a local full image or larger Danbooru image is available.
 
 ## 1.3.205 - Current release
 

@@ -46,6 +46,7 @@ The desktop and web applications use the same SQLite schema. SQLite WAL mode and
 
 Container paths override path values stored by a desktop installation. This allows a Windows-created database to be mounted into the Linux container while media remains under `/data` and `/archive`.
 Stored Windows thumbnail paths are matched by their portable filename inside the active, saved and rejected thumbnail mounts.
+Viewer media prefers local originals and archived files, then Danbooru's large/original URL. Grid thumbnails are used in the Viewer only as a final fallback.
 
 ## Current web scope
 
