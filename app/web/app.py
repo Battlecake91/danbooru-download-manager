@@ -61,6 +61,10 @@ class PostSaveRequest(BaseModel):
     overwrite_existing: bool = False
 
 
+class ViewerSettingsRequest(BaseModel):
+    next_after_status_change: bool = True
+
+
 class TagUpdateRequest(BaseModel):
     alias: str | None = None
     manual_score: float | None = Field(default=None, ge=-10, le=10)
@@ -123,6 +127,11 @@ def create_app() -> FastAPI:
             "counts": counts,
             "scheduler": request.app.state.scheduler.settings(),
             "fetch": request.app.state.fetch_controller.snapshot(),
+            "viewer": {
+                "next_after_status_change": bool(
+                    (request.app.state.config.get("web", {}) or {}).get("viewer_next_after_status_change", True)
+                ),
+            },
         }
 
     @app.get("/api/fetch")
@@ -258,6 +267,18 @@ def create_app() -> FastAPI:
             "category_source": result.category_source,
             "final_path": str(result.final_path),
         }
+
+    @app.put("/api/viewer/settings")
+    def update_viewer_settings(
+        payload: ViewerSettingsRequest,
+        request: Request,
+        db=Depends(database),
+    ) -> dict[str, Any]:
+        value = bool(payload.next_after_status_change)
+        db.set_app_setting("web.viewer_next_after_status_change", json.dumps(value))
+        web_config = request.app.state.config.setdefault("web", {})
+        web_config["viewer_next_after_status_change"] = value
+        return {"next_after_status_change": value}
 
     @app.get("/api/media/{post_id}/{variant}")
     def media(post_id: int, variant: str, request: Request, db=Depends(database)):

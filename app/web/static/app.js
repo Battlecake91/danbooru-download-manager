@@ -1,4 +1,4 @@
-const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 32, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, fetchPresets: new Map(), fetchPresetPayload: {} };
+const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 32, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -53,6 +53,7 @@ async function bootstrap() {
   $("#version").textContent = `v${data.version}`;
   applySchedule(data.scheduler);
   renderFetch(data.fetch);
+  state.nextAfterStatusChange = data.viewer?.next_after_status_change !== false;
   $("#preview-batch").value = data.scheduler.batch_size;
   state.batch = data.scheduler.batch_size;
 }
@@ -267,6 +268,7 @@ async function openViewer(postId, push = true) {
           ${viewerStatusButton("rejected", "Rejected", data.status, "Reject post (Delete)")}
           ${viewerStatusButton("saved", "Saved", data.status)}
         </div>
+        <label class="viewer-auto-next"><input id="viewer-next-after-status" type="checkbox" ${state.nextAfterStatusChange ? "checked" : ""}> Next after status change</label>
         <div class="viewer-tag-top">
           ${viewerTagGroup("Artist", "artist", tags.artist)}
           ${viewerTagGroup("Series / Copyright", "copyright", tags.copyright)}
@@ -318,11 +320,37 @@ async function openViewer(postId, push = true) {
       $("#viewer").classList.toggle("hide-filename-excluded", event.target.checked);
       event.target.blur();
     };
+    $("#viewer-next-after-status").onchange = async event => {
+      const checkbox = event.target;
+      const previous = state.nextAfterStatusChange;
+      state.nextAfterStatusChange = checkbox.checked;
+      checkbox.blur();
+      try {
+        await api("/api/viewer/settings", {
+          method: "PUT",
+          body: JSON.stringify({next_after_status_change: state.nextAfterStatusChange}),
+        });
+        toast("Viewer preference saved");
+      } catch (error) {
+        state.nextAfterStatusChange = previous;
+        checkbox.checked = previous;
+        toast(error.message);
+      }
+    };
     $$('[data-strip-post]').forEach(button => button.onclick = () => openViewer(Number(button.dataset.stripPost)));
     $$('[data-viewer-status]').forEach(button => button.onclick = async () => {
-      await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({status: button.dataset.viewerStatus})});
-      $$('[data-viewer-status]').forEach(item => item.classList.toggle("active", item === button));
-      toast("Status saved");
+      const statusButtons = $$('[data-viewer-status]');
+      statusButtons.forEach(item => { item.disabled = true; });
+      try {
+        await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({status: button.dataset.viewerStatus})});
+        statusButtons.forEach(item => item.classList.toggle("active", item === button));
+        toast("Status saved");
+        if (state.nextAfterStatusChange && nav.next_id != null) await openViewer(nav.next_id);
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        statusButtons.forEach(item => { if (document.body.contains(item)) item.disabled = false; });
+      }
     });
     $$('[data-rating]').forEach(button => button.onclick = async () => {
       const stars = Number(button.dataset.rating);

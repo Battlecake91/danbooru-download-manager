@@ -109,6 +109,8 @@ td input[type="text"], td input[type="number"] { width: 120px; min-height: 30px;
 .viewer-statuses { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .viewer-status-button { padding: 7px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .viewer-status-button.active { outline: 2px solid #f3f5f3; outline-offset: -3px; }
+.viewer-auto-next { display: flex; align-items: center; gap: 7px; min-height: 26px; color: var(--muted); font-size: 11px; }
+.viewer-auto-next input { min-height: auto; }
 .status-new.active { background: #386d9a; }
 .status-potential.active { background: #8a681f; }
 .status-rejected.active { background: #8d3434; }

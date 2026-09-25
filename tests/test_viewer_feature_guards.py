@@ -76,3 +76,14 @@ def test_web_viewer_checkboxes_do_not_block_shortcuts() -> None:
 
     assert '["button", "checkbox", "color", "radio", "range", "reset", "submit"]' in web_source
     assert web_source.count("event.target.blur();") >= 3
+
+
+def test_web_viewer_persists_and_applies_status_auto_advance() -> None:
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert 'id="viewer-next-after-status"' in web_source
+    assert 'api("/api/viewer/settings"' in web_source
+    assert "state.nextAfterStatusChange && nav.next_id != null" in web_source
+    assert '@app.put("/api/viewer/settings")' in api_source
+    assert 'db.set_app_setting("web.viewer_next_after_status_change"' in api_source

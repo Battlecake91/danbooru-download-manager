@@ -15,6 +15,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Added web management and execution of the same Fetch presets stored by the desktop application, including Danbooru saved-search presets.
 - Added initial web tabs and APIs for tags, categories, configuration and maintenance.
 - Added the desktop Viewer keyboard shortcuts to the web Viewer, including real final saving with `F` through the shared archive service.
+- Added a persistent web Viewer option to advance to the next filtered post after any successful status change.
 
 ### Changed
 
