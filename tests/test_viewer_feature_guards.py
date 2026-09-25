@@ -39,3 +39,20 @@ def test_viewer_has_configurable_list_preview_strip() -> None:
     assert '"viewer.preview_strip_previous_count": int(self.viewer_strip_previous_spin.value())' in config_tab_source
     assert '"viewer.preview_strip_next_count": int(self.viewer_strip_next_spin.value())' in config_tab_source
     assert '"viewer.preview_strip_thumbnail_size": int(self.viewer_strip_thumbnail_size_spin.value())' in config_tab_source
+
+
+def test_web_viewer_carries_desktop_shortcuts_and_final_save() -> None:
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert 'event.key === "ArrowLeft"' in web_source
+    assert 'event.key === "ArrowRight"' in web_source
+    assert '/^[1-5]$/.test(event.key)' in web_source
+    assert 'key === "h"' in web_source
+    assert 'key === "n"' in web_source
+    assert 'event.key === "Delete"' in web_source
+    assert 'key === "o"' in web_source
+    assert 'key === "f"' in web_source
+    assert 'id="viewer-save"' in web_source
+    assert '@app.post("/api/posts/{post_id}/save")' in api_source
+    assert "FinalSaveService(request.app.state.config, db)" in api_source

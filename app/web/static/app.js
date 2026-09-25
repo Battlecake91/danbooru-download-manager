@@ -113,8 +113,8 @@ function viewerTagGroup(title, type, items, detailed = false) {
   return `<section class="viewer-tag-group tag-${type}"><header><strong>${title}</strong>${detailed ? "<span>Score</span><span>Avg</span><span>Flags</span>" : ""}</header><div class="viewer-tag-rows">${rows}</div></section>`;
 }
 
-function viewerStatusButton(value, label, current) {
-  return `<button type="button" class="viewer-status-button status-${value} ${value === current ? "active" : ""}" data-viewer-status="${value}">${label}</button>`;
+function viewerStatusButton(value, label, current, title = "") {
+  return `<button type="button" class="viewer-status-button status-${value} ${value === current ? "active" : ""}" data-viewer-status="${value}"${title ? ` title="${esc(title)}"` : ""}>${label}</button>`;
 }
 
 function ratingLabel(value) {
@@ -240,8 +240,9 @@ async function openViewer(postId, push = true) {
     viewer.innerHTML = `<div class="viewer-toolbar">
       <button class="icon-button" id="viewer-back" title="Back to preview" aria-label="Back">&#8592;</button>
       <label class="viewer-fit"><input id="viewer-fit" type="checkbox" checked> Fit</label>
-      <a class="button-link" href="${esc(data.original_post_url)}" target="_blank" rel="noreferrer">Original Post</a>
+      <a class="button-link" id="viewer-original" href="${esc(data.original_post_url)}" target="_blank" rel="noreferrer" title="Open original post (O)">Original Post</a>
       <button type="button" id="viewer-copy-link">Copy Link</button>
+      <button type="button" class="primary" id="viewer-save" title="Save final file (F)">Save</button>
       <span class="viewer-toolbar-spacer"></span>
       <strong>Post #${data.id}</strong>
     </div>
@@ -261,9 +262,9 @@ async function openViewer(postId, push = true) {
       </div>
       <aside class="viewer-sidebar">
         <div class="viewer-statuses">
-          ${viewerStatusButton("new", "New", data.status)}
-          ${viewerStatusButton("potential", "High Potential", data.status)}
-          ${viewerStatusButton("rejected", "Rejected", data.status)}
+          ${viewerStatusButton("new", "New", data.status, "Set status to New (N)")}
+          ${viewerStatusButton("potential", "High Potential", data.status, "Set status to High Potential (H)")}
+          ${viewerStatusButton("rejected", "Rejected", data.status, "Reject post (Delete)")}
           ${viewerStatusButton("saved", "Saved", data.status)}
         </div>
         <div class="viewer-tag-top">
@@ -284,6 +285,29 @@ async function openViewer(postId, push = true) {
     $("#viewer-next").onclick = () => nav.next_id && openViewer(nav.next_id);
     $("#viewer-fit").onchange = event => $("#viewer-image").classList.toggle("native-size", !event.target.checked);
     $("#viewer-copy-link").onclick = () => navigator.clipboard.writeText(data.original_post_url).then(() => toast("Link copied"));
+    $("#viewer-save").onclick = async () => {
+      const button = $("#viewer-save");
+      const overwriteExisting = Boolean(data.final_file_path);
+      if (overwriteExisting && !confirm(`Replace the existing saved file?\n\n${data.final_file_path}`)) return;
+      button.disabled = true;
+      try {
+        const categoryValue = $("#viewer-category").value;
+        const result = await api(`/api/posts/${data.id}/save`, {
+          method: "POST",
+          body: JSON.stringify({
+            category_id: categoryValue ? Number(categoryValue) : null,
+            overwrite_existing: overwriteExisting,
+          }),
+        });
+        toast(`Saved to ${result.final_path}`);
+        if (nav.next_id != null) await openViewer(nav.next_id);
+        else await openViewer(data.id, false);
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        if (document.body.contains(button)) button.disabled = false;
+      }
+    };
     $("#viewer-filename-filter").onchange = event => {
       state.viewerFilenameFilter = event.target.checked;
       $("#viewer").classList.toggle("hide-filename-excluded", event.target.checked);
@@ -474,12 +498,36 @@ $("#config-form").onsubmit = async event => { event.preventDefault(); const form
 
 new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadMorePosts(); }, {rootMargin:"500px"}).observe($("#preview-sentinel"));
 window.addEventListener("popstate", () => { const match = location.pathname.match(/^\/viewer\/(\d+)/); if (match) openViewer(Number(match[1]), false); else showTab("preview"); });
+function isTypingTarget(target) {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target?.isContentEditable;
+}
+
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && !$("#tag-context-menu").classList.contains("hidden")) {
     $("#tag-context-menu").classList.add("hidden");
     return;
   }
-  if (!$("#viewer").classList.contains("hidden")) { if (event.key === "ArrowLeft") $("#viewer-prev").click(); if (event.key === "ArrowRight") $("#viewer-next").click(); if (event.key === "Escape") $("#viewer-back").click(); }
+  if ($("#viewer").classList.contains("hidden") || isTypingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+
+  const key = event.key.toLowerCase();
+  let target = null;
+  if (event.key === "ArrowLeft") target = $("#viewer-prev");
+  else if (event.key === "ArrowRight") target = $("#viewer-next");
+  else if (event.key === "Escape") target = $("#viewer-back");
+  else if (/^[1-5]$/.test(event.key)) target = $(`[data-rating="${event.key}"]`);
+  else if (key === "h") target = $('[data-viewer-status="potential"]');
+  else if (key === "n") target = $('[data-viewer-status="new"]');
+  else if (event.key === "Delete") target = $('[data-viewer-status="rejected"]');
+  else if (key === "o") target = $("#viewer-original");
+  else if (key === "f") target = $("#viewer-save");
+
+  if (target && !target.disabled) {
+    event.preventDefault();
+    target.click();
+  }
 });
 
 bootstrap().then(() => {

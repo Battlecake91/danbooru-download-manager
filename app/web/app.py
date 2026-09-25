@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from app.version import __version__
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
+from app.services.final_save_service import AlreadySavedError, FinalSaveService
 from app.web.repository import list_posts, post_detail, resolve_media_path, row_dict
 from app.web.runtime import FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
 
@@ -53,6 +54,11 @@ class PostActionRequest(BaseModel):
     status: str | None = None
     stars: float | None = Field(default=None, ge=0, le=10)
     category_id: int | None = None
+
+
+class PostSaveRequest(BaseModel):
+    category_id: int | None = None
+    overwrite_existing: bool = False
 
 
 class TagUpdateRequest(BaseModel):
@@ -217,6 +223,41 @@ def create_app() -> FastAPI:
         if payload.category_id is not None:
             db.assign_post_category(post_id, payload.category_id, source="manual-web")
         return {"ok": True}
+
+    @app.post("/api/posts/{post_id}/save")
+    def save_post(post_id: int, payload: PostSaveRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+        if db.get_post_detail(post_id) is None:
+            raise HTTPException(status_code=404, detail="Post not found")
+
+        service = FinalSaveService(request.app.state.config, db)
+        category = None
+        if payload.category_id is not None:
+            category_row = next(
+                (row for row in db.list_categories_full() if int(row["id"]) == payload.category_id),
+                None,
+            )
+            if category_row is None:
+                raise HTTPException(status_code=404, detail="Category not found")
+            category = service.category_by_name(str(category_row["name"]))
+
+        try:
+            result = service.save_post(
+                post_id,
+                category=category,
+                overwrite_existing=payload.overwrite_existing,
+            )
+        except AlreadySavedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Save failed: {exc}") from exc
+
+        return {
+            "ok": True,
+            "post_id": result.post_id,
+            "category": result.category.name,
+            "category_source": result.category_source,
+            "final_path": str(result.final_path),
+        }
 
     @app.get("/api/media/{post_id}/{variant}")
     def media(post_id: int, variant: str, request: Request, db=Depends(database)):
