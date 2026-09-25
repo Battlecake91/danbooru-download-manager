@@ -84,7 +84,8 @@ def test_web_viewer_persists_and_applies_status_auto_advance() -> None:
 
     assert 'id="viewer-next-after-status"' in web_source
     assert 'api("/api/viewer/settings"' in web_source
-    assert "state.nextAfterStatusChange && nav.next_id != null" in web_source
+    assert "state.nextAfterStatusChange && nextId != null" in web_source
+    assert 'historyNextId != null ? "forward" : "append"' in web_source
     assert '@app.put("/api/viewer/settings")' in api_source
     assert 'db.set_app_setting("web.viewer_next_after_status_change"' in api_source
 
@@ -104,3 +105,14 @@ def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:
     assert 'Preselection ${signedScore(preselection)}' in web_source
     assert '@app.put("/api/preview/settings")' in api_source
     assert 'db.set_app_setting("web.preview_thumbnail_size"' in api_source
+
+
+def test_web_viewer_keeps_recent_filtered_posts_for_correction() -> None:
+    web_source = read_source("app/web/static/app.js")
+
+    assert "viewerHistoryLimit: 12" in web_source
+    assert "function recordViewerHistory" in web_source
+    assert "function viewerStripItems" in web_source
+    assert 'historyMode = "append"' in web_source
+    assert 'historyPreviousId != null ? "back" : "append"' in web_source
+    assert "if (tab === \"preview\") resetViewerHistory();" in web_source

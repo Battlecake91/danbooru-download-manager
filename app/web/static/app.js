@@ -1,4 +1,4 @@
-const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
+const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -56,9 +56,55 @@ async function savePreviewSettings() {
   applyPreviewThumbnailSize(saved.thumbnail_size);
 }
 
+function resetViewerHistory() {
+  state.viewerHistory = [];
+  state.viewerHistoryIndex = -1;
+}
+
+function recordViewerHistory(postId, mode) {
+  const id = Number(postId);
+  if (mode === "back" && state.viewerHistory[state.viewerHistoryIndex - 1] === id) {
+    state.viewerHistoryIndex -= 1;
+    return;
+  }
+  if (mode === "forward" && state.viewerHistory[state.viewerHistoryIndex + 1] === id) {
+    state.viewerHistoryIndex += 1;
+    return;
+  }
+  if (mode === "select") {
+    const existingIndex = state.viewerHistory.lastIndexOf(id);
+    if (existingIndex >= 0) {
+      state.viewerHistoryIndex = existingIndex;
+      return;
+    }
+  }
+  if (state.viewerHistory[state.viewerHistoryIndex] === id) return;
+  state.viewerHistory = state.viewerHistory.slice(0, state.viewerHistoryIndex + 1);
+  state.viewerHistory.push(id);
+  if (state.viewerHistory.length > state.viewerHistoryLimit) {
+    state.viewerHistory.splice(0, state.viewerHistory.length - state.viewerHistoryLimit);
+  }
+  state.viewerHistoryIndex = state.viewerHistory.length - 1;
+}
+
+function viewerStripItems(data) {
+  const historyStart = Math.max(0, state.viewerHistoryIndex - 3);
+  const historyEnd = Math.min(state.viewerHistory.length, state.viewerHistoryIndex + 4);
+  const historyIds = state.viewerHistory.slice(historyStart, historyEnd);
+  const itemsById = new Map(data.preview_strip.map(item => [Number(item.id), item]));
+  const ids = [...historyIds, ...data.preview_strip.map(item => Number(item.id))]
+    .filter((id, index, all) => all.indexOf(id) === index);
+  return ids.map(id => itemsById.get(id) || {
+    id,
+    active: id === Number(data.id),
+    thumbnail_url: `/api/media/${id}/thumbnail`,
+  });
+}
+
 function showTab(tab) {
   if (location.pathname.startsWith("/viewer/")) history.pushState({}, "", "/");
   state.tab = tab;
+  if (tab === "preview") resetViewerHistory();
   $("#viewer").classList.add("hidden");
   $("#tabs").classList.remove("hidden");
   $$(".view").forEach(node => node.classList.toggle("hidden", node.id !== `view-${tab}`));
@@ -83,6 +129,7 @@ async function bootstrap() {
 }
 
 async function resetPreview() {
+  resetViewerHistory();
   state.offset = 0;
   state.total = 0;
   state.hasMore = true;
@@ -244,7 +291,7 @@ async function runTagContextAction(action) {
   else await loadTags();
 }
 
-async function openViewer(postId, push = true) {
+async function openViewer(postId, push = true, historyMode = "append") {
   try {
     state.tab = "viewer";
     const params = new URLSearchParams(location.search);
@@ -258,6 +305,7 @@ async function openViewer(postId, push = true) {
     $("#preview-sort").value = filters.sort;
     const data = await api(`/api/posts/${postId}?${new URLSearchParams(filters)}`);
     state.viewerPostId = Number(postId);
+    recordViewerHistory(postId, historyMode);
     if (push) history.pushState({viewer: postId}, "", viewerUrl(postId));
     $("#tabs").classList.add("hidden");
     $$(".view").forEach(node => node.classList.add("hidden"));
@@ -265,11 +313,20 @@ async function openViewer(postId, push = true) {
     viewer.classList.remove("hidden");
     const nav = data.navigation;
     const tags = data.typed_tags;
-    const strip = data.preview_strip.map((item, index) => `<button class="viewer-strip-tile ${item.active ? "active" : ""}" data-strip-post="${item.id}" title="Open post ${item.id}">
-      <span>${index < data.preview_strip.findIndex(entry => entry.active) ? "Previous" : item.active ? "Current" : "Next"}</span>
+    const stripItems = viewerStripItems(data);
+    const activeStripIndex = stripItems.findIndex(item => Number(item.id) === Number(data.id));
+    const strip = stripItems.map((item, index) => `<button class="viewer-strip-tile ${Number(item.id) === Number(data.id) ? "active" : ""}" data-strip-post="${item.id}" title="Open post ${item.id}">
+      <span>${index < activeStripIndex ? "Previous" : index === activeStripIndex ? "Current" : "Next"}</span>
       <img src="${item.thumbnail_url}" loading="eager" alt="Post ${item.id}">
       <strong>#${item.id}</strong>
     </button>`).join("");
+    const historyPreviousId = state.viewerHistoryIndex > 0 ? state.viewerHistory[state.viewerHistoryIndex - 1] : null;
+    const historyNextId = state.viewerHistoryIndex < state.viewerHistory.length - 1 ? state.viewerHistory[state.viewerHistoryIndex + 1] : null;
+    const previousId = historyPreviousId ?? nav.previous_id;
+    const nextId = historyNextId ?? nav.next_id;
+    const positionText = nav.index >= 0
+      ? `Position ${nav.index + 1} / ${nav.total}`
+      : `Recent review ${state.viewerHistoryIndex + 1} / ${state.viewerHistory.length}`;
     const rating = Math.max(0, Math.min(10, Math.round(Number(data.stars || 0))));
     viewer.innerHTML = `<div class="viewer-toolbar">
       <button class="icon-button" id="viewer-back" title="Back to preview" aria-label="Back">&#8592;</button>
@@ -287,9 +344,9 @@ async function openViewer(postId, push = true) {
         <div class="viewer-strip" aria-label="Nearby posts">${strip}</div>
         <div class="viewer-controls">
           <div class="viewer-rating"><span id="viewer-rating-label">Personal Rating: ${rating}/10</span><div class="viewer-stars">${Array.from({length: 10}, (_, i) => `<button type="button" data-rating="${i + 1}" class="${i < rating ? "active" : ""}" title="Rate ${i + 1} of 10">&#9733;</button>`).join("")}</div></div>
-          <button class="viewer-nav-button" id="viewer-prev" ${nav.previous_id == null ? "disabled" : ""}>&#8249; Previous</button>
-          <strong class="viewer-position">Position ${nav.index + 1} / ${nav.total}</strong>
-          <button class="viewer-nav-button" id="viewer-next" ${nav.next_id == null ? "disabled" : ""}>Next &#8250;</button>
+          <button class="viewer-nav-button" id="viewer-prev" ${previousId == null ? "disabled" : ""}>&#8249; Previous</button>
+          <strong class="viewer-position">${positionText}</strong>
+          <button class="viewer-nav-button" id="viewer-next" ${nextId == null ? "disabled" : ""}>Next &#8250;</button>
           <label class="viewer-category">Category <select id="viewer-category"><option value="">Unassigned</option>${data.categories.map(c => `<option value="${c.id}" ${c.name === data.category ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
         </div>
         <div class="viewer-path"><strong>Target Path</strong><span>${esc(data.final_file_path || "Not saved locally")}</span></div>
@@ -316,8 +373,8 @@ async function openViewer(postId, push = true) {
     $("#viewer-filename-filter").checked = state.viewerFilenameFilter;
     $("#viewer").classList.toggle("hide-filename-excluded", state.viewerFilenameFilter);
     $("#viewer-back").onclick = () => showTab("preview");
-    $("#viewer-prev").onclick = () => nav.previous_id && openViewer(nav.previous_id);
-    $("#viewer-next").onclick = () => nav.next_id && openViewer(nav.next_id);
+    $("#viewer-prev").onclick = () => previousId != null && openViewer(previousId, true, historyPreviousId != null ? "back" : "append");
+    $("#viewer-next").onclick = () => nextId != null && openViewer(nextId, true, historyNextId != null ? "forward" : "append");
     $("#viewer-fit").onchange = event => {
       const nativeSize = !event.target.checked;
       $("#viewer-stage").classList.toggle("native-size", nativeSize);
@@ -340,7 +397,7 @@ async function openViewer(postId, push = true) {
           }),
         });
         toast(`Saved to ${result.final_path}`);
-        if (nav.next_id != null) await openViewer(nav.next_id);
+        if (nextId != null) await openViewer(nextId, true, historyNextId != null ? "forward" : "append");
         else await openViewer(data.id, false);
       } catch (error) {
         toast(error.message);
@@ -378,7 +435,9 @@ async function openViewer(postId, push = true) {
         await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({status: button.dataset.viewerStatus})});
         statusButtons.forEach(item => item.classList.toggle("active", item === button));
         toast("Status saved");
-        if (state.nextAfterStatusChange && nav.next_id != null) await openViewer(nav.next_id);
+        if (state.nextAfterStatusChange && nextId != null) {
+          await openViewer(nextId, true, historyNextId != null ? "forward" : "append");
+        }
       } catch (error) {
         toast(error.message);
       } finally {
@@ -565,7 +624,7 @@ $("#category-form").onsubmit = async event => { event.preventDefault(); try { aw
 $("#config-form").onsubmit = async event => { event.preventDefault(); const form = new FormData(event.target); const payload = Object.fromEntries(form.entries()); if (!payload.api_key) delete payload.api_key; payload.request_timeout_seconds = Number(payload.request_timeout_seconds); payload.request_min_interval_seconds = Number(payload.request_min_interval_seconds); try { await api("/api/settings", {method:"PATCH", body:JSON.stringify(payload)}); toast("Configuration saved"); } catch(error) { toast(error.message); } };
 
 new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadMorePosts(); }, {rootMargin:"500px"}).observe($("#preview-sentinel"));
-window.addEventListener("popstate", () => { const match = location.pathname.match(/^\/viewer\/(\d+)/); if (match) openViewer(Number(match[1]), false); else showTab("preview"); });
+window.addEventListener("popstate", () => { const match = location.pathname.match(/^\/viewer\/(\d+)/); if (match) openViewer(Number(match[1]), false, "select"); else showTab("preview"); });
 function isTypingTarget(target) {
   if (target instanceof HTMLInputElement) {
     return !["button", "checkbox", "color", "radio", "range", "reset", "submit"].includes(target.type);

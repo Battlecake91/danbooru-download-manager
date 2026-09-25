@@ -63,6 +63,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Desktop-style Viewer with the surrounding-post thumbnail strip, typed tag panels, tag metadata, status actions, rating and category controls.
 - Desktop Viewer shortcuts: arrow keys for navigation, `1`-`5` for rating, `H`/`N`/`Delete` for status, `O` for the original post, `F` for the real final-save workflow and `Esc` to return.
 - Optional automatic navigation to the next matching post after a status change; the checkbox value is persisted in the shared SQLite settings.
+- A twelve-post review history keeps recently rejected or otherwise filtered-out posts available through Previous/Next and the thumbnail strip until the Viewer is left or the Preview search is reloaded.
 - Final saving through the shared desktop service, including category selection, filename rules, original download and the mounted archive directory.
 - Right-click tag actions in the Viewer and Tags tab for filename and Fetch exclusions, manual scores, legacy scoring and all automatic scoring usage flags.
 - Post status, rating and category changes.

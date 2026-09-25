@@ -44,6 +44,27 @@ def test_web_viewer_navigation_uses_complete_filtered_result(tmp_path: Path) -> 
     assert ids == [2, 3]
 
 
+def test_web_viewer_can_reopen_post_after_status_removes_it_from_filter(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "viewer-history.db")
+    db.execute("UPDATE posts SET status = 'rejected' WHERE id = 3")
+    db.commit()
+    try:
+        result = post_detail(db, 3, status="worklist", search="", sort="id_desc")
+    finally:
+        db.close()
+
+    assert result is not None
+    assert result["id"] == 3
+    assert result["status"] == "rejected"
+    assert result["navigation"] == {
+        "index": -1,
+        "total": 1,
+        "previous_id": None,
+        "next_id": None,
+    }
+    assert [item["id"] for item in result["preview_strip"]] == [3]
+
+
 def test_web_preselection_sort_and_summary_use_live_tag_scores(tmp_path: Path) -> None:
     db = make_db(tmp_path / "preselection.db")
     db.set_tag_manual_score("blue_hair", 2.5)

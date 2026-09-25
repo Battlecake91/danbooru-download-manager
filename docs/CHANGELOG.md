@@ -33,6 +33,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - The web Viewer no longer selects a cached grid thumbnail when a local full image or larger Danbooru image is available.
 - The web Viewer Fit mode now constrains portrait and landscape images by both the available width and height, preventing tall images from being clipped below the viewport.
 - Viewer shortcuts remain active after using Fit and filename-filter checkboxes instead of being suppressed by the retained checkbox focus.
+- Recently reviewed posts remain reachable in the web Viewer after a status change removes them from the active filter, allowing accidental rejection to be corrected.
 
 ## 1.3.205 - Current release
 
