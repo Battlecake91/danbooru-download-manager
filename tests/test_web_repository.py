@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.database import Database
-from app.web.repository import build_post_filter, list_posts, matching_post_ids, post_detail
+from app.web.repository import build_post_filter, list_posts, matching_post_ids, post_detail, resolve_media_path
+from app.web.runtime import fetch_overrides_from_payload
 
 
 def make_db(path: Path) -> Database:
@@ -80,3 +81,58 @@ def test_negative_tag_filter_is_parameterized() -> None:
     sql, params = build_post_filter("worklist", "blue_hair -comic")
     assert "NOT EXISTS" in sql
     assert params == ["%blue_hair%", "blue_hair", "comic"]
+
+
+def test_media_resolver_maps_windows_database_path_to_container_root(tmp_path: Path) -> None:
+    active = tmp_path / "thumbnails" / "active"
+    active.mkdir(parents=True)
+    thumbnail = active / "12345_large.jpg"
+    thumbnail.write_bytes(b"thumbnail")
+
+    resolved = resolve_media_path(
+        {"active_thumbnail_dir": active},
+        {"id": 12345, "thumbnail_path": r"C:\desktop\cache\12345_large.jpg"},
+        "thumbnail",
+    )
+
+    assert resolved == thumbnail.resolve()
+
+
+def test_desktop_fetch_preset_translates_for_web_runtime() -> None:
+    overrides = fetch_overrides_from_payload(
+        {
+            "source_mode": "saved_searches",
+            "saved_search_labels": "favorites, review",
+            "saved_search_queries": "blue_hair",
+            "rating_states": {"g": "include", "e": "exclude"},
+            "max_posts_per_query": 250,
+            "max_consecutive_known_posts": 40,
+            "max_total_posts": 800,
+            "fetch_exclude_enabled": False,
+            "resolution_filters": {"min_width": 1200},
+        }
+    )
+
+    assert overrides["use_saved_searches"] is True
+    assert overrides["saved_search_labels"] == ["favorites", "review"]
+    assert overrides["saved_search_queries"] == ["blue_hair"]
+    assert overrides["saved_search_extra_tags"] == "rating:g -rating:e"
+    assert overrides["max_consecutive_known_posts"] == 40
+    assert overrides["fetch_exclude_enabled"] is False
+    assert overrides["resolution_filters"] == {"min_width": 1200}
+
+
+def test_fetch_presets_are_shared_through_database(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "presets.db")
+    try:
+        db.save_fetch_preset("Daily", {"source_mode": "tags", "manual_query": "blue_hair"})
+        rows = db.list_fetch_presets()
+        payload = db.get_fetch_preset("Daily")
+        db.delete_fetch_preset("Daily")
+        remaining = db.list_fetch_presets()
+    finally:
+        db.close()
+
+    assert [row["name"] for row in rows] == ["Daily"]
+    assert payload == {"manual_query": "blue_hair", "source_mode": "tags"}
+    assert remaining == []

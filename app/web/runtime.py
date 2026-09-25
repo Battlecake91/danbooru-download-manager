@@ -69,6 +69,65 @@ def open_database(config: dict[str, Any]) -> Database:
     return db
 
 
+def _csv_values(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    normalized = str(value or "").replace(";", ",")
+    return [part.strip() for part in normalized.split(",") if part.strip()]
+
+
+def _rating_clause(states: Any) -> str:
+    if not isinstance(states, dict):
+        return ""
+    includes = [str(code) for code, state in states.items() if str(state) == "include"]
+    excludes = [str(code) for code, state in states.items() if str(state) == "exclude"]
+    parts: list[str] = []
+    if len(includes) == 1:
+        parts.append(f"rating:{includes[0]}")
+    elif includes:
+        parts.append("( " + " or ".join(f"rating:{code}" for code in includes) + " )")
+    parts.extend(f"-rating:{code}" for code in excludes)
+    return " ".join(parts)
+
+
+def fetch_overrides_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Translate a shared desktop/web fetch preset into service config values."""
+    result: dict[str, Any] = {}
+    for key in (
+        "max_posts_per_query",
+        "min_unknown_posts_per_query",
+        "max_consecutive_known_posts",
+        "max_total_posts",
+    ):
+        if payload.get(key) not in {None, ""}:
+            minimum = 0 if key in {"min_unknown_posts_per_query", "max_consecutive_known_posts"} else 1
+            result[key] = max(minimum, int(payload[key]))
+    for key in ("fetch_exclude_enabled", "fetch_excluded_posts_count_toward_limits"):
+        if key in payload:
+            result[key] = bool(payload[key])
+    if isinstance(payload.get("resolution_filters"), dict):
+        result["resolution_filters"] = dict(payload["resolution_filters"])
+
+    rating_clause = _rating_clause(payload.get("rating_states"))
+    source_mode = str(payload.get("source_mode") or "tags")
+    if source_mode == "saved_searches":
+        result["use_saved_searches"] = True
+        result["search_tags"] = ""
+        result["saved_search_labels"] = _csv_values(payload.get("saved_search_labels"))
+        result["saved_search_queries"] = _csv_values(payload.get("saved_search_queries"))
+        result["saved_search_extra_tags"] = str(
+            rating_clause or payload.get("saved_search_extra_tags") or ""
+        ).strip()
+    else:
+        query = str(payload.get("manual_query") or payload.get("search_tags") or "order:id_desc").strip()
+        result["use_saved_searches"] = False
+        result["search_tags"] = " ".join(part for part in (query, rating_clause) if part).strip()
+        result["saved_search_labels"] = []
+        result["saved_search_queries"] = []
+        result["saved_search_extra_tags"] = ""
+    return result
+
+
 @dataclass
 class FetchState:
     running: bool = False

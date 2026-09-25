@@ -14,7 +14,7 @@ from app.version import __version__
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.web.repository import list_posts, post_detail, resolve_media_path, row_dict
-from app.web.runtime import FetchController, FetchScheduler, build_web_config, open_database
+from app.web.runtime import FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -31,10 +31,16 @@ ALLOWED_STATUSES = {
 
 
 class FetchRequest(BaseModel):
-    search_tags: str = "order:id_desc"
-    max_posts_per_query: int = Field(default=200, ge=1, le=100000)
-    max_total_posts: int = Field(default=500, ge=1, le=100000)
-    max_consecutive_known_posts: int = Field(default=0, ge=0, le=100000)
+    preset_name: str | None = None
+    payload: dict[str, Any] | None = None
+    search_tags: str | None = None
+    max_posts_per_query: int | None = Field(default=None, ge=1, le=100000)
+    max_total_posts: int | None = Field(default=None, ge=1, le=100000)
+    max_consecutive_known_posts: int | None = Field(default=None, ge=0, le=100000)
+
+
+class FetchPresetRequest(BaseModel):
+    payload: dict[str, Any]
 
 
 class SchedulerRequest(BaseModel):
@@ -118,8 +124,19 @@ def create_app() -> FastAPI:
         return request.app.state.fetch_controller.snapshot()
 
     @app.post("/api/fetch", status_code=202)
-    def start_fetch(payload: FetchRequest, request: Request) -> dict[str, Any]:
-        if not request.app.state.fetch_controller.start(payload.model_dump()):
+    def start_fetch(payload: FetchRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+        preset_payload: dict[str, Any] = {}
+        if payload.preset_name:
+            stored = db.get_fetch_preset(payload.preset_name)
+            if stored is None:
+                raise HTTPException(status_code=404, detail="Fetch preset not found")
+            preset_payload.update(stored)
+        if payload.payload:
+            preset_payload.update(payload.payload)
+        legacy_fields = payload.model_dump(exclude_unset=True, exclude={"preset_name", "payload"})
+        preset_payload.update({key: value for key, value in legacy_fields.items() if value is not None})
+        overrides = fetch_overrides_from_payload(preset_payload)
+        if not request.app.state.fetch_controller.start(overrides):
             raise HTTPException(status_code=409, detail="A fetch is already running")
         return request.app.state.fetch_controller.snapshot()
 
@@ -128,6 +145,29 @@ def create_app() -> FastAPI:
         if not request.app.state.fetch_controller.cancel():
             raise HTTPException(status_code=409, detail="No fetch is running")
         return request.app.state.fetch_controller.snapshot()
+
+    @app.get("/api/fetch-presets")
+    def fetch_presets(db=Depends(database)) -> dict[str, Any]:
+        items = []
+        for row in db.list_fetch_presets():
+            name = str(row["name"])
+            items.append(
+                {
+                    "name": name,
+                    "payload": db.get_fetch_preset(name) or {},
+                    "updated_at": row["updated_at"],
+                }
+            )
+        return {"items": items}
+
+    @app.put("/api/fetch-presets/{name}")
+    def save_fetch_preset(name: str, payload: FetchPresetRequest, db=Depends(database)) -> dict[str, Any]:
+        db.save_fetch_preset(name, payload.payload)
+        return {"ok": True}
+
+    @app.delete("/api/fetch-presets/{name}", status_code=204)
+    def delete_fetch_preset(name: str, db=Depends(database)) -> None:
+        db.delete_fetch_preset(name)
 
     @app.get("/api/scheduler")
     def scheduler_status(request: Request) -> dict[str, Any]:

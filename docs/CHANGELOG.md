@@ -12,6 +12,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Added an endless-loading Preview feed with configurable batches and a dedicated Viewer route that navigates the complete active result set.
 - Added the desktop-style web Viewer layout with typed tag columns, tag scoring metadata, status actions, star rating, category assignment and a clickable previous/current/next thumbnail strip.
 - Added desktop-style tag context actions to the web Viewer and Tags tab for filename/fetch exclusions, manual and legacy scores, category influence, preselection and LLM usage.
+- Added web management and execution of the same Fetch presets stored by the desktop application, including Danbooru saved-search presets.
 - Added initial web tabs and APIs for tags, categories, configuration and maintenance.
 
 ### Changed
@@ -20,6 +21,10 @@ This changelog groups development into user-facing milestones instead of preserv
 - The Docker container now runs as UID/GID `1000:1000` by default, with optional `PUID` and `PGID` overrides in Compose.
 - The web Viewer now follows the compact working layout of the desktop Manager instead of using a generic details sidebar.
 - Web tag changes use the same database settings as the desktop application, including the filename-allowed display filter and visible scoring/usage markers.
+
+### Fixed
+
+- Web media lookup now recognizes Windows paths stored in SQLite when the same thumbnail files are mounted into a Linux container.
 
 ## 1.3.205 - Current release
 

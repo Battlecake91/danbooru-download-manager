@@ -25,8 +25,17 @@
 
   <main id="app">
     <section id="view-fetch" class="view hidden">
+      <div class="toolbar fetch-preset-toolbar">
+        <label>Preset <select id="fetch-preset"><option value="">No preset</option></select></label>
+        <label class="wide">Preset name <input id="fetch-preset-name" placeholder="Preset name"></label>
+        <button id="fetch-preset-save">Save preset</button>
+        <button id="fetch-preset-delete" class="danger" disabled>Delete preset</button>
+      </div>
       <div class="toolbar section-toolbar">
-        <label class="wide">Query <input id="fetch-query" value="order:id_desc"></label>
+        <label>Source <select id="fetch-source"><option value="tags">Tag query</option><option value="saved_searches">Danbooru saved searches</option></select></label>
+        <label id="fetch-query-field" class="wide">Query <input id="fetch-query" value="order:id_desc"></label>
+        <label id="fetch-saved-labels-field" class="wide hidden">Saved-search labels <input id="fetch-saved-labels" placeholder="label-a, label-b"></label>
+        <label id="fetch-saved-queries-field" class="wide hidden">Query filter <input id="fetch-saved-queries" placeholder="optional query text"></label>
         <label>Per query <input id="fetch-per-query" type="number" min="1" value="200"></label>
         <label>Total <input id="fetch-total" type="number" min="1" value="500"></label>
         <label>Known streak <input id="fetch-known" type="number" min="0" value="0"></label>

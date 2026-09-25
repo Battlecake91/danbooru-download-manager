@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from app.core.database import Database
@@ -212,7 +212,12 @@ def resolve_media_path(config: dict[str, Any], post: dict[str, Any], variant: st
         if raw:
             source = Path(raw)
             candidates.append(source)
-            candidates.extend(root / source.name for root in allowed_roots)
+            portable_names = {
+                source.name,
+                PureWindowsPath(raw).name,
+                PurePosixPath(raw).name,
+            }
+            candidates.extend(root / name for root in allowed_roots for name in portable_names if name)
     post_id = str(post.get("id") or "")
     for root in allowed_roots:
         candidates.extend(root.glob(f"{post_id}.*"))

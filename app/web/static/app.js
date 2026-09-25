@@ -1,4 +1,4 @@
-const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 32, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false };
+const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 32, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, fetchPresets: new Map(), fetchPresetPayload: {} };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -41,6 +41,7 @@ function showTab(tab) {
   $$(".view").forEach(node => node.classList.toggle("hidden", node.id !== `view-${tab}`));
   $$("#tabs button").forEach(button => button.classList.toggle("active", button.dataset.tab === tab));
   if (tab === "preview" && !$("#post-grid").children.length) resetPreview();
+  if (tab === "fetch") loadFetchPresets();
   if (tab === "tags") loadTags();
   if (tab === "categories") loadCategories();
   if (tab === "config") loadConfig();
@@ -326,6 +327,68 @@ function applySchedule(data) {
   $("#schedule-batch").value = data.batch_size;
 }
 
+function updateFetchSourceFields() {
+  const saved = $("#fetch-source").value === "saved_searches";
+  $("#fetch-query-field").classList.toggle("hidden", saved);
+  $("#fetch-saved-labels-field").classList.toggle("hidden", !saved);
+  $("#fetch-saved-queries-field").classList.toggle("hidden", !saved);
+}
+
+function applyFetchPreset(payload) {
+  state.fetchPresetPayload = {...payload};
+  $("#fetch-source").value = payload.source_mode === "saved_searches" ? "saved_searches" : "tags";
+  $("#fetch-query").value = payload.manual_query || payload.search_tags || "order:id_desc";
+  $("#fetch-saved-labels").value = payload.saved_search_labels || "";
+  $("#fetch-saved-queries").value = payload.saved_search_queries || "";
+  $("#fetch-per-query").value = payload.max_posts_per_query || 200;
+  $("#fetch-total").value = payload.max_total_posts || 500;
+  $("#fetch-known").value = payload.max_consecutive_known_posts || 0;
+  updateFetchSourceFields();
+}
+
+function currentFetchPayload() {
+  return {
+    ...state.fetchPresetPayload,
+    source_mode: $("#fetch-source").value,
+    manual_query: $("#fetch-query").value.trim(),
+    saved_search_labels: $("#fetch-saved-labels").value.trim(),
+    saved_search_queries: $("#fetch-saved-queries").value.trim(),
+    max_posts_per_query: Number($("#fetch-per-query").value),
+    max_total_posts: Number($("#fetch-total").value),
+    max_consecutive_known_posts: Number($("#fetch-known").value),
+  };
+}
+
+async function loadFetchPresets(selectedName = null) {
+  try {
+    const data = await api("/api/fetch-presets");
+    state.fetchPresets = new Map(data.items.map(item => [item.name, item.payload]));
+    const select = $("#fetch-preset");
+    const selected = selectedName ?? select.value;
+    select.innerHTML = `<option value="">No preset</option>${data.items.map(item => `<option value="${esc(item.name)}">${esc(item.name)}</option>`).join("")}`;
+    if (selected && state.fetchPresets.has(selected)) select.value = selected;
+    $("#fetch-preset-delete").disabled = !select.value;
+  } catch (error) { toast(error.message); }
+}
+
+async function saveFetchPreset() {
+  const name = $("#fetch-preset-name").value.trim();
+  if (!name) throw new Error("Enter a preset name");
+  await api(`/api/fetch-presets/${encodeURIComponent(name)}`, {method: "PUT", body: JSON.stringify({payload: currentFetchPayload()})});
+  await loadFetchPresets(name);
+  toast("Fetch preset saved");
+}
+
+async function deleteFetchPreset() {
+  const name = $("#fetch-preset").value;
+  if (!name || !confirm(`Delete fetch preset '${name}'?`)) return;
+  await api(`/api/fetch-presets/${encodeURIComponent(name)}`, {method: "DELETE"});
+  state.fetchPresetPayload = {};
+  $("#fetch-preset-name").value = "";
+  await loadFetchPresets("");
+  toast("Fetch preset deleted");
+}
+
 async function loadTags() {
   try {
     const params = new URLSearchParams({search: $("#tag-search").value, tag_type: $("#tag-type").value, limit: 200});
@@ -388,11 +451,20 @@ document.addEventListener("contextmenu", event => {
 });
 
 $("#preview-apply").onclick = resetPreview;
+$("#fetch-source").onchange = updateFetchSourceFields;
+$("#fetch-preset").onchange = event => {
+  const name = event.target.value;
+  $("#fetch-preset-name").value = name;
+  $("#fetch-preset-delete").disabled = !name;
+  if (name && state.fetchPresets.has(name)) applyFetchPreset(state.fetchPresets.get(name));
+};
+$("#fetch-preset-save").onclick = () => saveFetchPreset().catch(error => toast(error.message));
+$("#fetch-preset-delete").onclick = () => deleteFetchPreset().catch(error => toast(error.message));
 $("#tag-load").onclick = loadTags;
 $("#maintenance-refresh").onclick = loadMaintenance;
 $("#maintenance-checkpoint").onclick = () => api("/api/maintenance/checkpoint", {method:"POST"}).then(() => { toast("WAL checkpoint completed"); loadMaintenance(); }).catch(error => toast(error.message));
 $("#fetch-start").onclick = async () => {
-  try { renderFetch(await api("/api/fetch", {method:"POST", body:JSON.stringify({search_tags:$("#fetch-query").value, max_posts_per_query:Number($("#fetch-per-query").value), max_total_posts:Number($("#fetch-total").value), max_consecutive_known_posts:Number($("#fetch-known").value)})})); }
+  try { renderFetch(await api("/api/fetch", {method:"POST", body:JSON.stringify({preset_name:$("#fetch-preset").value || null, payload:currentFetchPayload()})})); }
   catch (error) { toast(error.message); }
 };
 $("#fetch-cancel").onclick = () => api("/api/fetch/cancel", {method:"POST"}).then(renderFetch).catch(error => toast(error.message));

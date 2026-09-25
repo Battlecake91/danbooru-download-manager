@@ -125,7 +125,7 @@ python web_main.py
 
 Open `http://127.0.0.1:8765`. See [Web application](docs/WEB_APP.md) for Docker, volume and shared-database details.
 
-The web Viewer mirrors the desktop Manager's working layout with typed tags on the right, a nearby-post thumbnail strip below the image and controls for status, rating and category. Right-clicking a tag opens the shared filename-exclusion and scoring/usage actions. Its navigation still covers the complete active filter result rather than only the currently loaded Preview batch.
+The web Viewer mirrors the desktop Manager's working layout with typed tags on the right, a nearby-post thumbnail strip below the image and controls for status, rating and category. Right-clicking a tag opens the shared filename-exclusion and scoring/usage actions. Its navigation still covers the complete active filter result rather than only the currently loaded Preview batch. The Fetch tab reads and manages the same SQLite-backed presets as the desktop application.
 
 ### Docker web application
 

@@ -45,10 +45,12 @@ It binds port 8765 to localhost only. Put an authenticated reverse proxy in fron
 The desktop and web applications use the same SQLite schema. SQLite WAL mode and the existing write coordinator keep access orderly inside each process. For the first deployment, avoid running Fetch or maintenance writes in both applications at the same time. Read-only Preview and Viewer access can coexist with a Fetch.
 
 Container paths override path values stored by a desktop installation. This allows a Windows-created database to be mounted into the Linux container while media remains under `/data` and `/archive`.
+Stored Windows thumbnail paths are matched by their portable filename inside the active, saved and rejected thumbnail mounts.
 
 ## Current web scope
 
 - Manual Fetch with progress and cooperative cancellation.
+- Shared Fetch presets with load, save, delete and execution support for tag queries and Danbooru saved searches.
 - Automatic Fetch with a configurable interval.
 - Consecutive-known-post stopping through the shared Fetch service.
 - Endless Preview loading with a configurable batch size.
