@@ -69,3 +69,10 @@ def test_web_viewer_fit_constrains_both_image_dimensions() -> None:
     assert ".viewer-stage.native-size { place-items: start; overflow: auto; }" in css_source
     assert 'href="/app.css?v=' in html_source
     assert 'src="/app.js?v=' in html_source
+
+
+def test_web_viewer_checkboxes_do_not_block_shortcuts() -> None:
+    web_source = read_source("app/web/static/app.js")
+
+    assert '["button", "checkbox", "color", "radio", "range", "reset", "submit"]' in web_source
+    assert web_source.count("event.target.blur();") >= 3

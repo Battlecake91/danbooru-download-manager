@@ -287,6 +287,7 @@ async function openViewer(postId, push = true) {
       const nativeSize = !event.target.checked;
       $("#viewer-stage").classList.toggle("native-size", nativeSize);
       $("#viewer-image").classList.toggle("native-size", nativeSize);
+      event.target.blur();
     };
     $("#viewer-copy-link").onclick = () => navigator.clipboard.writeText(data.original_post_url).then(() => toast("Link copied"));
     $("#viewer-save").onclick = async () => {
@@ -315,6 +316,7 @@ async function openViewer(postId, push = true) {
     $("#viewer-filename-filter").onchange = event => {
       state.viewerFilenameFilter = event.target.checked;
       $("#viewer").classList.toggle("hide-filename-excluded", event.target.checked);
+      event.target.blur();
     };
     $$('[data-strip-post]').forEach(button => button.onclick = () => openViewer(Number(button.dataset.stripPost)));
     $$('[data-viewer-status]').forEach(button => button.onclick = async () => {
@@ -329,6 +331,7 @@ async function openViewer(postId, push = true) {
       $("#viewer-rating-label").textContent = `Personal Rating: ${stars}/10`;
     });
     $("#viewer-category").onchange = async event => {
+      event.target.blur();
       if (!event.target.value) return;
       await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({category_id: Number(event.target.value)})});
       toast("Category saved");
@@ -503,8 +506,10 @@ $("#config-form").onsubmit = async event => { event.preventDefault(); const form
 new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadMorePosts(); }, {rootMargin:"500px"}).observe($("#preview-sentinel"));
 window.addEventListener("popstate", () => { const match = location.pathname.match(/^\/viewer\/(\d+)/); if (match) openViewer(Number(match[1]), false); else showTab("preview"); });
 function isTypingTarget(target) {
-  return target instanceof HTMLInputElement
-    || target instanceof HTMLTextAreaElement
+  if (target instanceof HTMLInputElement) {
+    return !["button", "checkbox", "color", "radio", "range", "reset", "submit"].includes(target.type);
+  }
+  return target instanceof HTMLTextAreaElement
     || target instanceof HTMLSelectElement
     || target?.isContentEditable;
 }
