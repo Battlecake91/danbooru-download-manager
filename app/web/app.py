@@ -63,6 +63,11 @@ class PostActionRequest(BaseModel):
     category_id: int | None = None
 
 
+class BulkPostStatusRequest(BaseModel):
+    post_ids: list[int] = Field(min_length=1, max_length=200)
+    status: str
+
+
 class PostSaveRequest(BaseModel):
     category_id: int | None = None
     overwrite_existing: bool = False
@@ -236,6 +241,31 @@ def create_app() -> FastAPI:
             limit=limit,
             recommendation_cache=cache,
         )
+
+    @app.patch("/api/posts/status")
+    def update_post_statuses(
+        payload: BulkPostStatusRequest,
+        request: Request,
+        db=Depends(database),
+    ) -> dict[str, Any]:
+        if payload.status not in ALLOWED_STATUSES:
+            raise HTTPException(status_code=422, detail="Invalid status")
+        post_ids = list(dict.fromkeys(int(post_id) for post_id in payload.post_ids))
+        placeholders = ", ".join("?" for _ in post_ids)
+        rows = db.execute(
+            f"SELECT id, status FROM posts WHERE id IN ({placeholders})",
+            post_ids,
+        ).fetchall()
+        old_statuses = {int(row["id"]): str(row["status"] or "new") for row in rows}
+        missing_ids = [post_id for post_id in post_ids if post_id not in old_statuses]
+        if missing_ids:
+            raise HTTPException(status_code=404, detail=f"Posts not found: {', '.join(map(str, missing_ids))}")
+
+        db.set_post_statuses(post_ids, payload.status, request.app.state.config)
+        request.app.state.recommendation_cache.apply_status_changes(
+            {post_id: (old_statuses[post_id], payload.status) for post_id in post_ids}
+        )
+        return {"ok": True, "updated": len(post_ids), "status": payload.status, "post_ids": post_ids}
 
     @app.get("/api/posts/{post_id}")
     def post(

@@ -1,4 +1,4 @@
-const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
+const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -133,6 +133,7 @@ async function resetPreview() {
   state.offset = 0;
   state.total = 0;
   state.hasMore = true;
+  clearPreviewSelection();
   state.batch = Math.max(50, Math.min(200, Number($("#preview-batch").value) || 75));
   $("#post-grid").replaceChildren();
   $("#preview-score-summary").textContent = "Preselection: calculating...";
@@ -142,10 +143,12 @@ async function resetPreview() {
 function card(post) {
   const params = queryString();
   const node = document.createElement("article");
-  node.className = "post-card";
+  node.className = `post-card${state.selectedPostIds.has(Number(post.id)) ? " selected" : ""}`;
+  node.dataset.postId = post.id;
+  node.dataset.status = post.status || "new";
   const preselection = Number(post.recommendation_score || 0);
   const recommendationDetails = [post.recommendation_positive, post.recommendation_negative].filter(Boolean).join(" | ");
-  node.innerHTML = `<a href="/viewer/${post.id}?${params}" data-viewer="${post.id}">
+  node.innerHTML = `<label class="post-select" title="Select post"><input type="checkbox" data-preview-select="${post.id}" aria-label="Select post ${post.id}" ${state.selectedPostIds.has(Number(post.id)) ? "checked" : ""}></label><a href="/viewer/${post.id}?${params}" data-viewer="${post.id}">
     <img class="post-image" src="${post.thumbnail_url}" loading="lazy" decoding="async" alt="Post ${post.id}">
     <div class="post-meta">
       <div class="post-title"><span>#${post.id}</span><span class="status">${esc(post.status)}</span></div>
@@ -155,6 +158,90 @@ function card(post) {
       <div class="post-tags">${esc(post.tags || "No tags")}</div>
     </div></a>`;
   return node;
+}
+
+function setPreviewCardSelected(cardNode, selected) {
+  if (!cardNode) return;
+  const postId = Number(cardNode.dataset.postId);
+  if (selected) state.selectedPostIds.add(postId); else state.selectedPostIds.delete(postId);
+  cardNode.classList.toggle("selected", selected);
+  const checkbox = cardNode.querySelector("[data-preview-select]");
+  if (checkbox) checkbox.checked = selected;
+}
+
+function updatePreviewSelectionToolbar() {
+  const count = state.selectedPostIds.size;
+  $("#preview-selection-count").textContent = `${count} selected`;
+  $("#preview-selection-toolbar").classList.toggle("hidden", count === 0);
+}
+
+function clearPreviewSelection() {
+  state.selectedPostIds.clear();
+  state.selectionAnchorId = null;
+  $$("#post-grid .post-card.selected").forEach(cardNode => setPreviewCardSelected(cardNode, false));
+  updatePreviewSelectionToolbar();
+}
+
+function selectPreviewPost(input, extendRange) {
+  const currentCard = input.closest(".post-card");
+  const currentId = Number(currentCard.dataset.postId);
+  const selected = input.checked;
+  const cards = $$("#post-grid .post-card");
+  if (extendRange && state.selectionAnchorId != null) {
+    const anchorIndex = cards.findIndex(cardNode => Number(cardNode.dataset.postId) === state.selectionAnchorId);
+    const currentIndex = cards.indexOf(currentCard);
+    if (anchorIndex >= 0 && currentIndex >= 0) {
+      const [start, end] = [anchorIndex, currentIndex].sort((a, b) => a - b);
+      cards.slice(start, end + 1).forEach(cardNode => setPreviewCardSelected(cardNode, selected));
+    } else {
+      setPreviewCardSelected(currentCard, selected);
+    }
+  } else {
+    setPreviewCardSelected(currentCard, selected);
+  }
+  state.selectionAnchorId = currentId;
+  updatePreviewSelectionToolbar();
+}
+
+function statusMatchesPreview(status) {
+  const filter = $("#preview-status").value;
+  if (filter === "all") return true;
+  if (filter === "worklist") return ["new", "potential"].includes(status);
+  return filter === status;
+}
+
+async function applyPreviewBulkStatus(status) {
+  const postIds = [...state.selectedPostIds];
+  if (!postIds.length) return;
+  const buttons = [$("#preview-bulk-apply"), $("#preview-bulk-reject")];
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    const result = await api("/api/posts/status", {
+      method: "PATCH",
+      body: JSON.stringify({post_ids: postIds, status}),
+    });
+    let removed = 0;
+    result.post_ids.forEach(postId => {
+      const cardNode = $(`#post-grid .post-card[data-post-id="${postId}"]`);
+      if (!cardNode) return;
+      if (!statusMatchesPreview(status)) {
+        cardNode.remove();
+        removed += 1;
+      } else {
+        cardNode.dataset.status = status;
+        const statusNode = cardNode.querySelector(".status");
+        if (statusNode) statusNode.textContent = status;
+      }
+    });
+    state.offset = Math.max(0, state.offset - removed);
+    state.total = Math.max(0, state.total - removed);
+    $("#preview-count").textContent = `${state.offset} / ${state.total}`;
+    clearPreviewSelection();
+    toast(`${result.updated} posts updated`);
+    if (removed && state.hasMore) await loadMorePosts();
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
 }
 
 async function loadMorePosts() {
@@ -485,11 +572,26 @@ function renderFetch(data) {
 
 async function pollFetch() {
   try { renderFetch(await api("/api/fetch")); } catch (_) {}
+  if (state.tab === "fetch") {
+    try { renderScheduleStatus(await api("/api/scheduler")); } catch (_) {}
+  }
+}
+
+function formatTimestamp(value) {
+  if (!value) return "Never";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString();
+}
+
+function renderScheduleStatus(data) {
+  const status = data.last_status ? String(data.last_status) : "never run";
+  $("#schedule-state").innerHTML = `<dt>Last automatic start</dt><dd>${esc(formatTimestamp(data.last_started_at))}</dd><dt>Last automatic finish</dt><dd>${esc(formatTimestamp(data.last_finished_at))}</dd><dt>Result</dt><dd>${esc(status)}</dd>`;
 }
 
 function applySchedule(data) {
   $("#schedule-enabled").checked = data.enabled;
   $("#schedule-hours").value = data.interval_hours;
+  renderScheduleStatus(data);
 }
 
 function updateFetchSourceFields() {
@@ -592,6 +694,12 @@ async function loadMaintenance() {
 }
 
 document.addEventListener("click", event => {
+  const previewSelect = event.target.closest("[data-preview-select]");
+  if (previewSelect) {
+    event.stopPropagation();
+    selectPreviewPost(previewSelect, event.shiftKey);
+    return;
+  }
   const tagAction = event.target.closest("[data-tag-action]");
   if (tagAction) {
     $("#tag-context-menu").classList.add("hidden");
@@ -617,6 +725,9 @@ document.addEventListener("contextmenu", event => {
 
 $("#preview-apply").onclick = () => savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
 $("#preview-thumbnail-size").onchange = () => savePreviewSettings().catch(error => toast(error.message));
+$("#preview-selection-clear").onclick = clearPreviewSelection;
+$("#preview-bulk-apply").onclick = () => applyPreviewBulkStatus($("#preview-bulk-status").value).catch(error => toast(error.message));
+$("#preview-bulk-reject").onclick = () => applyPreviewBulkStatus("rejected").catch(error => toast(error.message));
 $("#fetch-source").onchange = updateFetchSourceFields;
 $("#fetch-preset").onchange = event => {
   const name = event.target.value;
@@ -654,7 +765,14 @@ document.addEventListener("keydown", event => {
     $("#tag-context-menu").classList.add("hidden");
     return;
   }
-  if ($("#viewer").classList.contains("hidden") || isTypingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+  if ($("#viewer").classList.contains("hidden")) {
+    if (state.tab === "preview" && event.key === "Delete" && state.selectedPostIds.size && !isTypingTarget(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      $("#preview-bulk-reject").click();
+    }
+    return;
+  }
+  if (isTypingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
 
   const key = event.key.toLowerCase();
   let target = null;

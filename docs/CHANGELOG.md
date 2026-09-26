@@ -38,6 +38,8 @@ This changelog groups development into user-facing milestones instead of preserv
 - Web Preview and Viewer category controls now show desktop-compatible automatic rule suggestions and persist manual selections by category ID.
 - Thumbnail and Viewer media requests now use a lightweight post query and direct filename checks instead of full tag/detail aggregation and repeated directory scans.
 - Web Preselection sorting now loads only score-relevant tags and caches the complete filtered ranking for scrolling and Viewer navigation. Status and save actions update affected cached rankings incrementally, while Fetch and tag-setting changes invalidate them completely.
+- The Fetch page now persists and displays the start, finish and result of the latest automatic Fetch.
+- Preview cards now support checkbox selection, Shift range selection and transactional bulk status changes, including direct rejection and removal from the active result.
 
 ## 1.3.205 - Current release
 

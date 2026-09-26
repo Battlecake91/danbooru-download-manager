@@ -107,6 +107,32 @@ def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:
     assert 'db.set_app_setting("web.preview_thumbnail_size"' in api_source
 
 
+def test_web_preview_supports_shift_selection_and_bulk_status_changes() -> None:
+    html_source = read_source("app/web/static/index.html")
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert 'id="preview-selection-toolbar"' in html_source
+    assert 'data-preview-select="${post.id}"' in web_source
+    assert "function selectPreviewPost" in web_source
+    assert "event.shiftKey" in web_source
+    assert 'api("/api/posts/status"' in web_source
+    assert '@app.patch("/api/posts/status")' in api_source
+    assert "db.set_post_statuses(post_ids, payload.status" in api_source
+
+
+def test_web_fetch_page_shows_persisted_automatic_fetch_status() -> None:
+    html_source = read_source("app/web/static/index.html")
+    web_source = read_source("app/web/static/app.js")
+    runtime_source = read_source("app/web/runtime.py")
+
+    assert 'id="schedule-state"' in html_source
+    assert "Last automatic start" in web_source
+    assert "Last automatic finish" in web_source
+    assert 'db.set_app_setting("web.fetch_last_finished_at"' in runtime_source
+    assert 'db.set_app_setting("web.fetch_last_status"' in runtime_source
+
+
 def test_web_viewer_keeps_recent_filtered_posts_for_correction() -> None:
     web_source = read_source("app/web/static/app.js")
 

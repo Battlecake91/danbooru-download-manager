@@ -59,6 +59,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Persisted Preview controls for 50-200 posts per endless-scroll request and 120-600 px thumbnail tiles.
 - Desktop-equivalent sorting for post ID, Danbooru score, live tag-based Preselection, LLM score, personal rating, rating class, status, category, save/seen time, resolution and file size.
 - Preselection scores on cards and Viewer details plus Best, Worst and Average values for the complete active filter result.
+- Checkbox and Shift range selection in Preview with bulk New, Potential, Rejected, Saved and Known status changes. Rejected posts leave a matching worklist immediately after the bulk transaction succeeds.
 - Viewer navigation across all posts matching the active status, search and sorting.
 - Desktop-style Viewer with the surrounding-post thumbnail strip, typed tag panels, tag metadata, status actions, rating and category controls.
 - Desktop Viewer shortcuts: arrow keys for navigation, `1`-`5` for rating, `H`/`N`/`Delete` for status, `O` for the original post, `F` for the real final-save workflow and `Esc` to return.
@@ -70,6 +71,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Category rules supply the same automatic suggestions as the desktop Preview; selecting another Viewer category stores a manual override.
 - Media endpoints use lightweight database lookups and browser caching so large Preview batches do not repeat full Viewer-detail work per thumbnail.
 - Preselection rankings are built from score-relevant tags only and reused across subsequent batches and Viewer navigation. Status and save actions update the affected cached result directly, avoiding a full ranking rebuild before advancing to the next post.
+- The Fetch page retains the latest automatic Fetch start, finish and outcome in SQLite and displays them after restarts.
 - Tag aliases, manual scores and exclusion flags.
 - Category creation and deletion.
 - Basic configuration and database maintenance status.

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
+from app.core.database import Database
 from app.danbooru.api import DanbooruSearchPage
-from app.services.post_import_service import FetchProgress, PostImportService
+from app.services.post_import_service import FetchProgress, FetchResult, PostImportService
+from app.web.runtime import FetchController, FetchScheduler
 
 
 class _FakeDatabase:
@@ -151,6 +154,33 @@ class FetchControlTests(unittest.TestCase):
         self.assertEqual(post_ids, [350, 349, 348])
         self.assertEqual(preview.fetch_arguments["limit"], -1)
         self.assertEqual(preview.fetch_arguments["offset"], 0)
+
+
+def test_scheduled_fetch_persists_start_finish_and_result(tmp_path: Path, monkeypatch) -> None:
+    database_file = tmp_path / "scheduled-fetch.db"
+    db = Database(database_file)
+    db.connect()
+    db.initialize_schema()
+    db.close()
+    config = {"database_file": str(database_file)}
+
+    class FakeImportService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def fetch_and_store(self) -> FetchResult:
+            return FetchResult(seen_posts=4, inserted_posts=2)
+
+    monkeypatch.setattr("app.web.runtime.PostImportService", FakeImportService)
+    controller = FetchController(config)
+    assert controller.start(scheduled=True)
+    assert controller._thread is not None
+    controller._thread.join(timeout=5)
+
+    settings = FetchScheduler(config, controller).settings()
+    assert settings["last_started_at"]
+    assert settings["last_finished_at"]
+    assert settings["last_status"] == "completed"
 
 
 if __name__ == "__main__":

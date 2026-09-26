@@ -161,18 +161,26 @@ class FetchController:
             if self._state.running:
                 return False
             self._cancel_event.clear()
+            started_at = utc_now_iso()
             self._state = FetchState(
                 running=True,
                 scheduled=scheduled,
                 phase="starting",
                 message="Scheduled fetch is starting" if scheduled else "Fetch is starting",
-                started_at=utc_now_iso(),
+                started_at=started_at,
             )
             run_config = copy.deepcopy(self.config)
             run_config.update(overrides or {})
+            if scheduled:
+                db = open_database(run_config)
+                try:
+                    db.set_app_setting("web.fetch_last_started_at", started_at)
+                    db.set_app_setting("web.fetch_last_status", "running")
+                finally:
+                    db.close()
             self._thread = threading.Thread(
                 target=self._run,
-                args=(run_config,),
+                args=(run_config, scheduled),
                 name="web-fetch",
                 daemon=True,
             )
@@ -195,8 +203,9 @@ class FetchController:
             self._state.message = str(payload.get("message") or "")
             self._state.progress = payload
 
-    def _run(self, run_config: dict[str, Any]) -> None:
+    def _run(self, run_config: dict[str, Any], scheduled: bool = False) -> None:
         db = open_database(run_config)
+        outcome = "failed"
         try:
             service = PostImportService(
                 run_config,
@@ -209,17 +218,24 @@ class FetchController:
                 self._state.result = asdict(result)
                 self._state.phase = "cancelled" if result.cancelled else "done"
                 self._state.message = "Fetch cancelled" if result.cancelled else "Fetch completed"
+                outcome = "cancelled" if result.cancelled else "completed"
         except Exception as exc:
             with self._lock:
                 self._state.phase = "failed"
                 self._state.message = "Fetch failed"
                 self._state.error = f"{type(exc).__name__}: {exc}"
         finally:
-            db.close()
+            finished_at = utc_now_iso()
+            try:
+                if scheduled:
+                    db.set_app_setting("web.fetch_last_finished_at", finished_at)
+                    db.set_app_setting("web.fetch_last_status", outcome)
+            finally:
+                db.close()
             with self._lock:
                 self._state.running = False
                 self._state.cancelling = False
-                self._state.finished_at = utc_now_iso()
+                self._state.finished_at = finished_at
 
 
 class FetchScheduler:
@@ -247,6 +263,8 @@ class FetchScheduler:
             "interval_hours": max(0.25, float(values.get("web.fetch_interval_hours", 6) or 6)),
             "batch_size": max(50, min(200, int(values.get("web.preview_batch_size", 75) or 75))),
             "last_started_at": values.get("web.fetch_last_started_at"),
+            "last_finished_at": values.get("web.fetch_last_finished_at"),
+            "last_status": values.get("web.fetch_last_status"),
         }
 
     def update(self, *, enabled: bool, interval_hours: float, batch_size: int | None = None) -> dict[str, Any]:
@@ -272,9 +290,4 @@ class FetchScheduler:
                 last_timestamp = 0.0
             if time.time() - last_timestamp < float(settings["interval_hours"]) * 3600:
                 continue
-            if self.controller.start(scheduled=True):
-                db = open_database(self.config)
-                try:
-                    db.set_app_setting("web.fetch_last_started_at", utc_now_iso())
-                finally:
-                    db.close()
+            self.controller.start(scheduled=True)

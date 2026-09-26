@@ -71,8 +71,18 @@ class RecommendationResultCache:
             self._entries.clear()
 
     def apply_status_change(self, post_id: int, old_status: str, new_status: str) -> None:
-        old_value = str(old_status or "new").strip().lower()
-        new_value = str(new_status or "new").strip().lower()
+        self.apply_status_changes({int(post_id): (old_status, new_status)})
+
+    def apply_status_changes(self, changes: dict[int, tuple[str, str]]) -> None:
+        normalized_changes = {
+            int(post_id): (
+                str(old_status or "new").strip().lower(),
+                str(new_status or "new").strip().lower(),
+            )
+            for post_id, (old_status, new_status) in changes.items()
+        }
+        if not normalized_changes:
+            return
 
         def matches(status_filter: str, value: str) -> bool:
             if status_filter in {"", "all"}:
@@ -84,15 +94,24 @@ class RecommendationResultCache:
         with self._lock:
             for key, (created_at, results) in list(self._entries.items()):
                 status_filter = str(key[-2] if len(key) >= 2 else "all").strip().lower()
-                matched_before = matches(status_filter, old_value)
-                matches_now = matches(status_filter, new_value)
-                if matched_before and not matches_now:
-                    updated_results = dict(results)
-                    updated_results.pop(int(post_id), None)
-                    self._entries[key] = (created_at, updated_results)
-                elif not matched_before and matches_now:
-                    # The post's score and search membership are not present in this result.
+                remove_ids: set[int] = set()
+                invalidate = False
+                for post_id, (old_value, new_value) in normalized_changes.items():
+                    matched_before = matches(status_filter, old_value)
+                    matches_now = matches(status_filter, new_value)
+                    if matched_before and not matches_now:
+                        remove_ids.add(post_id)
+                    elif not matched_before and matches_now:
+                        invalidate = True
+                        break
+                if invalidate:
+                    # Scores and search membership for newly matching posts are not cached.
                     self._entries.pop(key, None)
+                elif remove_ids:
+                    updated_results = dict(results)
+                    for post_id in remove_ids:
+                        updated_results.pop(post_id, None)
+                    self._entries[key] = (created_at, updated_results)
 
 
 def row_dict(row: Any) -> dict[str, Any]:

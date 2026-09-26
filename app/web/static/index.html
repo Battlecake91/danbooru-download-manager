@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=web-media-speed-9">
+  <link rel="stylesheet" href="/app.css?v=preview-bulk-10">
 </head>
 <body>
   <header class="app-header">
@@ -55,6 +55,7 @@
             <label>Interval in hours <input id="schedule-hours" type="number" min="0.25" step="0.25" value="6"></label>
             <button type="submit">Save schedule</button>
           </form>
+          <dl id="schedule-state" class="metrics schedule-state"></dl>
         </section>
       </div>
     </section>
@@ -99,6 +100,21 @@
       <div class="preview-summary"><span id="preview-count"></span><span id="preview-score-summary">Preselection: Best - | Worst - | Average -</span></div>
       <div id="post-grid" class="post-grid"></div>
       <div id="preview-sentinel" class="sentinel">Loading...</div>
+      <div id="preview-selection-toolbar" class="preview-selection-toolbar hidden" role="toolbar" aria-label="Selected posts">
+        <strong id="preview-selection-count">0 selected</strong>
+        <label>Status
+          <select id="preview-bulk-status">
+            <option value="new">New</option>
+            <option value="potential">Potential</option>
+            <option value="rejected">Rejected</option>
+            <option value="saved">Saved</option>
+            <option value="already_known">Known</option>
+          </select>
+        </label>
+        <button id="preview-bulk-apply" class="primary">Apply</button>
+        <button id="preview-bulk-reject" class="danger">Reject</button>
+        <button id="preview-selection-clear" class="icon-button" title="Clear selection" aria-label="Clear selection">&#215;</button>
+      </div>
     </section>
 
     <section id="view-import" class="view hidden empty-state">
@@ -144,6 +160,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=web-media-speed-9" defer></script>
+  <script src="/app.js?v=preview-bulk-10" defer></script>
 </body>
 </html>
