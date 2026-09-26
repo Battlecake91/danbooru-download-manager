@@ -146,9 +146,10 @@ function card(post) {
   node.className = `post-card${state.selectedPostIds.has(Number(post.id)) ? " selected" : ""}`;
   node.dataset.postId = post.id;
   node.dataset.status = post.status || "new";
+  node.setAttribute("aria-selected", state.selectedPostIds.has(Number(post.id)) ? "true" : "false");
   const preselection = Number(post.recommendation_score || 0);
   const recommendationDetails = [post.recommendation_positive, post.recommendation_negative].filter(Boolean).join(" | ");
-  node.innerHTML = `<label class="post-select" title="Select post"><input type="checkbox" data-preview-select="${post.id}" aria-label="Select post ${post.id}" ${state.selectedPostIds.has(Number(post.id)) ? "checked" : ""}></label><a href="/viewer/${post.id}?${params}" data-viewer="${post.id}">
+  node.innerHTML = `<a href="/viewer/${post.id}?${params}" data-viewer="${post.id}">
     <img class="post-image" src="${post.thumbnail_url}" loading="lazy" decoding="async" alt="Post ${post.id}">
     <div class="post-meta">
       <div class="post-title"><span>#${post.id}</span><span class="status">${esc(post.status)}</span></div>
@@ -165,8 +166,7 @@ function setPreviewCardSelected(cardNode, selected) {
   const postId = Number(cardNode.dataset.postId);
   if (selected) state.selectedPostIds.add(postId); else state.selectedPostIds.delete(postId);
   cardNode.classList.toggle("selected", selected);
-  const checkbox = cardNode.querySelector("[data-preview-select]");
-  if (checkbox) checkbox.checked = selected;
+  cardNode.setAttribute("aria-selected", selected ? "true" : "false");
 }
 
 function updatePreviewSelectionToolbar() {
@@ -182,24 +182,22 @@ function clearPreviewSelection() {
   updatePreviewSelectionToolbar();
 }
 
-function selectPreviewPost(input, extendRange) {
-  const currentCard = input.closest(".post-card");
+function selectPreviewPost(currentCard, extendRange) {
   const currentId = Number(currentCard.dataset.postId);
-  const selected = input.checked;
   const cards = $$("#post-grid .post-card");
   if (extendRange && state.selectionAnchorId != null) {
     const anchorIndex = cards.findIndex(cardNode => Number(cardNode.dataset.postId) === state.selectionAnchorId);
     const currentIndex = cards.indexOf(currentCard);
     if (anchorIndex >= 0 && currentIndex >= 0) {
       const [start, end] = [anchorIndex, currentIndex].sort((a, b) => a - b);
-      cards.slice(start, end + 1).forEach(cardNode => setPreviewCardSelected(cardNode, selected));
+      cards.slice(start, end + 1).forEach(cardNode => setPreviewCardSelected(cardNode, true));
     } else {
-      setPreviewCardSelected(currentCard, selected);
+      setPreviewCardSelected(currentCard, true);
     }
   } else {
-    setPreviewCardSelected(currentCard, selected);
+    setPreviewCardSelected(currentCard, !state.selectedPostIds.has(currentId));
   }
-  state.selectionAnchorId = currentId;
+  if (!extendRange || state.selectionAnchorId == null) state.selectionAnchorId = currentId;
   updatePreviewSelectionToolbar();
 }
 
@@ -694,12 +692,6 @@ async function loadMaintenance() {
 }
 
 document.addEventListener("click", event => {
-  const previewSelect = event.target.closest("[data-preview-select]");
-  if (previewSelect) {
-    event.stopPropagation();
-    selectPreviewPost(previewSelect, event.shiftKey);
-    return;
-  }
   const tagAction = event.target.closest("[data-tag-action]");
   if (tagAction) {
     $("#tag-context-menu").classList.add("hidden");
@@ -710,11 +702,22 @@ document.addEventListener("click", event => {
   const tab = event.target.closest("[data-tab]");
   if (tab) showTab(tab.dataset.tab);
   const viewer = event.target.closest("[data-viewer]");
-  if (viewer) { event.preventDefault(); openViewer(Number(viewer.dataset.viewer)); }
+  if (viewer) {
+    event.preventDefault();
+    if (event.detail === 0) openViewer(Number(viewer.dataset.viewer));
+    else if (event.detail === 1) selectPreviewPost(viewer.closest(".post-card"), event.shiftKey);
+  }
   const saveTagButton = event.target.closest("[data-save-tag]");
   if (saveTagButton) saveTag(saveTagButton).catch(error => toast(error.message));
   const deleteCategory = event.target.closest("[data-delete-category]");
   if (deleteCategory && confirm("Delete this category?")) api(`/api/categories/${deleteCategory.dataset.deleteCategory}`, {method:"DELETE"}).then(loadCategories).catch(error => toast(error.message));
+});
+
+document.addEventListener("dblclick", event => {
+  const viewer = event.target.closest("[data-viewer]");
+  if (!viewer) return;
+  event.preventDefault();
+  openViewer(Number(viewer.dataset.viewer));
 });
 
 document.addEventListener("contextmenu", event => {

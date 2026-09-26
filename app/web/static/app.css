@@ -45,13 +45,11 @@ h2 { font-size: 18px; margin: 0 0 16px; }
 .counter { margin-left: auto; align-self: center; color: var(--muted); }
 .preview-summary { min-height: 34px; display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 7px 16px; border-bottom: 1px solid var(--line); background: #191c1a; color: var(--muted); font-size: 12px; }
 .post-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--preview-thumbnail-size)), var(--preview-thumbnail-size))); gap: 12px; padding: 14px; align-items: start; }
-.post-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; min-width: 0; }
+.post-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; min-width: 0; cursor: pointer; user-select: none; }
 .post-card:hover { border-color: var(--teal); }
 .post-card.selected { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal); }
+.post-card.selected::after { content: "\2713"; position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--teal); border-radius: 50%; background: #123f38; color: #fff; font-size: 18px; font-weight: 700; }
 .post-card a { display: block; color: inherit; text-decoration: none; }
-.post-select { position: absolute; z-index: 2; top: 8px; left: 8px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #69716b; border-radius: 4px; background: rgba(12, 14, 13, .88); }
-.post-select:hover { border-color: var(--teal); }
-.post-select input { width: 18px; height: 18px; min-height: auto; margin: 0; accent-color: var(--teal); cursor: pointer; }
 .post-image { width: 100%; aspect-ratio: 1 / 1; object-fit: contain; display: block; background: #0d0f0e; }
 .post-meta { padding: 9px 10px; display: grid; gap: 6px; }
 .post-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 650; }
