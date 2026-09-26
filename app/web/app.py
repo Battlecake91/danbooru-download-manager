@@ -14,7 +14,14 @@ from app.version import __version__
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
-from app.web.repository import list_posts, media_post_data, post_detail, resolve_media_path, row_dict
+from app.web.repository import (
+    RecommendationResultCache,
+    list_posts,
+    media_post_data,
+    post_detail,
+    resolve_media_path,
+    row_dict,
+)
 from app.web.runtime import FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
 
 
@@ -113,6 +120,7 @@ def create_app() -> FastAPI:
     app.state.config = config
     app.state.fetch_controller = fetch_controller
     app.state.scheduler = scheduler
+    app.state.recommendation_cache = RecommendationResultCache()
 
     def database(request: Request) -> Iterator[Any]:
         db = open_database(request.app.state.config)
@@ -166,6 +174,7 @@ def create_app() -> FastAPI:
         legacy_fields = payload.model_dump(exclude_unset=True, exclude={"preset_name", "payload"})
         preset_payload.update({key: value for key, value in legacy_fields.items() if value is not None})
         overrides = fetch_overrides_from_payload(preset_payload)
+        request.app.state.recommendation_cache.clear()
         if not request.app.state.fetch_controller.start(overrides):
             raise HTTPException(status_code=409, detail="A fetch is already running")
         return request.app.state.fetch_controller.snapshot()
@@ -209,6 +218,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/posts")
     def posts(
+        request: Request,
         status: str = "worklist",
         search: str = "",
         sort: str = "id_desc",
@@ -216,7 +226,16 @@ def create_app() -> FastAPI:
         limit: int = Query(default=32, ge=8, le=200),
         db=Depends(database),
     ) -> dict[str, Any]:
-        return list_posts(db, status=status, search=search.strip(), sort=sort, offset=offset, limit=limit)
+        cache = None if request.app.state.fetch_controller.snapshot().get("running") else request.app.state.recommendation_cache
+        return list_posts(
+            db,
+            status=status,
+            search=search.strip(),
+            sort=sort,
+            offset=offset,
+            limit=limit,
+            recommendation_cache=cache,
+        )
 
     @app.get("/api/posts/{post_id}")
     def post(
@@ -227,7 +246,15 @@ def create_app() -> FastAPI:
         sort: str = "id_desc",
         db=Depends(database),
     ) -> dict[str, Any]:
-        value = post_detail(db, post_id, status=status, search=search.strip(), sort=sort)
+        cache = None if request.app.state.fetch_controller.snapshot().get("running") else request.app.state.recommendation_cache
+        value = post_detail(
+            db,
+            post_id,
+            status=status,
+            search=search.strip(),
+            sort=sort,
+            recommendation_cache=cache,
+        )
         if value is None:
             raise HTTPException(status_code=404, detail="Post not found")
         base_url = str(request.app.state.config.get("base_url") or "https://danbooru.donmai.us").rstrip("/")
@@ -242,6 +269,7 @@ def create_app() -> FastAPI:
             if payload.status not in ALLOWED_STATUSES:
                 raise HTTPException(status_code=422, detail="Invalid status")
             db.set_post_status(post_id, payload.status, request.app.state.config)
+            request.app.state.recommendation_cache.clear()
         if payload.stars is not None:
             db.set_post_review(post_id, stars=payload.stars)
         if payload.category_id is not None:
@@ -287,6 +315,7 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Save failed: {exc}") from exc
 
+        request.app.state.recommendation_cache.clear()
         return {
             "ok": True,
             "post_id": result.post_id,
@@ -386,7 +415,7 @@ def create_app() -> FastAPI:
         return {"items": [row_dict(row) for row in rows]}
 
     @app.patch("/api/tags/{tag}")
-    def update_tag(tag: str, payload: TagUpdateRequest, db=Depends(database)) -> dict[str, Any]:
+    def update_tag(tag: str, payload: TagUpdateRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
         fields = payload.model_fields_set
         if "alias" in fields:
             db.set_tag_alias(tag, payload.alias or "")
@@ -411,6 +440,7 @@ def create_app() -> FastAPI:
         }
         if any(value is not None for value in scoring_flags.values()):
             db.set_tag_scoring_flags(tag, **scoring_flags)
+        request.app.state.recommendation_cache.clear()
         return {"ok": True}
 
     @app.get("/api/categories")

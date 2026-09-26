@@ -4,13 +4,16 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.core.database import Database
+from app.core.recommendation_engine import RecommendationEngine
 from app.web.repository import (
+    RecommendationResultCache,
     SORT_SQL,
     build_post_filter,
     list_posts,
     matching_post_ids,
     media_post_data,
     post_detail,
+    recommendation_results,
     resolve_media_path,
 )
 from app.web.runtime import fetch_overrides_from_payload, open_database
@@ -133,6 +136,68 @@ def test_web_preselection_sort_and_summary_use_live_tag_scores(tmp_path: Path) -
     assert [item["recommendation_score"] for item in best_first["items"]] == [2.5, 2.5, -3.0]
     assert [item["id"] for item in worst_first["items"]] == [1, 3, 2]
     assert best_first["preselection_summary"] == {"best": 2.5, "worst": -3.0, "average": 0.67}
+
+
+def test_web_preselection_relevant_tag_query_matches_full_scoring(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "preselection-relevant.db")
+    db.set_tag_manual_score("blue_hair", 2.5)
+    db.set_tag_manual_score("red_hair", -3.0)
+    db.set_tag_scoring_flags("blue_hair", ignore_recommendation_score=True)
+    try:
+        results = recommendation_results(db, "", [])
+        expected = {}
+        for post_id in (3, 2, 1):
+            tags = [
+                str(row["tag"])
+                for row in db.execute("SELECT tag FROM post_tags WHERE post_id = ?", (post_id,)).fetchall()
+            ]
+            expected[post_id] = RecommendationEngine(db).score_tags(tags)
+    finally:
+        db.close()
+
+    assert results == expected
+
+
+def test_web_preselection_cache_reuses_and_invalidates_filter_results(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "preselection-cache.db")
+    cache = RecommendationResultCache(ttl_seconds=60)
+    db.set_tag_manual_score("blue_hair", 2.5)
+    try:
+        first = list_posts(
+            db,
+            status="all",
+            search="",
+            sort="recommendation_desc",
+            offset=0,
+            limit=8,
+            recommendation_cache=cache,
+        )
+        db.set_tag_manual_score("blue_hair", 7.0)
+        cached = list_posts(
+            db,
+            status="all",
+            search="",
+            sort="recommendation_desc",
+            offset=0,
+            limit=8,
+            recommendation_cache=cache,
+        )
+        cache.clear()
+        refreshed = list_posts(
+            db,
+            status="all",
+            search="",
+            sort="recommendation_desc",
+            offset=0,
+            limit=8,
+            recommendation_cache=cache,
+        )
+    finally:
+        db.close()
+
+    assert first["preselection_summary"] == cached["preselection_summary"]
+    assert refreshed["preselection_summary"] != first["preselection_summary"]
+    assert refreshed["preselection_summary"]["best"] == 7.0
 
 
 def test_every_web_preview_sort_executes(tmp_path: Path) -> None:

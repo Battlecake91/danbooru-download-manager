@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from pathlib import Path, PurePosixPath, PureWindowsPath
+import threading
+import time
 from typing import Any
 
 from app.core.category_engine import build_category_match_groups
@@ -33,6 +36,38 @@ LEFT JOIN post_reviews pr ON pr.post_id = p.id
 LEFT JOIN post_categories pc ON pc.post_id = p.id
 LEFT JOIN categories c ON c.id = pc.category_id
 """
+
+
+class RecommendationResultCache:
+    def __init__(self, *, max_entries: int = 4, ttl_seconds: float = 120.0) -> None:
+        self.max_entries = max(1, int(max_entries))
+        self.ttl_seconds = max(1.0, float(ttl_seconds))
+        self._entries: OrderedDict[tuple[Any, ...], tuple[float, dict[int, RecommendationScore]]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: tuple[Any, ...]) -> dict[int, RecommendationScore] | None:
+        now = time.monotonic()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return None
+            created_at, results = entry
+            if now - created_at > self.ttl_seconds:
+                self._entries.pop(key, None)
+                return None
+            self._entries.move_to_end(key)
+            return results
+
+    def put(self, key: tuple[Any, ...], results: dict[int, RecommendationScore]) -> None:
+        with self._lock:
+            self._entries[key] = (time.monotonic(), results)
+            self._entries.move_to_end(key)
+            while len(self._entries) > self.max_entries:
+                self._entries.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
 
 
 def row_dict(row: Any) -> dict[str, Any]:
@@ -132,20 +167,54 @@ def recommendation_results(
     db: Database,
     where_sql: str,
     params: list[Any],
+    *,
+    cache: RecommendationResultCache | None = None,
+    cache_key: tuple[Any, ...] | None = None,
 ) -> dict[int, RecommendationScore]:
-    rows = db.execute(
+    resolved_cache_key = (str(db.path.resolve()), *cache_key) if cache is not None and cache_key is not None else None
+    if cache is not None and resolved_cache_key is not None:
+        cached = cache.get(resolved_cache_key)
+        if cached is not None:
+            return cached
+
+    id_rows = db.execute(
         f"""
-        SELECT p.id,
-               (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
+        SELECT p.id
         FROM posts p
         {where_sql}
         ORDER BY p.id DESC
         """,
         params,
     ).fetchall()
-    tag_sets = [str(row["tags"] or "").split() for row in rows]
+    if not id_rows:
+        return {}
+
+    score_where = f"{where_sql} {'AND' if where_sql else 'WHERE'}"
+    score_rows = db.execute(
+        f"""
+        SELECT pt.post_id, pt.tag
+        FROM posts p
+        JOIN post_tags pt ON pt.post_id = p.id
+        JOIN tag_scores ts ON ts.tag = pt.tag
+        {score_where} (
+            COALESCE(ts.scoring_excluded, 0) != 0
+            OR COALESCE(ts.ignore_recommendation_score, 0) != 0
+            OR COALESCE(ts.manual_score, ts.computed_score, 0) != 0
+        )
+        ORDER BY pt.post_id DESC
+        """,
+        params,
+    ).fetchall()
+    tags_by_post: dict[int, list[str]] = {}
+    for row in score_rows:
+        tags_by_post.setdefault(int(row["post_id"]), []).append(str(row["tag"]))
+
+    tag_sets = [tags_by_post.get(int(row["id"]), []) for row in id_rows]
     scores = RecommendationEngine(db).score_tag_sets(tag_sets)
-    return {int(row["id"]): score for row, score in zip(rows, scores)}
+    results = {int(row["id"]): score for row, score in zip(id_rows, scores)}
+    if cache is not None and resolved_cache_key is not None:
+        cache.put(resolved_cache_key, results)
+    return results
 
 
 def recommendation_summary(results: dict[int, RecommendationScore]) -> dict[str, float] | None:
@@ -221,12 +290,19 @@ def list_posts(
     sort: str,
     offset: int,
     limit: int,
+    recommendation_cache: RecommendationResultCache | None = None,
 ) -> dict[str, Any]:
     where_sql, params = build_post_filter(status, search)
     count_row = db.execute(f"SELECT COUNT(*) AS total FROM posts p {where_sql}", params).fetchone()
     all_recommendations: dict[int, RecommendationScore] | None = None
     if sort in RECOMMENDATION_SORTS:
-        all_recommendations = recommendation_results(db, where_sql, params)
+        all_recommendations = recommendation_results(
+            db,
+            where_sql,
+            params,
+            cache=recommendation_cache,
+            cache_key=(status.strip().lower(), search.strip()),
+        )
         ordered_ids = recommendation_order(all_recommendations, "recommendation_asc" if sort == "recommendation_asc" else "recommendation_desc")
         page_ids = ordered_ids[offset : offset + limit]
         if page_ids:
@@ -270,10 +346,23 @@ def list_posts(
     }
 
 
-def matching_post_ids(db: Database, *, status: str, search: str, sort: str) -> list[int]:
+def matching_post_ids(
+    db: Database,
+    *,
+    status: str,
+    search: str,
+    sort: str,
+    recommendation_cache: RecommendationResultCache | None = None,
+) -> list[int]:
     where_sql, params = build_post_filter(status, search)
     if sort in RECOMMENDATION_SORTS:
-        results = recommendation_results(db, where_sql, params)
+        results = recommendation_results(
+            db,
+            where_sql,
+            params,
+            cache=recommendation_cache,
+            cache_key=(status.strip().lower(), search.strip()),
+        )
         return recommendation_order(results, "recommendation_asc" if sort == "recommendation_asc" else "recommendation_desc")
     order_sql = SORT_SQL.get(sort, SORT_SQL["id_desc"])
     rows = db.execute(
@@ -290,6 +379,7 @@ def post_detail(
     status: str,
     search: str,
     sort: str,
+    recommendation_cache: RecommendationResultCache | None = None,
 ) -> dict[str, Any] | None:
     row = db.get_post_detail(post_id)
     if row is None:
@@ -346,7 +436,13 @@ def post_detail(
         typed_tags[tag_type].append({"tag": tag, **tag_metadata.get(tag, {})})
     post["typed_tags"] = typed_tags
 
-    ids = matching_post_ids(db, status=status, search=search, sort=sort)
+    ids = matching_post_ids(
+        db,
+        status=status,
+        search=search,
+        sort=sort,
+        recommendation_cache=recommendation_cache,
+    )
     try:
         index = ids.index(post_id)
     except ValueError:
