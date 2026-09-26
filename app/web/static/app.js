@@ -7,7 +7,17 @@ async function api(url, options = {}) {
   const response = await fetch(url, { headers: {"Content-Type":"application/json", ...(options.headers || {})}, ...options });
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
-    try { message = (await response.json()).detail || message; } catch (_) {}
+    try {
+      const detail = (await response.json()).detail;
+      if (typeof detail === "string") message = detail;
+      else if (Array.isArray(detail)) {
+        message = detail.map(item => {
+          if (typeof item === "string") return item;
+          const location = Array.isArray(item?.loc) ? item.loc.filter(part => part !== "body").join(".") : "";
+          return [location, item?.msg || JSON.stringify(item)].filter(Boolean).join(": ");
+        }).join("; ");
+      } else if (detail && typeof detail === "object") message = detail.message || JSON.stringify(detail);
+    } catch (_) {}
     throw new Error(message);
   }
   return response.status === 204 ? null : response.json();

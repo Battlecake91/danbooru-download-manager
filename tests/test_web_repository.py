@@ -16,6 +16,7 @@ from app.web.repository import (
     recommendation_results,
     resolve_media_path,
 )
+from app.web.app import BulkPostStatusRequest, _post_statuses_by_id
 from app.web.runtime import fetch_overrides_from_payload, open_database
 
 
@@ -53,6 +54,26 @@ def test_web_database_connection_can_cross_fastapi_worker_threads(tmp_path: Path
         db.close()
 
     assert count == 0
+
+
+def test_web_bulk_status_request_and_lookup_support_thousands_of_posts(tmp_path: Path) -> None:
+    db = Database(tmp_path / "bulk-status.db")
+    db.connect()
+    db.initialize_schema()
+    post_ids = list(range(1, 1501))
+    db.executemany(
+        "INSERT INTO posts (id, status) VALUES (?, 'new')",
+        ((post_id,) for post_id in post_ids),
+    )
+    db.commit()
+    try:
+        payload = BulkPostStatusRequest(post_ids=post_ids, status="rejected")
+        statuses = _post_statuses_by_id(db, payload.post_ids)
+    finally:
+        db.close()
+
+    assert len(payload.post_ids) == 1500
+    assert statuses == {post_id: "new" for post_id in post_ids}
 
 
 def test_web_post_batches_are_not_capped_to_desktop_preview_limit(tmp_path: Path) -> None:

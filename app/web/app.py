@@ -64,7 +64,7 @@ class PostActionRequest(BaseModel):
 
 
 class BulkPostStatusRequest(BaseModel):
-    post_ids: list[int] = Field(min_length=1, max_length=200)
+    post_ids: list[int] = Field(min_length=1)
     status: str
 
 
@@ -107,6 +107,19 @@ class SettingsRequest(BaseModel):
     api_key: str | None = None
     request_timeout_seconds: int | None = Field(default=None, ge=5, le=300)
     request_min_interval_seconds: float | None = Field(default=None, ge=0, le=60)
+
+
+def _post_statuses_by_id(db: Any, post_ids: list[int], *, chunk_size: int = 500) -> dict[int, str]:
+    statuses: dict[int, str] = {}
+    for start in range(0, len(post_ids), chunk_size):
+        chunk = post_ids[start : start + chunk_size]
+        placeholders = ", ".join("?" for _ in chunk)
+        rows = db.execute(
+            f"SELECT id, status FROM posts WHERE id IN ({placeholders})",
+            chunk,
+        ).fetchall()
+        statuses.update({int(row["id"]): str(row["status"] or "new") for row in rows})
+    return statuses
 
 
 def create_app() -> FastAPI:
@@ -251,15 +264,12 @@ def create_app() -> FastAPI:
         if payload.status not in ALLOWED_STATUSES:
             raise HTTPException(status_code=422, detail="Invalid status")
         post_ids = list(dict.fromkeys(int(post_id) for post_id in payload.post_ids))
-        placeholders = ", ".join("?" for _ in post_ids)
-        rows = db.execute(
-            f"SELECT id, status FROM posts WHERE id IN ({placeholders})",
-            post_ids,
-        ).fetchall()
-        old_statuses = {int(row["id"]): str(row["status"] or "new") for row in rows}
+        old_statuses = _post_statuses_by_id(db, post_ids)
         missing_ids = [post_id for post_id in post_ids if post_id not in old_statuses]
         if missing_ids:
-            raise HTTPException(status_code=404, detail=f"Posts not found: {', '.join(map(str, missing_ids))}")
+            preview = ", ".join(map(str, missing_ids[:20]))
+            suffix = f" (+{len(missing_ids) - 20} more)" if len(missing_ids) > 20 else ""
+            raise HTTPException(status_code=404, detail=f"Posts not found: {preview}{suffix}")
 
         db.set_post_statuses(post_ids, payload.status, request.app.state.config)
         request.app.state.recommendation_cache.apply_status_changes(

@@ -60,6 +60,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Desktop-equivalent sorting for post ID, Danbooru score, live tag-based Preselection, LLM score, personal rating, rating class, status, category, save/seen time, resolution and file size.
 - Preselection scores on cards and Viewer details plus Best, Worst and Average values for the complete active filter result.
 - Single-click and Shift-click range selection in Preview with double-click Viewer opening and bulk New, Potential, Rejected, Saved and Known status changes. Rejected posts leave a matching worklist immediately after the bulk transaction succeeds.
+- Bulk status changes support selections spanning many endless-scroll batches. Status lookups are chunked internally for SQLite while the update itself remains one transaction.
 - Viewer navigation across all posts matching the active status, search and sorting.
 - Desktop-style Viewer with the surrounding-post thumbnail strip, typed tag panels, tag metadata, status actions, rating and category controls.
 - Desktop Viewer shortcuts: arrow keys for navigation, `1`-`5` for rating, `H`/`N`/`Delete` for status, `O` for the original post, `F` for the real final-save workflow and `Esc` to return.

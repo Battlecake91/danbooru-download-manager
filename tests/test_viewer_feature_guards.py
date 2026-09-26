@@ -118,6 +118,8 @@ def test_web_preview_supports_shift_selection_and_bulk_status_changes() -> None:
     assert "event.shiftKey" in web_source
     assert 'document.addEventListener("dblclick"' in web_source
     assert 'api("/api/posts/status"' in web_source
+    assert "Array.isArray(detail)" in web_source
+    assert "JSON.stringify(detail)" in web_source
     assert '@app.patch("/api/posts/status")' in api_source
     assert "db.set_post_statuses(post_ids, payload.status" in api_source
 

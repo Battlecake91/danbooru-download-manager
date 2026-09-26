@@ -40,6 +40,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Web Preselection sorting now loads only score-relevant tags and caches the complete filtered ranking for scrolling and Viewer navigation. Status and save actions update affected cached rankings incrementally, while Fetch and tag-setting changes invalidate them completely.
 - The Fetch page now persists and displays the start, finish and result of the latest automatic Fetch.
 - Preview cards now use single-click selection, Shift-click range selection and double-click Viewer opening, with transactional bulk status changes including direct rejection and removal from the active result.
+- Bulk Preview status changes no longer stop at 200 selected posts; large selections use chunked SQLite lookups, and structured API failures are shown as readable messages instead of `[object Object]`.
 
 ## 1.3.205 - Current release
 
