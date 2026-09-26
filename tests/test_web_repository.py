@@ -326,7 +326,17 @@ def test_web_viewer_returns_typed_tags_and_preview_strip(tmp_path: Path) -> None
 def test_negative_tag_filter_is_parameterized() -> None:
     sql, params = build_post_filter("worklist", "blue_hair -comic")
     assert "NOT EXISTS" in sql
-    assert params == ["%blue_hair%", "blue_hair", "comic"]
+    assert params == ["new", "potential", "%blue_hair%", "blue_hair", "comic"]
+
+
+def test_web_status_filter_accepts_multiple_checkbox_values() -> None:
+    sql, params = build_post_filter("new,rejected,saved", "")
+    assert "p.status IN (?, ?, ?)" in sql
+    assert params == ["new", "rejected", "saved"]
+
+    empty_sql, empty_params = build_post_filter("none", "")
+    assert "1 = 0" in empty_sql
+    assert empty_params == []
 
 
 def test_media_resolver_maps_windows_database_path_to_container_root(tmp_path: Path) -> None:

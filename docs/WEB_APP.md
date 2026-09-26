@@ -58,6 +58,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Endless Preview loading with a configurable batch size.
 - Persisted Preview controls for 50-200 posts per endless-scroll request and 120-600 px thumbnail tiles.
 - Desktop-equivalent sorting for post ID, Danbooru score, live tag-based Preselection, LLM score, personal rating, rating class, status, category, save/seen time, resolution and file size.
+- Combinable status checkboxes matching the desktop Preview filter, with New and Potential enabled by default.
 - Preselection scores on cards and Viewer details plus Best, Worst and Average values for the complete active filter result.
 - Single-click and Shift-click range selection in Preview with double-click Viewer opening and bulk New, Potential, Rejected, Saved and Known status changes. Rejected posts leave a matching worklist immediately after the bulk transaction succeeds.
 - Bulk status changes support selections spanning many endless-scroll batches. Status lookups are chunked internally for SQLite while the update itself remains one transaction.
@@ -68,6 +69,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - A twelve-post review history keeps recently rejected or otherwise filtered-out posts available through Previous/Next and the thumbnail strip until the Viewer is left or the Preview search is reloaded.
 - Final saving through the shared desktop service, including category selection, filename rules, original download and the mounted archive directory.
 - Right-click tag actions in the Viewer and Tags tab for filename and Fetch exclusions, manual scores, legacy scoring and all automatic scoring usage flags.
+- Viewer context actions apply the confirmed database state to every visible occurrence of the edited tag immediately.
 - Post status, rating and category changes.
 - Category rules supply the same automatic suggestions as the desktop Preview; selecting another Viewer category stores a manual override.
 - Media endpoints use lightweight database lookups and browser caching so large Preview batches do not repeat full Viewer-detail work per thumbnail.

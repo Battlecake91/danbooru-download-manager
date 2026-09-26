@@ -41,6 +41,8 @@ This changelog groups development into user-facing milestones instead of preserv
 - The Fetch page now persists and displays the start, finish and result of the latest automatic Fetch.
 - Preview cards now use single-click selection, Shift-click range selection and double-click Viewer opening, with transactional bulk status changes including direct rejection and removal from the active result.
 - Bulk Preview status changes no longer stop at 200 selected posts; large selections use chunked SQLite lookups, and structured API failures are shown as readable messages instead of `[object Object]`.
+- Preview status filtering now mirrors the desktop Manager with combinable All, New, Potential, Rejected, Known and Saved checkboxes.
+- Viewer tag context actions now return and apply the authoritative stored tag metadata immediately, preventing filename and Fetch exclusions from appearing unchanged after saving.
 
 ## 1.3.205 - Current release
 

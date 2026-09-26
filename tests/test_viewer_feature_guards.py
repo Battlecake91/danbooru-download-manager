@@ -100,11 +100,22 @@ def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:
     assert 'value="personal_desc"' in html_source
     assert 'value="resolution_desc"' in html_source
     assert 'id="preview-thumbnail-size"' in html_source
+    assert 'id="preview-status-all"' in html_source
+    assert html_source.count("data-preview-status") == 5
     assert 'id="preview-score-summary"' in html_source
     assert 'api("/api/preview/settings"' in web_source
     assert 'Preselection ${signedScore(preselection)}' in web_source
     assert '@app.put("/api/preview/settings")' in api_source
     assert 'db.set_app_setting("web.preview_thumbnail_size"' in api_source
+
+
+def test_web_viewer_applies_authoritative_tag_context_updates() -> None:
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert "function applyTagContextMetadata" in web_source
+    assert "applyTagContextMetadata(meta.tag, updated)" in web_source
+    assert "fetch_tag_display_metadata([tag])" in api_source
 
 
 def test_web_preview_supports_shift_selection_and_bulk_status_changes() -> None:

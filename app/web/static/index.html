@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=bulk-status-scale-12">
+  <link rel="stylesheet" href="/app.css?v=status-filter-tags-13">
 </head>
 <body>
   <header class="app-header">
@@ -62,14 +62,15 @@
 
     <section id="view-preview" class="view">
       <div class="toolbar sticky-toolbar">
-        <label>Status
-          <select id="preview-status">
-            <option value="worklist">Worklist</option><option value="all">All</option>
-            <option value="new">New</option><option value="potential">Potential</option>
-            <option value="saved">Saved</option><option value="rejected">Rejected</option>
-            <option value="already_known">Known</option>
-          </select>
-        </label>
+        <fieldset id="preview-status" class="preview-status-filter">
+          <legend>Status</legend>
+          <label><input id="preview-status-all" type="checkbox"> All</label>
+          <label><input type="checkbox" data-preview-status value="new" checked> New</label>
+          <label><input type="checkbox" data-preview-status value="potential" checked> Potential</label>
+          <label><input type="checkbox" data-preview-status value="rejected"> Rejected</label>
+          <label><input type="checkbox" data-preview-status value="already_known"> Known</label>
+          <label><input type="checkbox" data-preview-status value="saved"> Saved</label>
+        </fieldset>
         <label class="wide">Search <input id="preview-search" placeholder="tags, post ID, -excluded_tag"></label>
         <label>Sort
           <select id="preview-sort">
@@ -160,6 +161,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=bulk-status-scale-12" defer></script>
+  <script src="/app.js?v=status-filter-tags-13" defer></script>
 </body>
 </html>

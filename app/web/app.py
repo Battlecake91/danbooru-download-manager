@@ -485,7 +485,9 @@ def create_app() -> FastAPI:
         if any(value is not None for value in scoring_flags.values()):
             db.set_tag_scoring_flags(tag, **scoring_flags)
         request.app.state.recommendation_cache.clear()
-        return {"ok": True}
+        metadata_by_tag = db.fetch_tag_display_metadata([tag])
+        metadata = next(iter(metadata_by_tag.values()), {})
+        return {"ok": True, "tag": tag.strip(), **metadata}
 
     @app.get("/api/categories")
     def categories(db=Depends(database)) -> dict[str, Any]:

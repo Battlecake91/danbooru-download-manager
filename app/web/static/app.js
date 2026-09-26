@@ -2,6 +2,7 @@ const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, t
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+const PREVIEW_STATUSES = ["new", "potential", "rejected", "already_known", "saved"];
 
 async function api(url, options = {}) {
   const response = await fetch(url, { headers: {"Content-Type":"application/json", ...(options.headers || {})}, ...options });
@@ -33,10 +34,38 @@ function toast(message) {
 
 function queryState() {
   return {
-    status: $("#preview-status").value,
+    status: previewStatusFilterValue(),
     search: $("#preview-search").value.trim(),
     sort: $("#preview-sort").value,
   };
+}
+
+function previewStatusInputs() {
+  return $$('[data-preview-status]');
+}
+
+function selectedPreviewStatuses() {
+  return previewStatusInputs().filter(input => input.checked).map(input => input.value);
+}
+
+function previewStatusFilterValue() {
+  const statuses = selectedPreviewStatuses();
+  if (!statuses.length) return "none";
+  if (statuses.length === PREVIEW_STATUSES.length) return "all";
+  return statuses.join(",");
+}
+
+function setPreviewStatuses(value) {
+  let statuses = new Set(String(value || "worklist").split(",").filter(Boolean));
+  if (statuses.has("all")) statuses = new Set(PREVIEW_STATUSES);
+  if (statuses.has("worklist")) {
+    statuses.delete("worklist");
+    statuses.add("new");
+    statuses.add("potential");
+  }
+  if (statuses.has("none")) statuses.clear();
+  previewStatusInputs().forEach(input => { input.checked = statuses.has(input.value); });
+  $("#preview-status-all").checked = statuses.size === PREVIEW_STATUSES.length;
 }
 
 function queryString(extra = {}) {
@@ -212,10 +241,7 @@ function selectPreviewPost(currentCard, extendRange) {
 }
 
 function statusMatchesPreview(status) {
-  const filter = $("#preview-status").value;
-  if (filter === "all") return true;
-  if (filter === "worklist") return ["new", "potential"].includes(status);
-  return filter === status;
+  return selectedPreviewStatuses().includes(status);
 }
 
 async function applyPreviewBulkStatus(status) {
@@ -315,6 +341,24 @@ function tagContextMetadata(element) {
   };
 }
 
+function applyTagContextMetadata(tag, metadata) {
+  $$('[data-tag-row]').filter(row => row.dataset.tag === tag).forEach(row => {
+    row.dataset.manualScore = metadata.manual_score ?? "";
+    row.dataset.scoringExcluded = String(Boolean(metadata.scoring_excluded));
+    row.dataset.filenameExcluded = String(Boolean(metadata.filename_excluded));
+    row.dataset.fetchExcluded = String(Boolean(metadata.fetch_excluded));
+    row.dataset.ignoreCategory = String(Boolean(metadata.ignore_category_influence));
+    row.dataset.ignoreRecommendation = String(Boolean(metadata.ignore_recommendation_score));
+    row.dataset.ignoreLlm = String(Boolean(metadata.ignore_llm_input));
+    row.classList.toggle("filename-excluded", Boolean(metadata.filename_excluded));
+    const scoreNode = row.querySelector(".viewer-tag-score");
+    if (scoreNode) scoreNode.textContent = metadata.scoring_excluded ? "off" : Number(metadata.score || 0).toFixed(1);
+    const flags = [metadata.filename_excluded ? "name" : "", metadata.fetch_excluded ? "fetch" : "", metadata.ignore_category_influence ? "cat" : "", metadata.ignore_recommendation_score ? "pre" : "", metadata.ignore_llm_input ? "llm" : ""].filter(Boolean).join(", ");
+    const flagNode = row.querySelector(".viewer-tag-flags");
+    if (flagNode) flagNode.textContent = flags || "-";
+  });
+}
+
 function contextAction(action, label, danger = false) {
   return `<button type="button" role="menuitem" data-tag-action="${action}" class="${danger ? "danger-text" : ""}">${label}</button>`;
 }
@@ -380,10 +424,14 @@ async function runTagContextAction(action) {
     return;
   }
   if (!payload) return;
-  await api(`/api/tags/${encodeURIComponent(meta.tag)}`, {method: "PATCH", body: JSON.stringify(payload)});
+  const updated = await api(`/api/tags/${encodeURIComponent(meta.tag)}`, {method: "PATCH", body: JSON.stringify(payload)});
   toast("Tag settings saved");
-  if (source === "viewer" && state.viewerPostId != null) await openViewer(state.viewerPostId, false);
-  else await loadTags();
+  if (source === "viewer") {
+    applyTagContextMetadata(meta.tag, updated);
+    if (!["filename", "fetch"].includes(action) && state.viewerPostId != null) {
+      await openViewer(state.viewerPostId, false);
+    }
+  } else await loadTags();
 }
 
 async function openViewer(postId, push = true, historyMode = "append") {
@@ -395,7 +443,7 @@ async function openViewer(postId, push = true, historyMode = "append") {
       search: params.get("search") || queryState().search,
       sort: params.get("sort") || queryState().sort,
     };
-    $("#preview-status").value = filters.status;
+    setPreviewStatuses(filters.status);
     $("#preview-search").value = filters.search;
     $("#preview-sort").value = filters.sort;
     const data = await api(`/api/posts/${postId}?${new URLSearchParams(filters)}`);
@@ -738,6 +786,14 @@ document.addEventListener("contextmenu", event => {
 
 $("#preview-apply").onclick = () => savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
 $("#preview-thumbnail-size").onchange = () => savePreviewSettings().catch(error => toast(error.message));
+$("#preview-status-all").onchange = event => {
+  previewStatusInputs().forEach(input => { input.checked = event.target.checked; });
+  resetPreview().catch(error => toast(error.message));
+};
+previewStatusInputs().forEach(input => input.onchange = () => {
+  $("#preview-status-all").checked = previewStatusInputs().every(item => item.checked);
+  resetPreview().catch(error => toast(error.message));
+});
 $("#preview-selection-clear").onclick = clearPreviewSelection;
 $("#preview-bulk-apply").onclick = () => applyPreviewBulkStatus($("#preview-bulk-status").value).catch(error => toast(error.message));
 $("#preview-bulk-reject").onclick = () => applyPreviewBulkStatus("rejected").catch(error => toast(error.message));

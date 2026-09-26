@@ -39,6 +39,18 @@ LEFT JOIN categories c ON c.id = pc.category_id
 """
 
 
+def status_filter_values(status: str) -> set[str] | None:
+    values = {part.strip().lower() for part in str(status or "").split(",") if part.strip()}
+    if not values or "all" in values:
+        return None
+    if "none" in values:
+        return set()
+    if "worklist" in values:
+        values.remove("worklist")
+        values.update(WORKLIST_STATUSES)
+    return values
+
+
 class RecommendationResultCache:
     def __init__(self, *, max_entries: int = 4, ttl_seconds: float = 120.0) -> None:
         self.max_entries = max(1, int(max_entries))
@@ -85,11 +97,8 @@ class RecommendationResultCache:
             return
 
         def matches(status_filter: str, value: str) -> bool:
-            if status_filter in {"", "all"}:
-                return True
-            if status_filter == "worklist":
-                return value in WORKLIST_STATUSES
-            return status_filter == value
+            values = status_filter_values(status_filter)
+            return values is None or value in values
 
         with self._lock:
             for key, (created_at, results) in list(self._entries.items()):
@@ -180,13 +189,15 @@ def apply_category_suggestions(db: Database, posts: list[dict[str, Any]]) -> Non
 def build_post_filter(status: str, search: str) -> tuple[str, list[Any]]:
     parts: list[str] = []
     params: list[Any] = []
-    status = status.strip().lower()
-    if status and status != "all":
-        if status == "worklist":
-            parts.append("p.status IN ('new', 'potential')")
+    statuses = status_filter_values(status)
+    if statuses is not None:
+        if not statuses:
+            parts.append("1 = 0")
         else:
-            parts.append("p.status = ?")
-            params.append(status)
+            ordered_statuses = sorted(statuses)
+            placeholders = ", ".join("?" for _ in ordered_statuses)
+            parts.append(f"p.status IN ({placeholders})")
+            params.extend(ordered_statuses)
 
     for raw_term in search.split():
         negative = raw_term.startswith("-") and len(raw_term) > 1
