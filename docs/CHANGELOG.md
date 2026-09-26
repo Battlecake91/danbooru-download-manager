@@ -37,7 +37,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Web request database connections now tolerate FastAPI worker-thread handoffs, preventing intermittent HTTP 500 responses during parallel thumbnail loading.
 - Web Preview and Viewer category controls now show desktop-compatible automatic rule suggestions and persist manual selections by category ID.
 - Thumbnail and Viewer media requests now use a lightweight post query and direct filename checks instead of full tag/detail aggregation and repeated directory scans.
-- Web Preselection sorting now loads only score-relevant tags and caches the complete filtered ranking for scrolling and Viewer navigation, with invalidation on Fetch, status, save and tag-setting changes.
+- Web Preselection sorting now loads only score-relevant tags and caches the complete filtered ranking for scrolling and Viewer navigation. Status and save actions update affected cached rankings incrementally, while Fetch and tag-setting changes invalidate them completely.
 
 ## 1.3.205 - Current release
 

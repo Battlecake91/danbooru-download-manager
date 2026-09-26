@@ -263,13 +263,15 @@ def create_app() -> FastAPI:
 
     @app.patch("/api/posts/{post_id}")
     def update_post(post_id: int, payload: PostActionRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
-        if db.get_post_detail(post_id) is None:
+        post = db.get_post_detail(post_id)
+        if post is None:
             raise HTTPException(status_code=404, detail="Post not found")
         if payload.status is not None:
             if payload.status not in ALLOWED_STATUSES:
                 raise HTTPException(status_code=422, detail="Invalid status")
+            old_status = str(post["status"] or "new")
             db.set_post_status(post_id, payload.status, request.app.state.config)
-            request.app.state.recommendation_cache.clear()
+            request.app.state.recommendation_cache.apply_status_change(post_id, old_status, payload.status)
         if payload.stars is not None:
             db.set_post_review(post_id, stars=payload.stars)
         if payload.category_id is not None:
@@ -290,8 +292,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/posts/{post_id}/save")
     def save_post(post_id: int, payload: PostSaveRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
-        if db.get_post_detail(post_id) is None:
+        post = db.get_post_detail(post_id)
+        if post is None:
             raise HTTPException(status_code=404, detail="Post not found")
+        old_status = str(post["status"] or "new")
 
         service = FinalSaveService(request.app.state.config, db)
         category = None
@@ -315,7 +319,7 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Save failed: {exc}") from exc
 
-        request.app.state.recommendation_cache.clear()
+        request.app.state.recommendation_cache.apply_status_change(post_id, old_status, "saved")
         return {
             "ok": True,
             "post_id": result.post_id,

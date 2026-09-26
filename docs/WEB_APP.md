@@ -69,7 +69,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Post status, rating and category changes.
 - Category rules supply the same automatic suggestions as the desktop Preview; selecting another Viewer category stores a manual override.
 - Media endpoints use lightweight database lookups and browser caching so large Preview batches do not repeat full Viewer-detail work per thumbnail.
-- Preselection rankings are built from score-relevant tags only and reused across subsequent batches and Viewer navigation until underlying review/scoring data changes.
+- Preselection rankings are built from score-relevant tags only and reused across subsequent batches and Viewer navigation. Status and save actions update the affected cached result directly, avoiding a full ranking rebuild before advancing to the next post.
 - Tag aliases, manual scores and exclusion flags.
 - Category creation and deletion.
 - Basic configuration and database maintenance status.

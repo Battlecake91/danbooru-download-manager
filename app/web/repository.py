@@ -31,6 +31,7 @@ SORT_SQL = {
 }
 
 RECOMMENDATION_SORTS = {"recommendation_desc", "recommendation_asc", "local_score_desc"}
+WORKLIST_STATUSES = {"new", "potential"}
 POST_JOINS = """
 LEFT JOIN post_reviews pr ON pr.post_id = p.id
 LEFT JOIN post_categories pc ON pc.post_id = p.id
@@ -68,6 +69,30 @@ class RecommendationResultCache:
     def clear(self) -> None:
         with self._lock:
             self._entries.clear()
+
+    def apply_status_change(self, post_id: int, old_status: str, new_status: str) -> None:
+        old_value = str(old_status or "new").strip().lower()
+        new_value = str(new_status or "new").strip().lower()
+
+        def matches(status_filter: str, value: str) -> bool:
+            if status_filter in {"", "all"}:
+                return True
+            if status_filter == "worklist":
+                return value in WORKLIST_STATUSES
+            return status_filter == value
+
+        with self._lock:
+            for key, (created_at, results) in list(self._entries.items()):
+                status_filter = str(key[-2] if len(key) >= 2 else "all").strip().lower()
+                matched_before = matches(status_filter, old_value)
+                matches_now = matches(status_filter, new_value)
+                if matched_before and not matches_now:
+                    updated_results = dict(results)
+                    updated_results.pop(int(post_id), None)
+                    self._entries[key] = (created_at, updated_results)
+                elif not matched_before and matches_now:
+                    # The post's score and search membership are not present in this result.
+                    self._entries.pop(key, None)
 
 
 def row_dict(row: Any) -> dict[str, Any]:

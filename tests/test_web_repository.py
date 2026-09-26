@@ -200,6 +200,64 @@ def test_web_preselection_cache_reuses_and_invalidates_filter_results(tmp_path: 
     assert refreshed["preselection_summary"]["best"] == 7.0
 
 
+def test_web_preselection_cache_updates_status_membership_incrementally(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "preselection-status-cache.db")
+    cache = RecommendationResultCache(ttl_seconds=60)
+    try:
+        worklist = list_posts(
+            db,
+            status="worklist",
+            search="",
+            sort="recommendation_desc",
+            offset=0,
+            limit=8,
+            recommendation_cache=cache,
+        )
+        all_posts = list_posts(
+            db,
+            status="all",
+            search="",
+            sort="recommendation_desc",
+            offset=0,
+            limit=8,
+            recommendation_cache=cache,
+        )
+        cache.apply_status_change(3, "new", "rejected")
+
+        db_path = str(db.path.resolve())
+        cached_worklist = cache.get((db_path, "worklist", ""))
+        cached_all = cache.get((db_path, "all", ""))
+    finally:
+        db.close()
+
+    assert worklist["total"] == 2
+    assert all_posts["total"] == 3
+    assert cached_worklist is not None and 3 not in cached_worklist
+    assert cached_all is not None and 3 in cached_all
+
+
+def test_web_preselection_cache_invalidates_filter_when_status_enters_it(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "preselection-enter-status-cache.db")
+    cache = RecommendationResultCache(ttl_seconds=60)
+    try:
+        list_posts(
+            db,
+            status="worklist",
+            search="",
+            sort="recommendation_desc",
+            offset=0,
+            limit=8,
+            recommendation_cache=cache,
+        )
+        db_path = str(db.path.resolve())
+        cache.apply_status_change(2, "saved", "new")
+        cached_worklist = cache.get((db_path, "worklist", ""))
+    finally:
+        db.close()
+
+    assert cached_worklist is None
+
+
 def test_every_web_preview_sort_executes(tmp_path: Path) -> None:
     db = make_db(tmp_path / "sorts.db")
     try:
