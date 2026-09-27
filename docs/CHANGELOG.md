@@ -6,6 +6,9 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Added
 
+- Added a persistent web Fetch history with per-query counts for seen, new, known, tag-excluded and resolution-excluded posts.
+- Added Danbooru rating filters for the web Preview/Viewer and Include/Exclude rating states for web Fetch presets.
+- Persisted the web Preview status, rating, search and sorting configuration in SQLite.
 - Added an independent FastAPI web application with its own source entry point and dependency set; the desktop application remains a separate selectable runtime.
 - Added a Docker image and Compose setup with persistent SQLite/cache and archive mounts.
 - Added manual and scheduled Fetch execution, cooperative cancellation and shared consecutive-known-post stopping.
@@ -21,6 +24,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Changed
 
+- Automatic web Fetch now requires an existing saved Fetch preset and reloads that preset from SQLite for every scheduled run.
 - Container runtime paths now override desktop-specific absolute paths stored in SQLite so one database can move between Windows and Linux mounts.
 - The Docker container now runs as UID/GID `1000:1000` by default, with optional `PUID` and `PGID` overrides in Compose.
 - The web Viewer now follows the compact working layout of the desktop Manager instead of using a generic details sidebar.
@@ -29,6 +33,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Fixed
 
+- Prevented automatic web Fetch from silently using the unrestricted global query when no saved preset was applied.
 - Web media lookup now recognizes Windows paths stored in SQLite when the same thumbnail files are mounted into a Linux container.
 - The web Viewer no longer selects a cached grid thumbnail when a local full image or larger Danbooru image is available.
 - The web Viewer Fit mode now constrains portrait and landscape images by both the available width and height, preventing tall images from being clipped below the viewport.

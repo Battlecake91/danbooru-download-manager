@@ -102,7 +102,7 @@ class RecommendationResultCache:
 
         with self._lock:
             for key, (created_at, results) in list(self._entries.items()):
-                status_filter = str(key[-2] if len(key) >= 2 else "all").strip().lower()
+                status_filter = str(key[1] if len(key) >= 2 else "all").strip().lower()
                 remove_ids: set[int] = set()
                 invalidate = False
                 for post_id, (old_value, new_value) in normalized_changes.items():
@@ -186,7 +186,16 @@ def apply_category_suggestions(db: Database, posts: list[dict[str, Any]]) -> Non
             post["category_source"] = "unassigned"
 
 
-def build_post_filter(status: str, search: str) -> tuple[str, list[Any]]:
+def rating_filter_values(rating: str) -> set[str] | None:
+    values = {part.strip().lower() for part in str(rating or "").split(",") if part.strip()}
+    if not values or "all" in values:
+        return None
+    if "none" in values:
+        return set()
+    return values.intersection({"g", "s", "q", "e"})
+
+
+def build_post_filter(status: str, search: str, rating: str = "all") -> tuple[str, list[Any]]:
     parts: list[str] = []
     params: list[Any] = []
     statuses = status_filter_values(status)
@@ -198,6 +207,16 @@ def build_post_filter(status: str, search: str) -> tuple[str, list[Any]]:
             placeholders = ", ".join("?" for _ in ordered_statuses)
             parts.append(f"p.status IN ({placeholders})")
             params.extend(ordered_statuses)
+
+    ratings = rating_filter_values(rating)
+    if ratings is not None:
+        if not ratings:
+            parts.append("1 = 0")
+        else:
+            ordered_ratings = sorted(ratings)
+            placeholders = ", ".join("?" for _ in ordered_ratings)
+            parts.append(f"p.rating IN ({placeholders})")
+            params.extend(ordered_ratings)
 
     for raw_term in search.split():
         negative = raw_term.startswith("-") and len(raw_term) > 1
@@ -343,11 +362,12 @@ def list_posts(
     status: str,
     search: str,
     sort: str,
+    rating: str = "all",
     offset: int,
     limit: int,
     recommendation_cache: RecommendationResultCache | None = None,
 ) -> dict[str, Any]:
-    where_sql, params = build_post_filter(status, search)
+    where_sql, params = build_post_filter(status, search, rating)
     count_row = db.execute(f"SELECT COUNT(*) AS total FROM posts p {where_sql}", params).fetchone()
     all_recommendations: dict[int, RecommendationScore] | None = None
     if sort in RECOMMENDATION_SORTS:
@@ -356,7 +376,9 @@ def list_posts(
             where_sql,
             params,
             cache=recommendation_cache,
-            cache_key=(status.strip().lower(), search.strip()),
+            cache_key=(status.strip().lower(), search.strip()) + (
+                (f"rating:{rating.strip().lower()}",) if rating.strip().lower() != "all" else ()
+            ),
         )
         ordered_ids = recommendation_order(all_recommendations, "recommendation_asc" if sort == "recommendation_asc" else "recommendation_desc")
         page_ids = ordered_ids[offset : offset + limit]
@@ -407,16 +429,19 @@ def matching_post_ids(
     status: str,
     search: str,
     sort: str,
+    rating: str = "all",
     recommendation_cache: RecommendationResultCache | None = None,
 ) -> list[int]:
-    where_sql, params = build_post_filter(status, search)
+    where_sql, params = build_post_filter(status, search, rating)
     if sort in RECOMMENDATION_SORTS:
         results = recommendation_results(
             db,
             where_sql,
             params,
             cache=recommendation_cache,
-            cache_key=(status.strip().lower(), search.strip()),
+            cache_key=(status.strip().lower(), search.strip()) + (
+                (f"rating:{rating.strip().lower()}",) if rating.strip().lower() != "all" else ()
+            ),
         )
         return recommendation_order(results, "recommendation_asc" if sort == "recommendation_asc" else "recommendation_desc")
     order_sql = SORT_SQL.get(sort, SORT_SQL["id_desc"])
@@ -434,6 +459,7 @@ def post_detail(
     status: str,
     search: str,
     sort: str,
+    rating: str = "all",
     recommendation_cache: RecommendationResultCache | None = None,
 ) -> dict[str, Any] | None:
     row = db.get_post_detail(post_id)
@@ -495,6 +521,7 @@ def post_detail(
         db,
         status=status,
         search=search,
+        rating=rating,
         sort=sort,
         recommendation_cache=recommendation_cache,
     )

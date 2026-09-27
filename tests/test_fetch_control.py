@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+import pytest
+
 from app.core.database import Database
 from app.danbooru.api import DanbooruSearchPage
 from app.services.post_import_service import FetchProgress, FetchResult, PostImportService
@@ -85,6 +87,18 @@ class FetchControlTests(unittest.TestCase):
         self.assertEqual(result.inserted_posts, 1)
         self.assertEqual(result.updated_posts, 5)
         self.assertEqual(result.known_streak_stopped_queries, ["test_tag"])
+        self.assertEqual(
+            result.query_results,
+            [{
+                "query": "test_tag",
+                "seen_posts": 6,
+                "inserted_posts": 1,
+                "updated_posts": 5,
+                "fetch_excluded_posts": 0,
+                "resolution_excluded_posts": 0,
+                "known_streak_stopped": True,
+            }],
+        )
 
     def test_cancel_stops_before_processing_the_next_post(self) -> None:
         cancel_state = {"requested": False}
@@ -181,6 +195,52 @@ def test_scheduled_fetch_persists_start_finish_and_result(tmp_path: Path, monkey
     assert settings["last_started_at"]
     assert settings["last_finished_at"]
     assert settings["last_status"] == "completed"
+
+
+def test_scheduler_requires_and_uses_a_saved_preset(tmp_path: Path) -> None:
+    database_file = tmp_path / "scheduled-preset.db"
+    db = Database(database_file)
+    db.connect()
+    db.initialize_schema()
+    db.save_fetch_preset(
+        "Saved searches",
+        {
+            "source_mode": "saved_searches",
+            "saved_search_labels": "daily",
+            "max_total_posts": 42,
+        },
+    )
+    db.close()
+
+    class FakeController:
+        def __init__(self) -> None:
+            self.call = None
+
+        def start(self, overrides=None, **kwargs):
+            self.call = (overrides, kwargs)
+            return True
+
+    config = {"database_file": str(database_file)}
+    controller = FakeController()
+    scheduler = FetchScheduler(config, controller)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError):
+        scheduler.update(enabled=True, interval_hours=6, preset_name="Missing")
+
+    settings = scheduler.update(enabled=True, interval_hours=6, preset_name="Saved searches")
+    assert settings["preset_name"] == "Saved searches"
+    assert scheduler._start_scheduled_fetch("Saved searches") is True
+    assert controller.call == (
+        {
+            "use_saved_searches": True,
+            "search_tags": "",
+            "saved_search_labels": ["daily"],
+            "saved_search_queries": [],
+            "saved_search_extra_tags": "",
+            "max_total_posts": 42,
+        },
+        {"scheduled": True, "preset_name": "Saved searches"},
+    )
 
 
 if __name__ == "__main__":

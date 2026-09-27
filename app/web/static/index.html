@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=status-filter-tags-13">
+  <link rel="stylesheet" href="/app.css?v=fetch-history-rating-14">
 </head>
 <body>
   <header class="app-header">
@@ -39,6 +39,13 @@
         <label>Per query <input id="fetch-per-query" type="number" min="1" value="200"></label>
         <label>Total <input id="fetch-total" type="number" min="1" value="500"></label>
         <label>Known streak <input id="fetch-known" type="number" min="0" value="0"></label>
+        <fieldset class="rating-state-filter">
+          <legend>Danbooru rating</legend>
+          <label>General <select data-fetch-rating="g"><option value="neutral">Any</option><option value="include">Include</option><option value="exclude">Exclude</option></select></label>
+          <label>Sensitive <select data-fetch-rating="s"><option value="neutral">Any</option><option value="include">Include</option><option value="exclude">Exclude</option></select></label>
+          <label>Questionable <select data-fetch-rating="q"><option value="neutral">Any</option><option value="include">Include</option><option value="exclude">Exclude</option></select></label>
+          <label>Explicit <select data-fetch-rating="e"><option value="neutral">Any</option><option value="include">Include</option><option value="exclude">Exclude</option></select></label>
+        </fieldset>
         <button id="fetch-start" class="primary">Start fetch</button>
         <button id="fetch-cancel" class="danger" disabled>Cancel</button>
       </div>
@@ -52,12 +59,17 @@
           <h2>Automatic fetch</h2>
           <form id="schedule-form" class="stack-form">
             <label class="toggle"><input id="schedule-enabled" type="checkbox"> Enabled</label>
+            <label>Saved preset <select id="schedule-preset"><option value="">Select preset</option></select></label>
             <label>Interval in hours <input id="schedule-hours" type="number" min="0.25" step="0.25" value="6"></label>
             <button type="submit">Save schedule</button>
           </form>
           <dl id="schedule-state" class="metrics schedule-state"></dl>
         </section>
       </div>
+      <section class="fetch-history-band">
+        <h2>Fetch history</h2>
+        <div id="fetch-history" class="fetch-history"></div>
+      </section>
     </section>
 
     <section id="view-preview" class="view">
@@ -70,6 +82,14 @@
           <label><input type="checkbox" data-preview-status value="rejected"> Rejected</label>
           <label><input type="checkbox" data-preview-status value="already_known"> Known</label>
           <label><input type="checkbox" data-preview-status value="saved"> Saved</label>
+        </fieldset>
+        <fieldset id="preview-rating" class="preview-status-filter">
+          <legend>Danbooru rating</legend>
+          <label><input id="preview-rating-all" type="checkbox"> All</label>
+          <label><input type="checkbox" data-preview-rating value="g" checked> General</label>
+          <label><input type="checkbox" data-preview-rating value="s" checked> Sensitive</label>
+          <label><input type="checkbox" data-preview-rating value="q" checked> Questionable</label>
+          <label><input type="checkbox" data-preview-rating value="e" checked> Explicit</label>
         </fieldset>
         <label class="wide">Search <input id="preview-search" placeholder="tags, post ID, -excluded_tag"></label>
         <label>Sort
@@ -161,6 +181,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=status-filter-tags-13" defer></script>
+  <script src="/app.js?v=fetch-history-rating-14" defer></script>
 </body>
 </html>

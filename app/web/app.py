@@ -54,6 +54,7 @@ class FetchPresetRequest(BaseModel):
 class SchedulerRequest(BaseModel):
     enabled: bool = False
     interval_hours: float = Field(default=6, ge=0.25, le=8760)
+    preset_name: str | None = None
     batch_size: int | None = Field(default=None, ge=50, le=200)
 
 
@@ -80,6 +81,10 @@ class ViewerSettingsRequest(BaseModel):
 class PreviewSettingsRequest(BaseModel):
     batch_size: int = Field(default=75, ge=50, le=200)
     thumbnail_size: int = Field(default=280, ge=120, le=600)
+    status: str = "worklist"
+    rating: str = "all"
+    search: str = ""
+    sort: str = "id_desc"
 
 
 class TagUpdateRequest(BaseModel):
@@ -172,6 +177,10 @@ def create_app() -> FastAPI:
                     120,
                     min(600, int((request.app.state.config.get("web", {}) or {}).get("preview_thumbnail_size", 280) or 280)),
                 ),
+                "status": str((request.app.state.config.get("web", {}) or {}).get("preview_status", "worklist")),
+                "rating": str((request.app.state.config.get("web", {}) or {}).get("preview_rating", "all")),
+                "search": str((request.app.state.config.get("web", {}) or {}).get("preview_search", "")),
+                "sort": str((request.app.state.config.get("web", {}) or {}).get("preview_sort", "id_desc")),
             },
         }
 
@@ -193,7 +202,7 @@ def create_app() -> FastAPI:
         preset_payload.update({key: value for key, value in legacy_fields.items() if value is not None})
         overrides = fetch_overrides_from_payload(preset_payload)
         request.app.state.recommendation_cache.clear()
-        if not request.app.state.fetch_controller.start(overrides):
+        if not request.app.state.fetch_controller.start(overrides, preset_name=payload.preset_name):
             raise HTTPException(status_code=409, detail="A fetch is already running")
         return request.app.state.fetch_controller.snapshot()
 
@@ -230,15 +239,24 @@ def create_app() -> FastAPI:
     def scheduler_status(request: Request) -> dict[str, Any]:
         return request.app.state.scheduler.settings()
 
+    @app.get("/api/fetch-history")
+    def fetch_history(db=Depends(database)) -> dict[str, Any]:
+        history = db.app_settings_as_values().get("web.fetch_history", [])
+        return {"items": history if isinstance(history, list) else []}
+
     @app.put("/api/scheduler")
     def scheduler_update(payload: SchedulerRequest, request: Request) -> dict[str, Any]:
-        return request.app.state.scheduler.update(**payload.model_dump())
+        try:
+            return request.app.state.scheduler.update(**payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/posts")
     def posts(
         request: Request,
         status: str = "worklist",
         search: str = "",
+        rating: str = "all",
         sort: str = "id_desc",
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=32, ge=8, le=200),
@@ -249,6 +267,7 @@ def create_app() -> FastAPI:
             db,
             status=status,
             search=search.strip(),
+            rating=rating,
             sort=sort,
             offset=offset,
             limit=limit,
@@ -283,6 +302,7 @@ def create_app() -> FastAPI:
         request: Request,
         status: str = "worklist",
         search: str = "",
+        rating: str = "all",
         sort: str = "id_desc",
         db=Depends(database),
     ) -> dict[str, Any]:
@@ -292,6 +312,7 @@ def create_app() -> FastAPI:
             post_id,
             status=status,
             search=search.strip(),
+            rating=rating,
             sort=sort,
             recommendation_cache=cache,
         )
@@ -388,12 +409,31 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         batch_size = int(payload.batch_size)
         thumbnail_size = int(payload.thumbnail_size)
+        status = payload.status.strip() or "worklist"
+        rating = payload.rating.strip() or "all"
+        search = payload.search.strip()
+        sort = payload.sort.strip() or "id_desc"
         db.set_app_setting("web.preview_batch_size", json.dumps(batch_size))
         db.set_app_setting("web.preview_thumbnail_size", json.dumps(thumbnail_size))
+        db.set_app_setting("web.preview_status", json.dumps(status))
+        db.set_app_setting("web.preview_rating", json.dumps(rating))
+        db.set_app_setting("web.preview_search", json.dumps(search))
+        db.set_app_setting("web.preview_sort", json.dumps(sort))
         web_config = request.app.state.config.setdefault("web", {})
         web_config["preview_batch_size"] = batch_size
         web_config["preview_thumbnail_size"] = thumbnail_size
-        return {"batch_size": batch_size, "thumbnail_size": thumbnail_size}
+        web_config["preview_status"] = status
+        web_config["preview_rating"] = rating
+        web_config["preview_search"] = search
+        web_config["preview_sort"] = sort
+        return {
+            "batch_size": batch_size,
+            "thumbnail_size": thumbnail_size,
+            "status": status,
+            "rating": rating,
+            "search": search,
+            "sort": sort,
+        }
 
     @app.get("/api/media/{post_id}/{variant}")
     def media(post_id: int, variant: str, request: Request, db=Depends(database)):

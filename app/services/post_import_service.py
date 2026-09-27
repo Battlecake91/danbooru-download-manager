@@ -27,6 +27,7 @@ class FetchResult:
     inserted_post_ids: list[int] = field(default_factory=list)
     cancelled: bool = False
     known_streak_stopped_queries: list[str] = field(default_factory=list)
+    query_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +131,9 @@ class PostImportService:
             page = None
             seen_for_query = 0
             inserted_for_query = 0
+            updated_for_query = 0
+            fetch_excluded_for_query = 0
+            resolution_excluded_for_query = 0
             consecutive_known_posts = 0
             stop_current_query = False
             self.emit_progress(
@@ -187,6 +191,7 @@ class PostImportService:
 
                     if fetch_excluded_tags and self.post_matches_fetch_exclude(post, fetch_excluded_tags):
                         result.fetch_excluded_posts += 1
+                        fetch_excluded_for_query += 1
                         if not fetch_excluded_posts_count_toward_limits:
                             total_seen = max(0, total_seen - 1)
                             seen_for_query = max(0, seen_for_query - 1)
@@ -194,6 +199,7 @@ class PostImportService:
 
                     if not self.post_matches_resolution_filter(post):
                         result.resolution_excluded_posts += 1
+                        resolution_excluded_for_query += 1
                         continue
 
                     post_result = self.store_post(post)
@@ -206,6 +212,7 @@ class PostImportService:
                         consecutive_known_posts = 0
                     else:
                         result.updated_posts += 1
+                        updated_for_query += 1
                         consecutive_known_posts += 1
 
                     # Do not reload active thumbnails for posts that already have a decision.
@@ -254,6 +261,18 @@ class PostImportService:
                     break
 
                 page = page_data.next_page
+
+            result.query_results.append(
+                {
+                    "query": query,
+                    "seen_posts": seen_for_query,
+                    "inserted_posts": inserted_for_query,
+                    "updated_posts": updated_for_query,
+                    "fetch_excluded_posts": fetch_excluded_for_query,
+                    "resolution_excluded_posts": resolution_excluded_for_query,
+                    "known_streak_stopped": query in result.known_streak_stopped_queries,
+                }
+            )
 
             if result.cancelled:
                 break

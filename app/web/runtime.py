@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import threading
 import time
@@ -117,9 +118,11 @@ def fetch_overrides_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
         result["search_tags"] = ""
         result["saved_search_labels"] = _csv_values(payload.get("saved_search_labels"))
         result["saved_search_queries"] = _csv_values(payload.get("saved_search_queries"))
-        result["saved_search_extra_tags"] = str(
-            rating_clause or payload.get("saved_search_extra_tags") or ""
-        ).strip()
+        result["saved_search_extra_tags"] = " ".join(
+            part
+            for part in (str(payload.get("saved_search_extra_tags") or "").strip(), rating_clause)
+            if part
+        )
     else:
         query = str(payload.get("manual_query") or payload.get("search_tags") or "order:id_desc").strip()
         result["use_saved_searches"] = False
@@ -156,7 +159,13 @@ class FetchController:
         with self._lock:
             return copy.deepcopy(asdict(self._state))
 
-    def start(self, overrides: dict[str, Any] | None = None, *, scheduled: bool = False) -> bool:
+    def start(
+        self,
+        overrides: dict[str, Any] | None = None,
+        *,
+        scheduled: bool = False,
+        preset_name: str | None = None,
+    ) -> bool:
         with self._lock:
             if self._state.running:
                 return False
@@ -180,7 +189,7 @@ class FetchController:
                     db.close()
             self._thread = threading.Thread(
                 target=self._run,
-                args=(run_config, scheduled),
+                args=(run_config, scheduled, preset_name),
                 name="web-fetch",
                 daemon=True,
             )
@@ -203,9 +212,15 @@ class FetchController:
             self._state.message = str(payload.get("message") or "")
             self._state.progress = payload
 
-    def _run(self, run_config: dict[str, Any], scheduled: bool = False) -> None:
+    def _run(
+        self,
+        run_config: dict[str, Any],
+        scheduled: bool = False,
+        preset_name: str | None = None,
+    ) -> None:
         db = open_database(run_config)
         outcome = "failed"
+        result_payload: dict[str, Any] | None = None
         try:
             service = PostImportService(
                 run_config,
@@ -214,8 +229,9 @@ class FetchController:
                 cancel_requested=self._cancel_event.is_set,
             )
             result = service.fetch_and_store()
+            result_payload = asdict(result)
             with self._lock:
-                self._state.result = asdict(result)
+                self._state.result = result_payload
                 self._state.phase = "cancelled" if result.cancelled else "done"
                 self._state.message = "Fetch cancelled" if result.cancelled else "Fetch completed"
                 outcome = "cancelled" if result.cancelled else "completed"
@@ -230,12 +246,35 @@ class FetchController:
                 if scheduled:
                     db.set_app_setting("web.fetch_last_finished_at", finished_at)
                     db.set_app_setting("web.fetch_last_status", outcome)
+                self._store_history(
+                    db,
+                    {
+                        "started_at": self._state.started_at,
+                        "finished_at": finished_at,
+                        "scheduled": scheduled,
+                        "preset_name": preset_name,
+                        "status": outcome,
+                        "error": self._state.error,
+                        "result": result_payload,
+                    },
+                )
             finally:
                 db.close()
             with self._lock:
                 self._state.running = False
                 self._state.cancelling = False
                 self._state.finished_at = finished_at
+
+    @staticmethod
+    def _store_history(db: Database, entry: dict[str, Any]) -> None:
+        values = db.app_settings_as_values()
+        history = values.get("web.fetch_history", [])
+        if not isinstance(history, list):
+            history = []
+        db.set_app_setting(
+            "web.fetch_history",
+            json.dumps([entry, *history][:30], ensure_ascii=False),
+        )
 
 
 class FetchScheduler:
@@ -261,17 +300,29 @@ class FetchScheduler:
         return {
             "enabled": bool(values.get("web.auto_fetch_enabled", False)),
             "interval_hours": max(0.25, float(values.get("web.fetch_interval_hours", 6) or 6)),
+            "preset_name": str(values.get("web.fetch_preset_name") or ""),
             "batch_size": max(50, min(200, int(values.get("web.preview_batch_size", 75) or 75))),
             "last_started_at": values.get("web.fetch_last_started_at"),
             "last_finished_at": values.get("web.fetch_last_finished_at"),
             "last_status": values.get("web.fetch_last_status"),
         }
 
-    def update(self, *, enabled: bool, interval_hours: float, batch_size: int | None = None) -> dict[str, Any]:
+    def update(
+        self,
+        *,
+        enabled: bool,
+        interval_hours: float,
+        preset_name: str | None = None,
+        batch_size: int | None = None,
+    ) -> dict[str, Any]:
         db = open_database(self.config)
         try:
+            clean_preset_name = str(preset_name or "").strip()
+            if enabled and (not clean_preset_name or db.get_fetch_preset(clean_preset_name) is None):
+                raise ValueError("Select an existing fetch preset before enabling automatic fetch")
             db.set_app_setting("web.auto_fetch_enabled", str(bool(enabled)).lower())
             db.set_app_setting("web.fetch_interval_hours", str(max(0.25, float(interval_hours))))
+            db.set_app_setting("web.fetch_preset_name", clean_preset_name)
             if batch_size is not None:
                 db.set_app_setting("web.preview_batch_size", str(max(50, min(200, int(batch_size)))))
         finally:
@@ -290,4 +341,22 @@ class FetchScheduler:
                 last_timestamp = 0.0
             if time.time() - last_timestamp < float(settings["interval_hours"]) * 3600:
                 continue
-            self.controller.start(scheduled=True)
+            self._start_scheduled_fetch(str(settings.get("preset_name") or "").strip())
+
+    def _start_scheduled_fetch(self, preset_name: str) -> bool:
+        db = open_database(self.config)
+        try:
+            preset = db.get_fetch_preset(preset_name) if preset_name else None
+            if preset is None:
+                now = utc_now_iso()
+                db.set_app_setting("web.fetch_last_started_at", now)
+                db.set_app_setting("web.fetch_last_finished_at", now)
+                db.set_app_setting("web.fetch_last_status", "preset missing")
+                return False
+        finally:
+            db.close()
+        return self.controller.start(
+            fetch_overrides_from_payload(preset),
+            scheduled=True,
+            preset_name=preset_name,
+        )

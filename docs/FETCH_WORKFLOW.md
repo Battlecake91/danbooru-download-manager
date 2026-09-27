@@ -32,6 +32,10 @@ Presets store reusable Fetch settings, including:
 - resolution limits,
 - LLM enable state.
 
+The web scheduler must reference an existing saved preset. It resolves that preset again when each automatic run starts, so later changes to saved searches, limits, rating states and early-stop settings apply automatically. If the preset is deleted, the scheduled run is reported as `preset missing` instead of falling back to the global query.
+
+The web Fetch page keeps the latest 30 completed, cancelled or failed runs in SQLite. Expanding a run shows per-query counts for posts seen, newly inserted, already known, excluded by tag, excluded by resolution and stopped by the known-post streak.
+
 ### Saved searches
 
 Authenticated users can load Danbooru saved searches and use them as query sources. The selected rating controls are appended to the generated search query for the run.

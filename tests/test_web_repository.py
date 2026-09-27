@@ -87,6 +87,19 @@ def test_web_post_batches_are_not_capped_to_desktop_preview_limit(tmp_path: Path
     assert result["has_more"] is False
 
 
+def test_web_preview_rating_filter_applies_to_list_and_navigation(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "web-rating.db")
+    db.execute("UPDATE posts SET rating = CASE id WHEN 3 THEN 'g' WHEN 2 THEN 's' ELSE 'e' END")
+    db.commit()
+    try:
+        result = list_posts(db, status="all", search="", sort="id_desc", rating="g,e", offset=0, limit=20)
+        ids = matching_post_ids(db, status="all", search="", sort="id_desc", rating="g,e")
+    finally:
+        db.close()
+    assert [item["id"] for item in result["items"]] == [3, 1]
+    assert ids == [3, 1]
+
+
 def test_web_categories_show_rule_suggestions_and_persist_manual_override(tmp_path: Path) -> None:
     db = make_db(tmp_path / "web-categories.db")
     blue_id = db.create_category("Blue", "blue")

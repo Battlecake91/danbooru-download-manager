@@ -1,8 +1,9 @@
-const state = { offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {} };
+const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const PREVIEW_STATUSES = ["new", "potential", "rejected", "already_known", "saved"];
+const PREVIEW_RATINGS = ["g", "s", "q", "e"];
 
 async function api(url, options = {}) {
   const response = await fetch(url, { headers: {"Content-Type":"application/json", ...(options.headers || {})}, ...options });
@@ -35,9 +36,29 @@ function toast(message) {
 function queryState() {
   return {
     status: previewStatusFilterValue(),
+    rating: previewRatingFilterValue(),
     search: $("#preview-search").value.trim(),
     sort: $("#preview-sort").value,
   };
+}
+
+function previewRatingInputs() {
+  return $$('[data-preview-rating]');
+}
+
+function previewRatingFilterValue() {
+  const ratings = previewRatingInputs().filter(input => input.checked).map(input => input.value);
+  if (!ratings.length) return "none";
+  if (ratings.length === PREVIEW_RATINGS.length) return "all";
+  return ratings.join(",");
+}
+
+function setPreviewRatings(value) {
+  let ratings = new Set(String(value || "all").split(",").filter(Boolean));
+  if (ratings.has("all")) ratings = new Set(PREVIEW_RATINGS);
+  if (ratings.has("none")) ratings.clear();
+  previewRatingInputs().forEach(input => { input.checked = ratings.has(input.value); });
+  $("#preview-rating-all").checked = ratings.size === PREVIEW_RATINGS.length;
 }
 
 function previewStatusInputs() {
@@ -88,7 +109,11 @@ async function savePreviewSettings() {
   applyPreviewThumbnailSize($("#preview-thumbnail-size").value);
   const saved = await api("/api/preview/settings", {
     method: "PUT",
-    body: JSON.stringify({batch_size: state.batch, thumbnail_size: state.thumbnailSize}),
+    body: JSON.stringify({
+      batch_size: state.batch,
+      thumbnail_size: state.thumbnailSize,
+      ...queryState(),
+    }),
   });
   state.batch = saved.batch_size;
   $("#preview-batch").value = saved.batch_size;
@@ -149,7 +174,10 @@ function showTab(tab) {
   $$(".view").forEach(node => node.classList.toggle("hidden", node.id !== `view-${tab}`));
   $$("#tabs button").forEach(button => button.classList.toggle("active", button.dataset.tab === tab));
   if (tab === "preview" && !$("#post-grid").children.length) resetPreview();
-  if (tab === "fetch") loadFetchPresets();
+  if (tab === "fetch") {
+    loadFetchPresets();
+    loadFetchHistory();
+  }
   if (tab === "tags") loadTags();
   if (tab === "categories") loadCategories();
   if (tab === "config") loadConfig();
@@ -165,6 +193,11 @@ async function bootstrap() {
   state.batch = data.preview?.batch_size || 75;
   $("#preview-batch").value = state.batch;
   applyPreviewThumbnailSize(data.preview?.thumbnail_size || 280);
+  setPreviewStatuses(data.preview?.status || "worklist");
+  setPreviewRatings(data.preview?.rating || "all");
+  $("#preview-search").value = data.preview?.search || "";
+  $("#preview-sort").value = data.preview?.sort || "id_desc";
+  state.ready = true;
 }
 
 async function resetPreview() {
@@ -279,7 +312,7 @@ async function applyPreviewBulkStatus(status) {
 }
 
 async function loadMorePosts() {
-  if (state.loading || !state.hasMore || state.tab !== "preview") return;
+  if (!state.ready || state.loading || !state.hasMore || state.tab !== "preview") return;
   state.loading = true;
   $("#preview-sentinel").textContent = "Loading...";
   try {
@@ -440,10 +473,12 @@ async function openViewer(postId, push = true, historyMode = "append") {
     const params = new URLSearchParams(location.search);
     const filters = {
       status: params.get("status") || queryState().status,
+      rating: params.get("rating") || queryState().rating,
       search: params.get("search") || queryState().search,
       sort: params.get("sort") || queryState().sort,
     };
     setPreviewStatuses(filters.status);
+    setPreviewRatings(filters.rating);
     $("#preview-search").value = filters.search;
     $("#preview-sort").value = filters.sort;
     const data = await api(`/api/posts/${postId}?${new URLSearchParams(filters)}`);
@@ -622,8 +657,12 @@ function renderFetch(data) {
   $("#fetch-cancel").disabled = !data.running || data.cancelling;
   $("#global-status").textContent = data.running ? (data.message || "Fetch running") : "Ready";
   const progress = data.progress || {};
-  $("#fetch-state").innerHTML = `<dt>State</dt><dd>${esc(data.phase)}</dd><dt>Message</dt><dd>${esc(data.message || "-")}</dd><dt>Started</dt><dd>${esc(data.started_at || "-")}</dd><dt>Seen</dt><dd>${progress.seen_posts ?? 0}</dd><dt>Inserted</dt><dd>${progress.inserted_posts ?? 0}</dd><dt>Updated</dt><dd>${progress.updated_posts ?? 0}</dd>`;
+  $("#fetch-state").innerHTML = `<dt>State</dt><dd>${esc(data.phase)}</dd><dt>Message</dt><dd>${esc(data.message || "-")}</dd><dt>Started</dt><dd>${esc(data.started_at || "-")}</dd><dt>Query</dt><dd>${esc(progress.query || "-")}</dd><dt>Seen</dt><dd>${progress.seen_total ?? 0}</dd><dt>Inserted</dt><dd>${progress.inserted_posts ?? 0}</dd><dt>Known</dt><dd>${progress.known_posts ?? 0}</dd>`;
   $("#fetch-result").textContent = data.error || (data.result ? JSON.stringify(data.result, null, 2) : "");
+  if (data.finished_at && data.finished_at !== state.historyFinishedAt) {
+    state.historyFinishedAt = data.finished_at;
+    if (state.tab === "fetch") loadFetchHistory();
+  }
 }
 
 async function pollFetch() {
@@ -641,13 +680,33 @@ function formatTimestamp(value) {
 
 function renderScheduleStatus(data) {
   const status = data.last_status ? String(data.last_status) : "never run";
-  $("#schedule-state").innerHTML = `<dt>Last automatic start</dt><dd>${esc(formatTimestamp(data.last_started_at))}</dd><dt>Last automatic finish</dt><dd>${esc(formatTimestamp(data.last_finished_at))}</dd><dt>Result</dt><dd>${esc(status)}</dd>`;
+  $("#schedule-state").innerHTML = `<dt>Preset</dt><dd>${esc(data.preset_name || "Not selected")}</dd><dt>Last automatic start</dt><dd>${esc(formatTimestamp(data.last_started_at))}</dd><dt>Last automatic finish</dt><dd>${esc(formatTimestamp(data.last_finished_at))}</dd><dt>Result</dt><dd>${esc(status)}</dd>`;
 }
 
 function applySchedule(data) {
+  state.scheduledPresetName = data.preset_name || "";
   $("#schedule-enabled").checked = data.enabled;
   $("#schedule-hours").value = data.interval_hours;
+  if (state.fetchPresets.has(state.scheduledPresetName)) $("#schedule-preset").value = state.scheduledPresetName;
   renderScheduleStatus(data);
+}
+
+function renderFetchHistory(data) {
+  const items = data.items || [];
+  $("#fetch-history").innerHTML = items.map((run, index) => {
+    const result = run.result || {};
+    const rows = result.query_results || [];
+    const summary = `${formatTimestamp(run.started_at)} | ${run.scheduled ? "automatic" : "manual"} | ${run.preset_name || "edited settings"} | ${run.status || "unknown"} | ${result.inserted_posts ?? 0} new / ${result.seen_posts ?? 0} seen`;
+    return `<details class="fetch-history-run" ${index === 0 ? "open" : ""}><summary>${esc(summary)}</summary>
+      ${run.error ? `<div class="fetch-history-error">${esc(run.error)}</div>` : ""}
+      <div class="table-wrap"><table><thead><tr><th>Query</th><th>Seen</th><th>New</th><th>Known</th><th>Tag excluded</th><th>Resolution excluded</th><th>Stop</th></tr></thead><tbody>
+      ${rows.map(row => `<tr><td>${esc(row.query)}</td><td>${row.seen_posts ?? 0}</td><td>${row.inserted_posts ?? 0}</td><td>${row.updated_posts ?? 0}</td><td>${row.fetch_excluded_posts ?? 0}</td><td>${row.resolution_excluded_posts ?? 0}</td><td>${row.known_streak_stopped ? "known streak" : ""}</td></tr>`).join("") || `<tr><td colspan="7">No query details recorded</td></tr>`}
+      </tbody></table></div></details>`;
+  }).join("") || `<div class="empty-state">No completed fetches recorded yet.</div>`;
+}
+
+async function loadFetchHistory() {
+  try { renderFetchHistory(await api("/api/fetch-history")); } catch (error) { toast(error.message); }
 }
 
 function updateFetchSourceFields() {
@@ -666,6 +725,9 @@ function applyFetchPreset(payload) {
   $("#fetch-per-query").value = payload.max_posts_per_query || 200;
   $("#fetch-total").value = payload.max_total_posts || 500;
   $("#fetch-known").value = payload.max_consecutive_known_posts || 0;
+  $$('[data-fetch-rating]').forEach(select => {
+    select.value = payload.rating_states?.[select.dataset.fetchRating] || "neutral";
+  });
   updateFetchSourceFields();
 }
 
@@ -679,6 +741,7 @@ function currentFetchPayload() {
     max_posts_per_query: Number($("#fetch-per-query").value),
     max_total_posts: Number($("#fetch-total").value),
     max_consecutive_known_posts: Number($("#fetch-known").value),
+    rating_states: Object.fromEntries($$('[data-fetch-rating]').map(select => [select.dataset.fetchRating, select.value])),
   };
 }
 
@@ -689,6 +752,9 @@ async function loadFetchPresets(selectedName = null) {
     const select = $("#fetch-preset");
     const selected = selectedName ?? select.value;
     select.innerHTML = `<option value="">No preset</option>${data.items.map(item => `<option value="${esc(item.name)}">${esc(item.name)}</option>`).join("")}`;
+    const scheduleSelect = $("#schedule-preset");
+    scheduleSelect.innerHTML = `<option value="">Select preset</option>${data.items.map(item => `<option value="${esc(item.name)}">${esc(item.name)}</option>`).join("")}`;
+    if (state.fetchPresets.has(state.scheduledPresetName)) scheduleSelect.value = state.scheduledPresetName;
     if (selected && state.fetchPresets.has(selected)) select.value = selected;
     $("#fetch-preset-delete").disabled = !select.value;
   } catch (error) { toast(error.message); }
@@ -788,11 +854,19 @@ $("#preview-apply").onclick = () => savePreviewSettings().then(resetPreview).cat
 $("#preview-thumbnail-size").onchange = () => savePreviewSettings().catch(error => toast(error.message));
 $("#preview-status-all").onchange = event => {
   previewStatusInputs().forEach(input => { input.checked = event.target.checked; });
-  resetPreview().catch(error => toast(error.message));
+  savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
 };
 previewStatusInputs().forEach(input => input.onchange = () => {
   $("#preview-status-all").checked = previewStatusInputs().every(item => item.checked);
-  resetPreview().catch(error => toast(error.message));
+  savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
+});
+$("#preview-rating-all").onchange = event => {
+  previewRatingInputs().forEach(input => { input.checked = event.target.checked; });
+  savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
+};
+previewRatingInputs().forEach(input => input.onchange = () => {
+  $("#preview-rating-all").checked = previewRatingInputs().every(item => item.checked);
+  savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
 });
 $("#preview-selection-clear").onclick = clearPreviewSelection;
 $("#preview-bulk-apply").onclick = () => applyPreviewBulkStatus($("#preview-bulk-status").value).catch(error => toast(error.message));
@@ -814,7 +888,7 @@ $("#fetch-start").onclick = async () => {
   catch (error) { toast(error.message); }
 };
 $("#fetch-cancel").onclick = () => api("/api/fetch/cancel", {method:"POST"}).then(renderFetch).catch(error => toast(error.message));
-$("#schedule-form").onsubmit = async event => { event.preventDefault(); try { applySchedule(await api("/api/scheduler", {method:"PUT", body:JSON.stringify({enabled:$("#schedule-enabled").checked, interval_hours:Number($("#schedule-hours").value)})})); toast("Schedule saved"); } catch(error) { toast(error.message); } };
+$("#schedule-form").onsubmit = async event => { event.preventDefault(); try { applySchedule(await api("/api/scheduler", {method:"PUT", body:JSON.stringify({enabled:$("#schedule-enabled").checked, interval_hours:Number($("#schedule-hours").value), preset_name:$("#schedule-preset").value || null})})); toast("Schedule saved"); } catch(error) { toast(error.message); } };
 $("#category-form").onsubmit = async event => { event.preventDefault(); try { await api("/api/categories", {method:"POST", body:JSON.stringify({name:$("#category-name").value, folder_name:$("#category-folder").value || null})}); event.target.reset(); loadCategories(); } catch(error) { toast(error.message); } };
 $("#config-form").onsubmit = async event => { event.preventDefault(); const form = new FormData(event.target); const payload = Object.fromEntries(form.entries()); if (!payload.api_key) delete payload.api_key; payload.request_timeout_seconds = Number(payload.request_timeout_seconds); payload.request_min_interval_seconds = Number(payload.request_min_interval_seconds); try { await api("/api/settings", {method:"PATCH", body:JSON.stringify(payload)}); toast("Configuration saved"); } catch(error) { toast(error.message); } };
 
