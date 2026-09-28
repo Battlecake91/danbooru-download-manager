@@ -353,7 +353,7 @@ class DatabaseTagMixin:
         Heavy historical fields are returned as neutral placeholders so the
         existing widgets can keep using one metadata shape.
         """
-        clean_tags = sorted({normalize_tag_token(str(tag)) for tag in tags if normalize_tag_token(str(tag))})
+        clean_tags = sorted({str(tag).strip() for tag in tags if str(tag).strip()})
         if not clean_tags:
             return {}
 
@@ -385,10 +385,12 @@ class DatabaseTagMixin:
             clean_tags,
         ).fetchall()
         filename_excluded = {str(row["tag"] or "") for row in excluded_rows}
+        normalized_fetch_tags = sorted({normalize_tag_token(tag) for tag in clean_tags if normalize_tag_token(tag)})
+        fetch_placeholders = ", ".join("?" for _ in normalized_fetch_tags)
         fetch_excluded_rows = self.execute(
-            f"SELECT tag FROM fetch_excluded_tags WHERE tag IN ({placeholders})",
-            clean_tags,
-        ).fetchall()
+            f"SELECT tag FROM fetch_excluded_tags WHERE tag IN ({fetch_placeholders})",
+            normalized_fetch_tags,
+        ).fetchall() if normalized_fetch_tags else []
         fetch_excluded = {str(row["tag"] or "") for row in fetch_excluded_rows}
 
         identities = self.build_tag_identities(clean_tags)
@@ -413,7 +415,7 @@ class DatabaseTagMixin:
                 "ignore_recommendation_score": bool(row["ignore_recommendation_score"]) if row is not None else False,
                 "ignore_llm_input": bool(row["ignore_llm_input"]) if row is not None else False,
                 "filename_excluded": tag in filename_excluded,
-                "fetch_excluded": tag in fetch_excluded,
+                "fetch_excluded": normalize_tag_token(tag) in fetch_excluded,
                 "average_rating": row["average_rating"] if row is not None else None,
                 "rating_count": 0,
                 "saved_count": 0,
@@ -561,7 +563,8 @@ class DatabaseTagMixin:
         self.commit()
 
     def remove_filename_excluded_tag(self, tag: str) -> None:
-        self.execute("DELETE FROM filename_excluded_tags WHERE tag = ?", (tag,))
+        clean_tag = str(tag or "").strip()
+        self.execute("DELETE FROM filename_excluded_tags WHERE tag = ? COLLATE NOCASE", (clean_tag,))
         self.commit()
 
     def list_filename_excluded_tags(self, search_text: str | None = None) -> list[sqlite3.Row]:

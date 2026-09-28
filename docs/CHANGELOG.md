@@ -6,6 +6,9 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Added
 
+- Added indexed tag completion to the web Preview search with current-token replacement, keyboard navigation and preserved negative-tag prefixes.
+- Added desktop action hotkeys to selected web Preview cards (`H`, `N`, `G`, `K`, `Delete` and `F`), including resilient multi-post final saving that continues after individual failures.
+- Added a horizontal Parent/Current/Child strip to the web Viewer with status and local-file availability for every known related post.
 - Added a persistent web Fetch history with per-query counts for seen, new, known, tag-excluded and resolution-excluded posts.
 - Added Danbooru rating filters for the web Preview/Viewer and Include/Exclude rating states for web Fetch presets.
 - Persisted the web Preview status, rating, search and sorting configuration in SQLite.
@@ -33,6 +36,8 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Fixed
 
+- Filename-excluded Viewer tags are no longer crossed out; the existing filename-only filter still hides them on demand.
+- Tag context actions now use an exact-tag request body and verify the stored result, fixing exclusions that could not be removed for tags containing URL or normalization-sensitive characters.
 - Prevented automatic web Fetch from silently using the unrestricted global query when no saved preset was applied.
 - Web media lookup now recognizes Windows paths stored in SQLite when the same thumbnail files are mounted into a Linux container.
 - The web Viewer no longer selects a cached grid thumbnail when a local full image or larger Danbooru image is available.

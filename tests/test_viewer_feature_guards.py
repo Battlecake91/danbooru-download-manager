@@ -115,7 +115,20 @@ def test_web_viewer_applies_authoritative_tag_context_updates() -> None:
 
     assert "function applyTagContextMetadata" in web_source
     assert "applyTagContextMetadata(meta.tag, updated)" in web_source
-    assert "fetch_tag_display_metadata([tag])" in api_source
+    assert 'api("/api/tags/settings"' in web_source
+    assert '@app.patch("/api/tags/settings")' in api_source
+    assert "fetch_tag_display_metadata([clean_tag])" in api_source
+
+
+def test_web_viewer_renders_parent_and_child_posts_side_by_side() -> None:
+    web_source = read_source("app/web/static/app.js")
+    css_source = read_source("app/web/static/app.css")
+    repository_source = read_source("app/web/repository.py")
+
+    assert "function viewerFamilyStrip" in web_source
+    assert 'data-related-post="${item.id}"' in web_source
+    assert ".viewer-family-strip" in css_source
+    assert 'post["related_posts"]' in repository_source
 
 
 def test_web_preview_supports_shift_selection_and_bulk_status_changes() -> None:
@@ -132,6 +145,38 @@ def test_web_preview_supports_shift_selection_and_bulk_status_changes() -> None:
     assert "Array.isArray(detail)" in web_source
     assert "JSON.stringify(detail)" in web_source
     assert '@app.patch("/api/posts/status")' in api_source
+
+
+def test_web_preview_supports_desktop_action_hotkeys_and_bulk_saving() -> None:
+    html_source = read_source("app/web/static/index.html")
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert 'id="preview-bulk-save"' in html_source
+    assert 'applyPreviewBulkStatus("potential")' in web_source
+    assert 'applyPreviewBulkStatus("new")' in web_source
+    assert 'applyPreviewBulkStatus("saved")' in web_source
+    assert 'applyPreviewBulkStatus("already_known")' in web_source
+    assert "function savePreviewSelection" in web_source
+    assert "state.previewActionRunning" in web_source
+    assert 'api("/api/posts/save"' in web_source
+    assert '@app.post("/api/posts/save")' in api_source
+    assert "except AlreadySavedError as exc:" in api_source
+
+
+def test_web_preview_has_indexed_current_token_tag_completion() -> None:
+    html_source = read_source("app/web/static/index.html")
+    web_source = read_source("app/web/static/app.js")
+    api_source = read_source("app/web/app.py")
+
+    assert 'id="preview-tag-suggestions"' in html_source
+    assert "function currentSearchTokenBounds" in web_source
+    assert "function insertTagSuggestion" in web_source
+    assert 'event.key === "ArrowDown"' in web_source
+    assert 'event.key === "ArrowUp"' in web_source
+    assert 'api(`/api/tags/suggestions?' in web_source
+    assert '@app.get("/api/tags/suggestions")' in api_source
+    assert "db.suggest_tags(query.strip(), limit=limit)" in api_source
     assert "db.set_post_statuses(post_ids, payload.status" in api_source
 
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=fetch-history-rating-14">
+  <link rel="stylesheet" href="/app.css?v=preview-hotkeys-17">
 </head>
 <body>
   <header class="app-header">
@@ -91,7 +91,12 @@
           <label><input type="checkbox" data-preview-rating value="q" checked> Questionable</label>
           <label><input type="checkbox" data-preview-rating value="e" checked> Explicit</label>
         </fieldset>
-        <label class="wide">Search <input id="preview-search" placeholder="tags, post ID, -excluded_tag"></label>
+        <label class="wide preview-search-label">Search
+          <span class="tag-autocomplete">
+            <input id="preview-search" placeholder="tags, post ID, -excluded_tag" autocomplete="off" aria-autocomplete="list" aria-controls="preview-tag-suggestions" aria-expanded="false">
+            <span id="preview-tag-suggestions" class="tag-suggestions hidden" role="listbox" aria-label="Tag suggestions"></span>
+          </span>
+        </label>
         <label>Sort
           <select id="preview-sort">
             <option value="id_desc">Post ID: newest first</option>
@@ -133,6 +138,7 @@
           </select>
         </label>
         <button id="preview-bulk-apply" class="primary">Apply</button>
+        <button id="preview-bulk-save" class="primary" title="Save selected posts (F)">Save</button>
         <button id="preview-bulk-reject" class="danger">Reject</button>
         <button id="preview-selection-clear" class="icon-button" title="Clear selection" aria-label="Clear selection">&#215;</button>
       </div>
@@ -181,6 +187,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=fetch-history-rating-14" defer></script>
+  <script src="/app.js?v=preview-hotkeys-17" defer></script>
 </body>
 </html>

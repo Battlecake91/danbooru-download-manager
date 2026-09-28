@@ -336,6 +336,58 @@ def test_web_viewer_returns_typed_tags_and_preview_strip(tmp_path: Path) -> None
     assert result["preview_strip"][0]["active"] is True
 
 
+def test_web_viewer_returns_parent_current_and_children_with_local_state(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "viewer-family.db")
+    db.execute("UPDATE posts SET parent_id = 2 WHERE id = 3")
+    db.execute(
+        "INSERT INTO posts (id, parent_id, status, rating, final_file_path) VALUES (4, 3, 'saved', 'g', ?)",
+        (str(tmp_path / "saved-4.jpg"),),
+    )
+    db.commit()
+    try:
+        result = post_detail(db, 3, status="all", search="", sort="id_desc")
+    finally:
+        db.close()
+
+    assert result is not None
+    assert [(item["relation"], item["id"]) for item in result["related_posts"]] == [
+        ("parent", 2),
+        ("current", 3),
+        ("child", 4),
+    ]
+    assert result["related_known_count"] == 2
+    assert result["related_saved_count"] == 1
+    assert result["related_posts"][2]["locally_saved"] is True
+
+
+def test_tag_display_metadata_preserves_exact_tag_for_filename_excludes(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "tag-exact.db")
+    tag = "artist_(circle)"
+    db.add_filename_excluded_tag(tag, "test")
+    try:
+        metadata = db.fetch_tag_display_metadata([tag])
+        assert metadata[tag]["filename_excluded"] is True
+        db.remove_filename_excluded_tag("ARTIST_(CIRCLE)")
+        metadata = db.fetch_tag_display_metadata([tag])
+    finally:
+        db.close()
+    assert metadata[tag]["filename_excluded"] is False
+
+
+def test_tag_display_metadata_maps_normalized_fetch_excludes_back_to_exact_tag(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "tag-fetch-exact.db")
+    tag = "artist_(circle)"
+    db.add_fetch_excluded_tag(tag, "test")
+    try:
+        metadata = db.fetch_tag_display_metadata([tag])
+        assert metadata[tag]["fetch_excluded"] is True
+        db.remove_fetch_excluded_tag(tag)
+        metadata = db.fetch_tag_display_metadata([tag])
+    finally:
+        db.close()
+    assert metadata[tag]["fetch_excluded"] is False
+
+
 def test_negative_tag_filter_is_parameterized() -> None:
     sql, params = build_post_filter("worklist", "blue_hair -comic")
     assert "NOT EXISTS" in sql

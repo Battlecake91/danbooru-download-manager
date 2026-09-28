@@ -401,6 +401,8 @@ class DatabasePostMixin:
                     rating,
                     score,
                     final_file_path,
+                    original_path,
+                    original_cache_path,
                     thumbnail_path,
                     rejected_thumbnail_path
                 FROM posts
@@ -422,6 +424,8 @@ class DatabasePostMixin:
                     rating,
                     score,
                     final_file_path,
+                    original_path,
+                    original_cache_path,
                     thumbnail_path,
                     rejected_thumbnail_path
                 FROM posts

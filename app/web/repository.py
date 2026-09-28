@@ -517,6 +517,30 @@ def post_detail(
         typed_tags[tag_type].append({"tag": tag, **tag_metadata.get(tag, {})})
     post["typed_tags"] = typed_tags
 
+    related_rows = [row_dict(item) for item in db.get_related_posts(post_id)]
+    related_posts: list[dict[str, Any]] = []
+    parent_rows = [item for item in related_rows if item.get("relation") == "parent"]
+    child_rows = [item for item in related_rows if item.get("relation") == "child"]
+    def has_local_full_file(item: dict[str, Any]) -> bool:
+        return any(item.get(field) for field in ("final_file_path", "original_path", "original_cache_path"))
+
+    for item in [*parent_rows, {**post, "relation": "current"}, *child_rows]:
+        related_id = int(item["id"])
+        related_posts.append(
+            {
+                "id": related_id,
+                "relation": str(item.get("relation") or "child"),
+                "status": str(item.get("status") or "new"),
+                "rating": item.get("rating"),
+                "score": item.get("score"),
+                "locally_saved": has_local_full_file(item),
+                "thumbnail_url": f"/api/media/{related_id}/thumbnail",
+            }
+        )
+    post["related_posts"] = related_posts if related_rows else []
+    post["related_known_count"] = len(related_rows)
+    post["related_saved_count"] = sum(has_local_full_file(item) for item in related_rows)
+
     ids = matching_post_ids(
         db,
         status=status,

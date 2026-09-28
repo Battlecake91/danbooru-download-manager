@@ -1,4 +1,4 @@
-const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null };
+const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, previewActionRunning: false, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null, tagSuggestions: [], tagSuggestionIndex: -1, tagSuggestionTimer: null, tagSuggestionRequest: 0 };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -91,6 +91,87 @@ function setPreviewStatuses(value) {
 
 function queryString(extra = {}) {
   return new URLSearchParams({...queryState(), ...extra}).toString();
+}
+
+function currentSearchTokenBounds() {
+  const input = $("#preview-search");
+  const text = input.value;
+  const cursor = input.selectionStart ?? text.length;
+  const leftMatch = text.slice(0, cursor).match(/([^\s()]+)$/);
+  if (!leftMatch) return {start: cursor, end: cursor, prefix: "", token: ""};
+  const start = cursor - leftMatch[1].length;
+  const rightMatch = text.slice(cursor).match(/^[^\s()]*/);
+  const end = cursor + (rightMatch?.[0].length || 0);
+  const rawToken = text.slice(start, end);
+  const prefix = rawToken.startsWith("-") ? "-" : "";
+  return {start, end, prefix, token: rawToken.slice(prefix.length)};
+}
+
+function closeTagSuggestions() {
+  state.tagSuggestions = [];
+  state.tagSuggestionIndex = -1;
+  const popup = $("#preview-tag-suggestions");
+  popup.classList.add("hidden");
+  popup.replaceChildren();
+  $("#preview-search").setAttribute("aria-expanded", "false");
+}
+
+function setActiveTagSuggestion(index) {
+  if (!state.tagSuggestions.length) return;
+  state.tagSuggestionIndex = (index + state.tagSuggestions.length) % state.tagSuggestions.length;
+  $$("#preview-tag-suggestions .tag-suggestion").forEach((button, buttonIndex) => {
+    const active = buttonIndex === state.tagSuggestionIndex;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    if (active) button.scrollIntoView({block: "nearest"});
+  });
+}
+
+function insertTagSuggestion(tag) {
+  const input = $("#preview-search");
+  const {start, end, prefix} = currentSearchTokenBounds();
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end).replace(/^\s+/, "");
+  input.value = `${before}${prefix}${tag}${after ? ` ${after}` : " "}`;
+  const cursor = before.length + prefix.length + tag.length + 1;
+  input.setSelectionRange(cursor, cursor);
+  input.focus();
+  closeTagSuggestions();
+}
+
+function renderTagSuggestions(items) {
+  state.tagSuggestions = [...new Set(items || [])];
+  state.tagSuggestionIndex = state.tagSuggestions.length ? 0 : -1;
+  const popup = $("#preview-tag-suggestions");
+  if (!state.tagSuggestions.length) {
+    closeTagSuggestions();
+    return;
+  }
+  popup.innerHTML = state.tagSuggestions.map((tag, index) => `<button type="button" class="tag-suggestion ${index === 0 ? "active" : ""}" role="option" aria-selected="${index === 0 ? "true" : "false"}" data-tag-suggestion="${esc(tag)}">${esc(tag)}</button>`).join("");
+  popup.classList.remove("hidden");
+  $("#preview-search").setAttribute("aria-expanded", "true");
+}
+
+async function loadTagSuggestions(token, requestId) {
+  try {
+    const data = await api(`/api/tags/suggestions?${new URLSearchParams({query: token, limit: 40})}`);
+    if (requestId !== state.tagSuggestionRequest || currentSearchTokenBounds().token.toLowerCase() !== token.toLowerCase()) return;
+    renderTagSuggestions(data.items);
+  } catch (_) {
+    if (requestId === state.tagSuggestionRequest) closeTagSuggestions();
+  }
+}
+
+function scheduleTagSuggestions() {
+  clearTimeout(state.tagSuggestionTimer);
+  const token = currentSearchTokenBounds().token.trim();
+  if (token.length < 2) {
+    state.tagSuggestionRequest += 1;
+    closeTagSuggestions();
+    return;
+  }
+  const requestId = ++state.tagSuggestionRequest;
+  state.tagSuggestionTimer = setTimeout(() => loadTagSuggestions(token, requestId), 220);
 }
 
 function signedScore(value) {
@@ -279,8 +360,9 @@ function statusMatchesPreview(status) {
 
 async function applyPreviewBulkStatus(status) {
   const postIds = [...state.selectedPostIds];
-  if (!postIds.length) return;
-  const buttons = [$("#preview-bulk-apply"), $("#preview-bulk-reject")];
+  if (!postIds.length || state.previewActionRunning) return;
+  state.previewActionRunning = true;
+  const buttons = [$("#preview-bulk-apply"), $("#preview-bulk-save"), $("#preview-bulk-reject")];
   buttons.forEach(button => { button.disabled = true; });
   try {
     const result = await api("/api/posts/status", {
@@ -307,6 +389,55 @@ async function applyPreviewBulkStatus(status) {
     toast(`${result.updated} posts updated`);
     if (removed && state.hasMore) await loadMorePosts();
   } finally {
+    state.previewActionRunning = false;
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+async function savePreviewSelection() {
+  const postIds = [...state.selectedPostIds];
+  if (!postIds.length || state.previewActionRunning) return;
+  state.previewActionRunning = true;
+  const buttons = [$("#preview-bulk-apply"), $("#preview-bulk-save"), $("#preview-bulk-reject")];
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    const result = await api("/api/posts/save", {
+      method: "POST",
+      body: JSON.stringify({post_ids: postIds}),
+    });
+    const completedIds = new Set([
+      ...result.saved.map(item => Number(item.post_id)),
+      ...result.skipped.map(item => Number(item.post_id)),
+    ]);
+    const failedIds = new Set(result.failed.map(item => Number(item.post_id)));
+    let removed = 0;
+    completedIds.forEach(postId => {
+      const cardNode = $(`#post-grid .post-card[data-post-id="${postId}"]`);
+      if (!cardNode) return;
+      if (!statusMatchesPreview("saved")) {
+        cardNode.remove();
+        removed += 1;
+      } else {
+        cardNode.dataset.status = "saved";
+        const statusNode = cardNode.querySelector(".status");
+        if (statusNode) statusNode.textContent = "saved";
+        setPreviewCardSelected(cardNode, false);
+      }
+    });
+    state.selectedPostIds = failedIds;
+    $$("#post-grid .post-card").forEach(cardNode => {
+      setPreviewCardSelected(cardNode, failedIds.has(Number(cardNode.dataset.postId)));
+    });
+    state.offset = Math.max(0, state.offset - removed);
+    state.total = Math.max(0, state.total - removed);
+    $("#preview-count").textContent = `${state.offset} / ${state.total}`;
+    updatePreviewSelectionToolbar();
+    const summary = `${result.saved.length} saved${result.skipped.length ? `, ${result.skipped.length} already saved` : ""}`;
+    const firstFailure = result.failed[0];
+    toast(firstFailure ? `${summary}, ${result.failed.length} failed: #${firstFailure.post_id} ${firstFailure.error}` : summary);
+    if (removed && state.hasMore) await loadMorePosts();
+  } finally {
+    state.previewActionRunning = false;
     buttons.forEach(button => { button.disabled = false; });
   }
 }
@@ -354,6 +485,21 @@ function viewerStatusButton(value, label, current, title = "") {
 
 function ratingLabel(value) {
   return ({g: "general", s: "sensitive", q: "questionable", e: "explicit"})[value] || value || "-";
+}
+
+function viewerFamilyStrip(data) {
+  const items = data.related_posts || [];
+  if (!items.length) return "";
+  return `<div class="viewer-family-strip" aria-label="Parent and child posts">${items.map(item => {
+    const relation = item.relation === "parent" ? "Parent" : item.relation === "current" ? "Current" : "Child";
+    const saved = item.locally_saved ? "Saved locally" : "DB / remote only";
+    return `<button type="button" class="viewer-family-tile ${item.relation === "current" ? "active" : ""} ${item.locally_saved ? "saved" : ""}" data-related-post="${item.id}" title="Open ${relation.toLowerCase()} post ${item.id}">
+      <span class="viewer-family-relation">${relation}</span>
+      <img src="${item.thumbnail_url}" loading="eager" decoding="async" alt="${relation} post ${item.id}">
+      <strong>#${item.id}</strong>
+      <span>${esc(item.status)} | ${saved}</span>
+    </button>`;
+  }).join("")}</div>`;
 }
 
 function booleanData(element, name) {
@@ -457,7 +603,7 @@ async function runTagContextAction(action) {
     return;
   }
   if (!payload) return;
-  const updated = await api(`/api/tags/${encodeURIComponent(meta.tag)}`, {method: "PATCH", body: JSON.stringify(payload)});
+  const updated = await api("/api/tags/settings", {method: "PATCH", body: JSON.stringify({tag: meta.tag, ...payload})});
   toast("Tag settings saved");
   if (source === "viewer") {
     applyTagContextMetadata(meta.tag, updated);
@@ -491,6 +637,7 @@ async function openViewer(postId, push = true, historyMode = "append") {
     viewer.classList.remove("hidden");
     const nav = data.navigation;
     const tags = data.typed_tags;
+    const familyStrip = viewerFamilyStrip(data);
     const stripItems = viewerStripItems(data);
     const activeStripIndex = stripItems.findIndex(item => Number(item.id) === Number(data.id));
     const strip = stripItems.map((item, index) => `<button class="viewer-strip-tile ${Number(item.id) === Number(data.id) ? "active" : ""}" data-strip-post="${item.id}" title="Open post ${item.id}">
@@ -515,10 +662,11 @@ async function openViewer(postId, push = true, historyMode = "append") {
       <span class="viewer-toolbar-spacer"></span>
       <strong>Post #${data.id}</strong>
     </div>
-    <div class="viewer-info">ID ${data.id} - ${esc(ratingLabel(data.rating))} - Score: ${data.score ?? 0} | Preselection: ${signedScore(data.recommendation_score)} | LLM: ${data.llm_score == null ? "-" : signedScore(data.llm_score)} | Favorites: ${data.fav_count ?? 0} | Parent: ${data.parent_id ?? "-"} | Parent/Child known: ${(data.known_parent_loaded || 0) + (data.known_child_count || 0)} | locally saved: ${data.final_file_path ? 1 : 0}</div>
+    <div class="viewer-info">ID ${data.id} - ${esc(ratingLabel(data.rating))} - Score: ${data.score ?? 0} | Preselection: ${signedScore(data.recommendation_score)} | LLM: ${data.llm_score == null ? "-" : signedScore(data.llm_score)} | Favorites: ${data.fav_count ?? 0} | Parent: ${data.parent_id ?? "-"} | Parent/Child known: ${data.related_known_count || 0} | related locally saved: ${data.related_saved_count || 0}</div>
     <div class="viewer-layout">
-      <div class="viewer-content">
+      <div class="viewer-content ${familyStrip ? "has-family" : ""}">
         <div class="viewer-stage" id="viewer-stage"><img id="viewer-image" src="${data.image_url}" alt="Post ${data.id}"></div>
+        ${familyStrip}
         <div class="viewer-strip" aria-label="Nearby posts">${strip}</div>
         <div class="viewer-controls">
           <div class="viewer-rating"><span id="viewer-rating-label">Personal Rating: ${rating}/10</span><div class="viewer-stars">${Array.from({length: 10}, (_, i) => `<button type="button" data-rating="${i + 1}" class="${i < rating ? "active" : ""}" title="Rate ${i + 1} of 10">&#9733;</button>`).join("")}</div></div>
@@ -606,6 +754,10 @@ async function openViewer(postId, push = true, historyMode = "append") {
       }
     };
     $$('[data-strip-post]').forEach(button => button.onclick = () => openViewer(Number(button.dataset.stripPost)));
+    $$('[data-related-post]').forEach(button => button.onclick = () => {
+      const relatedId = Number(button.dataset.relatedPost);
+      if (relatedId !== Number(data.id)) openViewer(relatedId);
+    });
     $$('[data-viewer-status]').forEach(button => button.onclick = async () => {
       const statusButtons = $$('[data-viewer-status]');
       statusButtons.forEach(item => { item.disabled = true; });
@@ -789,7 +941,7 @@ async function loadTags() {
 async function saveTag(button) {
   const row = button.closest("tr");
   const score = row.querySelector(".tag-score").value;
-  await api(`/api/tags/${encodeURIComponent(row.dataset.tag)}`, {method:"PATCH", body:JSON.stringify({alias:row.querySelector(".tag-alias").value, manual_score:score === "" ? null : Number(score), scoring_excluded:row.querySelector(".tag-score-off").checked, fetch_excluded:row.querySelector(".tag-fetch-off").checked})});
+  await api("/api/tags/settings", {method:"PATCH", body:JSON.stringify({tag:row.dataset.tag, alias:row.querySelector(".tag-alias").value, manual_score:score === "" ? null : Number(score), scoring_excluded:row.querySelector(".tag-score-off").checked, fetch_excluded:row.querySelector(".tag-fetch-off").checked})});
   toast("Tag saved");
 }
 
@@ -816,6 +968,13 @@ async function loadMaintenance() {
 }
 
 document.addEventListener("click", event => {
+  const tagSuggestion = event.target.closest("[data-tag-suggestion]");
+  if (tagSuggestion) {
+    event.preventDefault();
+    insertTagSuggestion(tagSuggestion.dataset.tagSuggestion);
+    return;
+  }
+  if (!event.target.closest(".tag-autocomplete")) closeTagSuggestions();
   const tagAction = event.target.closest("[data-tag-action]");
   if (tagAction) {
     $("#tag-context-menu").classList.add("hidden");
@@ -851,6 +1010,28 @@ document.addEventListener("contextmenu", event => {
 });
 
 $("#preview-apply").onclick = () => savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
+$("#preview-search").oninput = scheduleTagSuggestions;
+$("#preview-search").onfocus = scheduleTagSuggestions;
+$("#preview-search").onclick = scheduleTagSuggestions;
+$("#preview-search").onkeydown = event => {
+  const popupOpen = !$("#preview-tag-suggestions").classList.contains("hidden") && state.tagSuggestions.length > 0;
+  if (popupOpen && event.key === "ArrowDown") {
+    event.preventDefault();
+    setActiveTagSuggestion(state.tagSuggestionIndex + 1);
+  } else if (popupOpen && event.key === "ArrowUp") {
+    event.preventDefault();
+    setActiveTagSuggestion(state.tagSuggestionIndex - 1);
+  } else if (popupOpen && event.key === "Enter") {
+    event.preventDefault();
+    insertTagSuggestion(state.tagSuggestions[Math.max(0, state.tagSuggestionIndex)]);
+  } else if (popupOpen && event.key === "Escape") {
+    event.preventDefault();
+    closeTagSuggestions();
+  } else if (!popupOpen && event.key === "Enter") {
+    event.preventDefault();
+    savePreviewSettings().then(resetPreview).catch(error => toast(error.message));
+  }
+};
 $("#preview-thumbnail-size").onchange = () => savePreviewSettings().catch(error => toast(error.message));
 $("#preview-status-all").onchange = event => {
   previewStatusInputs().forEach(input => { input.checked = event.target.checked; });
@@ -870,6 +1051,7 @@ previewRatingInputs().forEach(input => input.onchange = () => {
 });
 $("#preview-selection-clear").onclick = clearPreviewSelection;
 $("#preview-bulk-apply").onclick = () => applyPreviewBulkStatus($("#preview-bulk-status").value).catch(error => toast(error.message));
+$("#preview-bulk-save").onclick = () => savePreviewSelection().catch(error => toast(error.message));
 $("#preview-bulk-reject").onclick = () => applyPreviewBulkStatus("rejected").catch(error => toast(error.message));
 $("#fetch-source").onchange = updateFetchSourceFields;
 $("#fetch-preset").onchange = event => {
@@ -909,9 +1091,30 @@ document.addEventListener("keydown", event => {
     return;
   }
   if ($("#viewer").classList.contains("hidden")) {
-    if (state.tab === "preview" && event.key === "Delete" && state.selectedPostIds.size && !isTypingTarget(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (state.tab !== "preview" || isTypingTarget(event.target) || event.metaKey || event.altKey) return;
+    if (event.ctrlKey && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      $("#preview-bulk-reject").click();
+      $$("#post-grid .post-card").forEach(cardNode => setPreviewCardSelected(cardNode, true));
+      updatePreviewSelectionToolbar();
+      return;
+    }
+    if (event.ctrlKey || !state.selectedPostIds.size) return;
+    const key = event.key.toLowerCase();
+    let target = null;
+    if (key === "h") target = () => applyPreviewBulkStatus("potential");
+    else if (key === "n") target = () => applyPreviewBulkStatus("new");
+    else if (key === "g") target = () => applyPreviewBulkStatus("saved");
+    else if (key === "k") target = () => applyPreviewBulkStatus("already_known");
+    else if (event.key === "Delete") target = () => applyPreviewBulkStatus("rejected");
+    else if (key === "f") target = savePreviewSelection;
+    else if (event.key === "Escape") {
+      event.preventDefault();
+      clearPreviewSelection();
+      return;
+    }
+    if (target) {
+      event.preventDefault();
+      target().catch(error => toast(error.message));
     }
     return;
   }

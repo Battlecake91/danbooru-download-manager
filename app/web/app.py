@@ -74,6 +74,10 @@ class PostSaveRequest(BaseModel):
     overwrite_existing: bool = False
 
 
+class BulkPostSaveRequest(BaseModel):
+    post_ids: list[int] = Field(min_length=1)
+
+
 class ViewerSettingsRequest(BaseModel):
     next_after_status_change: bool = True
 
@@ -96,6 +100,10 @@ class TagUpdateRequest(BaseModel):
     ignore_category_influence: bool | None = None
     ignore_recommendation_score: bool | None = None
     ignore_llm_input: bool | None = None
+
+
+class TagSettingsUpdateRequest(TagUpdateRequest):
+    tag: str = Field(min_length=1)
 
 
 class CategoryRequest(BaseModel):
@@ -295,6 +303,55 @@ def create_app() -> FastAPI:
             {post_id: (old_statuses[post_id], payload.status) for post_id in post_ids}
         )
         return {"ok": True, "updated": len(post_ids), "status": payload.status, "post_ids": post_ids}
+
+    @app.post("/api/posts/save")
+    def save_posts(payload: BulkPostSaveRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+        post_ids = list(dict.fromkeys(int(post_id) for post_id in payload.post_ids))
+        old_statuses = _post_statuses_by_id(db, post_ids)
+        service = FinalSaveService(request.app.state.config, db)
+        saved: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        failed: list[dict[str, Any]] = []
+
+        for post_id in post_ids:
+            if post_id not in old_statuses:
+                failed.append({"post_id": post_id, "error": "Post not found"})
+                continue
+            try:
+                result = service.save_post(post_id)
+            except AlreadySavedError as exc:
+                skipped.append({"post_id": post_id, "reason": str(exc)})
+                if old_statuses[post_id] != "saved":
+                    db.set_post_status(post_id, "saved", request.app.state.config)
+                    request.app.state.recommendation_cache.apply_status_change(
+                        post_id,
+                        old_statuses[post_id],
+                        "saved",
+                    )
+            except Exception as exc:
+                failed.append({"post_id": post_id, "error": str(exc)})
+            else:
+                request.app.state.recommendation_cache.apply_status_change(
+                    post_id,
+                    old_statuses[post_id],
+                    "saved",
+                )
+                saved.append(
+                    {
+                        "post_id": result.post_id,
+                        "category": result.category.name,
+                        "category_source": result.category_source,
+                        "final_path": str(result.final_path),
+                    }
+                )
+
+        return {
+            "ok": not failed,
+            "requested": len(post_ids),
+            "saved": saved,
+            "skipped": skipped,
+            "failed": failed,
+        }
 
     @app.get("/api/posts/{post_id}")
     def post(
@@ -498,36 +555,62 @@ def create_app() -> FastAPI:
         rows = db.fetch_tag_overview(search_text=search or None, tag_type=tag_type, limit=limit, source="local")
         return {"items": [row_dict(row) for row in rows]}
 
-    @app.patch("/api/tags/{tag}")
-    def update_tag(tag: str, payload: TagUpdateRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+    @app.get("/api/tags/suggestions")
+    def tag_suggestions(
+        query: str = Query(min_length=2, max_length=200),
+        limit: int = Query(default=40, ge=1, le=100),
+        db=Depends(database),
+    ) -> dict[str, Any]:
+        return {"items": db.suggest_tags(query.strip(), limit=limit)}
+
+    def apply_tag_update(tag: str, payload: TagUpdateRequest, request: Request, db: Any) -> dict[str, Any]:
+        clean_tag = tag.strip()
+        if not clean_tag:
+            raise HTTPException(status_code=422, detail="Tag must not be empty")
         fields = payload.model_fields_set
         if "alias" in fields:
-            db.set_tag_alias(tag, payload.alias or "")
+            db.set_tag_alias(clean_tag, payload.alias or "")
         if "manual_score" in fields:
-            db.set_tag_manual_score(tag, payload.manual_score)
+            db.set_tag_manual_score(clean_tag, payload.manual_score)
         if payload.scoring_excluded is not None:
-            db.set_tag_scoring_excluded(tag, payload.scoring_excluded)
+            db.set_tag_scoring_excluded(clean_tag, payload.scoring_excluded)
         if payload.filename_excluded is not None:
             if payload.filename_excluded:
-                db.add_filename_excluded_tag(tag, "web")
+                db.add_filename_excluded_tag(clean_tag, "web")
             else:
-                db.remove_filename_excluded_tag(tag)
+                db.remove_filename_excluded_tag(clean_tag)
         if payload.fetch_excluded is not None:
             if payload.fetch_excluded:
-                db.add_fetch_excluded_tag(tag, "web")
+                db.add_fetch_excluded_tag(clean_tag, "web")
             else:
-                db.remove_fetch_excluded_tag(tag)
+                db.remove_fetch_excluded_tag(clean_tag)
         scoring_flags = {
             "ignore_category_influence": payload.ignore_category_influence,
             "ignore_recommendation_score": payload.ignore_recommendation_score,
             "ignore_llm_input": payload.ignore_llm_input,
         }
         if any(value is not None for value in scoring_flags.values()):
-            db.set_tag_scoring_flags(tag, **scoring_flags)
+            db.set_tag_scoring_flags(clean_tag, **scoring_flags)
         request.app.state.recommendation_cache.clear()
-        metadata_by_tag = db.fetch_tag_display_metadata([tag])
-        metadata = next(iter(metadata_by_tag.values()), {})
-        return {"ok": True, "tag": tag.strip(), **metadata}
+        metadata_by_tag = db.fetch_tag_display_metadata([clean_tag])
+        metadata = metadata_by_tag.get(clean_tag) or next(iter(metadata_by_tag.values()), {})
+        if payload.filename_excluded is not None and bool(metadata.get("filename_excluded")) != payload.filename_excluded:
+            raise HTTPException(status_code=409, detail="Filename exclusion could not be updated")
+        if payload.fetch_excluded is not None and bool(metadata.get("fetch_excluded")) != payload.fetch_excluded:
+            raise HTTPException(status_code=409, detail="Fetch exclusion could not be updated")
+        return {"ok": True, "tag": clean_tag, **metadata}
+
+    @app.patch("/api/tags/settings")
+    def update_tag_settings(
+        payload: TagSettingsUpdateRequest,
+        request: Request,
+        db=Depends(database),
+    ) -> dict[str, Any]:
+        return apply_tag_update(payload.tag, payload, request, db)
+
+    @app.patch("/api/tags/{tag}")
+    def update_tag(tag: str, payload: TagUpdateRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+        return apply_tag_update(tag, payload, request, db)
 
     @app.get("/api/categories")
     def categories(db=Depends(database)) -> dict[str, Any]:
