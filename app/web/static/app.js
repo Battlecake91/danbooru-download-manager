@@ -653,19 +653,25 @@ async function openViewer(postId, push = true, historyMode = "append") {
       ? `Position ${nav.index + 1} / ${nav.total}`
       : `Recent review ${state.viewerHistoryIndex + 1} / ${state.viewerHistory.length}`;
     const rating = Math.max(0, Math.min(10, Math.round(Number(data.stars || 0))));
+    const mobileActions = data.final_file_path ? "" : `<div class="viewer-mobile-actions" aria-label="Post actions">
+      <button type="button" class="danger" data-mobile-status="rejected">Reject</button>
+      <button type="button" class="primary" data-viewer-save>Save</button>
+      <button type="button" class="potential" data-mobile-status="potential">Potential</button>
+    </div>`;
     viewer.innerHTML = `<div class="viewer-toolbar">
       <button class="icon-button" id="viewer-back" title="Back to preview" aria-label="Back">&#8592;</button>
       <label class="viewer-fit"><input id="viewer-fit" type="checkbox" checked> Fit</label>
       <a class="button-link" id="viewer-original" href="${esc(data.original_post_url)}" target="_blank" rel="noreferrer" title="Open original post (O)">Original Post</a>
       <button type="button" id="viewer-copy-link">Copy Link</button>
-      <button type="button" class="primary" id="viewer-save" title="Save final file (F)">Save</button>
+      <button type="button" class="primary" id="viewer-save" data-viewer-save title="Save final file (F)">Save</button>
       <span class="viewer-toolbar-spacer"></span>
       <strong>Post #${data.id}</strong>
     </div>
     <div class="viewer-info">ID ${data.id} - ${esc(ratingLabel(data.rating))} - Score: ${data.score ?? 0} | Preselection: ${signedScore(data.recommendation_score)} | LLM: ${data.llm_score == null ? "-" : signedScore(data.llm_score)} | Favorites: ${data.fav_count ?? 0} | Parent: ${data.parent_id ?? "-"} | Parent/Child known: ${data.related_known_count || 0} | related locally saved: ${data.related_saved_count || 0}</div>
     <div class="viewer-layout">
       <div class="viewer-content ${familyStrip ? "has-family" : ""}">
-        <div class="viewer-stage" id="viewer-stage"><img id="viewer-image" src="${data.image_url}" alt="Post ${data.id}"></div>
+        <div class="viewer-stage" id="viewer-stage"><img id="viewer-image" src="${data.image_url}" alt="Post ${data.id}" draggable="false"></div>
+        ${mobileActions}
         ${familyStrip}
         <div class="viewer-strip" aria-label="Nearby posts">${strip}</div>
         <div class="viewer-controls">
@@ -701,6 +707,9 @@ async function openViewer(postId, push = true, historyMode = "append") {
     $("#viewer-back").onclick = () => showTab("preview");
     $("#viewer-prev").onclick = () => previousId != null && openViewer(previousId, true, historyPreviousId != null ? "back" : "append");
     $("#viewer-next").onclick = () => nextId != null && openViewer(nextId, true, historyNextId != null ? "forward" : "append");
+    const openNextViewerPost = () => nextId != null
+      ? openViewer(nextId, true, historyNextId != null ? "forward" : "append")
+      : null;
     $("#viewer-fit").onchange = event => {
       const nativeSize = !event.target.checked;
       $("#viewer-stage").classList.toggle("native-size", nativeSize);
@@ -708,11 +717,14 @@ async function openViewer(postId, push = true, historyMode = "append") {
       event.target.blur();
     };
     $("#viewer-copy-link").onclick = () => navigator.clipboard.writeText(data.original_post_url).then(() => toast("Link copied"));
-    $("#viewer-save").onclick = async () => {
-      const button = $("#viewer-save");
+    let viewerActionRunning = false;
+    const saveViewerPost = async () => {
+      if (viewerActionRunning) return;
       const overwriteExisting = Boolean(data.final_file_path);
       if (overwriteExisting && !confirm(`Replace the existing saved file?\n\n${data.final_file_path}`)) return;
-      button.disabled = true;
+      viewerActionRunning = true;
+      const actionButtons = $$('[data-viewer-save], [data-mobile-status], [data-viewer-status]');
+      actionButtons.forEach(button => { button.disabled = true; });
       try {
         const categoryValue = $("#viewer-category").value;
         const result = await api(`/api/posts/${data.id}/save`, {
@@ -723,14 +735,16 @@ async function openViewer(postId, push = true, historyMode = "append") {
           }),
         });
         toast(`Saved to ${result.final_path}`);
-        if (nextId != null) await openViewer(nextId, true, historyNextId != null ? "forward" : "append");
+        if (nextId != null) await openNextViewerPost();
         else await openViewer(data.id, false);
       } catch (error) {
         toast(error.message);
       } finally {
-        if (document.body.contains(button)) button.disabled = false;
+        viewerActionRunning = false;
+        actionButtons.forEach(button => { if (document.body.contains(button)) button.disabled = false; });
       }
     };
+    $$('[data-viewer-save]').forEach(button => { button.onclick = saveViewerPost; });
     $("#viewer-filename-filter").onchange = event => {
       state.viewerFilenameFilter = event.target.checked;
       $("#viewer").classList.toggle("hide-filename-excluded", event.target.checked);
@@ -758,22 +772,47 @@ async function openViewer(postId, push = true, historyMode = "append") {
       const relatedId = Number(button.dataset.relatedPost);
       if (relatedId !== Number(data.id)) openViewer(relatedId);
     });
-    $$('[data-viewer-status]').forEach(button => button.onclick = async () => {
+    const setViewerStatus = async (status, forceNext = false) => {
+      if (viewerActionRunning) return;
+      viewerActionRunning = true;
       const statusButtons = $$('[data-viewer-status]');
-      statusButtons.forEach(item => { item.disabled = true; });
+      const actionButtons = [...statusButtons, ...$$('[data-mobile-status], [data-viewer-save]')];
+      actionButtons.forEach(item => { item.disabled = true; });
       try {
-        await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({status: button.dataset.viewerStatus})});
-        statusButtons.forEach(item => item.classList.toggle("active", item === button));
+        await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({status})});
+        statusButtons.forEach(item => item.classList.toggle("active", item.dataset.viewerStatus === status));
         toast("Status saved");
-        if (state.nextAfterStatusChange && nextId != null) {
-          await openViewer(nextId, true, historyNextId != null ? "forward" : "append");
-        }
+        if ((forceNext || state.nextAfterStatusChange) && nextId != null) await openNextViewerPost();
       } catch (error) {
         toast(error.message);
       } finally {
-        statusButtons.forEach(item => { if (document.body.contains(item)) item.disabled = false; });
+        viewerActionRunning = false;
+        actionButtons.forEach(item => { if (document.body.contains(item)) item.disabled = false; });
       }
+    };
+    $$('[data-viewer-status]').forEach(button => {
+      button.onclick = () => setViewerStatus(button.dataset.viewerStatus);
     });
+    $$('[data-mobile-status]').forEach(button => {
+      button.onclick = () => setViewerStatus(button.dataset.mobileStatus, true);
+    });
+    const swipeStage = $("#viewer-stage");
+    let swipeStart = null;
+    swipeStage.onpointerdown = event => {
+      if (!matchMedia("(max-width: 850px)").matches || swipeStage.classList.contains("native-size")) return;
+      swipeStart = {pointerId: event.pointerId, x: event.clientX, y: event.clientY};
+      swipeStage.setPointerCapture?.(event.pointerId);
+    };
+    swipeStage.onpointerup = event => {
+      if (!swipeStart || swipeStart.pointerId !== event.pointerId) return;
+      const deltaX = event.clientX - swipeStart.x;
+      const deltaY = event.clientY - swipeStart.y;
+      swipeStart = null;
+      if (Math.abs(deltaX) < 55 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+      if (deltaX < 0 && nextId != null) $("#viewer-next").click();
+      else if (deltaX > 0 && previousId != null) $("#viewer-prev").click();
+    };
+    swipeStage.onpointercancel = () => { swipeStart = null; };
     $$('[data-rating]').forEach(button => button.onclick = async () => {
       const stars = Number(button.dataset.rating);
       await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({stars})});

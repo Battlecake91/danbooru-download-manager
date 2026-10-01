@@ -84,10 +84,28 @@ def test_web_viewer_persists_and_applies_status_auto_advance() -> None:
 
     assert 'id="viewer-next-after-status"' in web_source
     assert 'api("/api/viewer/settings"' in web_source
-    assert "state.nextAfterStatusChange && nextId != null" in web_source
+    assert "(forceNext || state.nextAfterStatusChange) && nextId != null" in web_source
     assert 'historyNextId != null ? "forward" : "append"' in web_source
     assert '@app.put("/api/viewer/settings")' in api_source
     assert 'db.set_app_setting("web.viewer_next_after_status_change"' in api_source
+
+
+def test_web_viewer_has_mobile_actions_and_swipe_navigation() -> None:
+    web_source = read_source("app/web/static/app.js")
+    css_source = read_source("app/web/static/app.css")
+
+    assert 'data.final_file_path ? ""' in web_source
+    assert 'class="viewer-mobile-actions"' in web_source
+    assert 'data-mobile-status="rejected"' in web_source
+    assert 'data-mobile-status="potential"' in web_source
+    assert "setViewerStatus(button.dataset.mobileStatus, true)" in web_source
+    assert "swipeStage.onpointerdown" in web_source
+    assert "Math.abs(deltaX) < 55" in web_source
+    assert '$("#viewer-next").click()' in web_source
+    assert '$("#viewer-prev").click()' in web_source
+    assert ".viewer-mobile-actions { display: none; }" in css_source
+    assert "touch-action: pan-y" in css_source
+    assert ".viewer-sidebar .viewer-statuses, .viewer-sidebar .viewer-auto-next { display: none; }" in css_source
 
 
 def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:

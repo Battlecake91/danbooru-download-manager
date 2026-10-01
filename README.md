@@ -129,6 +129,8 @@ The web Viewer mirrors the desktop Manager's working layout with typed tags on t
 
 Known parents, the current post and known children appear side by side in a separate Viewer family strip. Each related post shows its review status and whether a full local file is already available. Filename exclusions remain visible as compact tag flags without crossing out the tag text; the filename-only checkbox can still hide excluded tags. The Preview search completes the current tag token from the local database, supports keyboard selection and preserves exclusion prefixes such as `-`.
 
+On phones, the Viewer uses a touch-focused layout with horizontal swipe navigation and large Reject, Save and Potential actions directly below the image. Each mobile action advances to the next matching post; the action row is omitted once a final file is stored, while category selection and the complete typed tag view remain available below.
+
 ### Docker web application
 
 ```bash
