@@ -99,13 +99,29 @@ def test_web_viewer_has_mobile_actions_and_swipe_navigation() -> None:
     assert 'data-mobile-status="rejected"' in web_source
     assert 'data-mobile-status="potential"' in web_source
     assert "setViewerStatus(button.dataset.mobileStatus, true)" in web_source
-    assert "swipeStage.onpointerdown" in web_source
-    assert "Math.abs(deltaX) < 55" in web_source
+    assert "stage.onpointerdown" in web_source
+    assert "Math.abs(deltaX) >= 55" in web_source
     assert '$("#viewer-next").click()' in web_source
     assert '$("#viewer-prev").click()' in web_source
     assert ".viewer-mobile-actions { display: none; }" in css_source
     assert "touch-action: pan-y" in css_source
     assert ".viewer-sidebar .viewer-statuses, .viewer-sidebar .viewer-auto-next { display: none; }" in css_source
+
+
+def test_web_viewer_supports_wheel_and_pinch_zoom() -> None:
+    web_source = read_source("app/web/static/app.js")
+    css_source = read_source("app/web/static/app.css")
+
+    assert "function installViewerImageGestures" in web_source
+    assert 'stage.addEventListener("wheel"' in web_source
+    assert "event.preventDefault()" in web_source
+    assert "Math.exp(-event.deltaY * 0.0015)" in web_source
+    assert "pointers.size >= 2" in web_source
+    assert "pinchStart.scale * distance(values) / pinchStart.distance" in web_source
+    assert "scale = clamp" in web_source
+    assert "stage.ondblclick = reset" in web_source
+    assert ".viewer-stage.zoomed { cursor: grab; touch-action: none; }" in css_source
+    assert "will-change: transform" in css_source
 
 
 def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:

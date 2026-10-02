@@ -9,6 +9,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Added indexed tag completion to the web Preview search with current-token replacement, keyboard navigation and preserved negative-tag prefixes.
 - Added desktop action hotkeys to selected web Preview cards (`H`, `N`, `G`, `K`, `Delete` and `F`), including resilient multi-post final saving that continues after individual failures.
 - Added a phone-focused web Viewer with horizontal swipe navigation and large Reject, Save and Potential actions below the image. Mobile actions always advance and disappear after a final file has been stored.
+- Added Viewer image zoom with cursor-centered mouse-wheel control, multitouch pinch gestures, panning while zoomed and double-click reset.
 - Added a horizontal Parent/Current/Child strip to the web Viewer with status and local-file availability for every known related post.
 - Added a persistent web Fetch history with per-query counts for seen, new, known, tag-excluded and resolution-excluded posts.
 - Added Danbooru rating filters for the web Preview/Viewer and Include/Exclude rating states for web Fetch presets.

@@ -118,8 +118,10 @@ td input[type="text"], td input[type="number"] { width: 120px; min-height: 30px;
 .viewer-layout { display: grid; grid-template-columns: minmax(520px, 1fr) minmax(410px, 460px); min-height: 0; flex: 1; }
 .viewer-content { min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 132px auto auto; background: #0d0f0e; }
 .viewer-content.has-family { grid-template-rows: minmax(0, 1fr) 142px 132px auto auto; }
-.viewer-stage { display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; padding: 8px; }
-.viewer-stage img { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; user-select: none; }
+.viewer-stage { display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; padding: 8px; cursor: zoom-in; }
+.viewer-stage img { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; user-select: none; transform-origin: center; will-change: transform; }
+.viewer-stage.zoomed { cursor: grab; touch-action: none; }
+.viewer-stage.zoomed:active { cursor: grabbing; }
 .viewer-stage.native-size { place-items: start; overflow: auto; }
 .viewer-stage img.native-size { width: auto; height: auto; max-width: none; max-height: none; }
 .viewer-mobile-actions { display: none; }

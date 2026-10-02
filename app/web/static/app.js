@@ -466,6 +466,134 @@ async function loadMorePosts() {
 
 function viewerUrl(id) { return `/viewer/${id}?${queryString()}`; }
 
+function installViewerImageGestures(stage, image, {previous, next}) {
+  const pointers = new Map();
+  let scale = 1;
+  let panX = 0;
+  let panY = 0;
+  let gestureStart = null;
+  let pinchStart = null;
+  let hadPinch = false;
+
+  const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+  const constrainPan = () => {
+    if (scale <= 1) {
+      panX = 0;
+      panY = 0;
+      return;
+    }
+    const maxX = stage.clientWidth * (scale - 1) / 2;
+    const maxY = stage.clientHeight * (scale - 1) / 2;
+    panX = clamp(panX, -maxX, maxX);
+    panY = clamp(panY, -maxY, maxY);
+  };
+  const render = () => {
+    constrainPan();
+    image.style.transform = scale === 1 ? "" : `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+    stage.classList.toggle("zoomed", scale > 1);
+  };
+  const setScaleAt = (nextScale, anchorX, anchorY) => {
+    const boundedScale = clamp(nextScale, 1, 6);
+    const sourceX = (anchorX - panX) / scale;
+    const sourceY = (anchorY - panY) / scale;
+    scale = boundedScale;
+    panX = anchorX - sourceX * scale;
+    panY = anchorY - sourceY * scale;
+    render();
+  };
+  const reset = () => {
+    scale = 1;
+    panX = 0;
+    panY = 0;
+    render();
+  };
+  const point = event => ({x: event.clientX, y: event.clientY});
+  const midpoint = values => ({
+    x: (values[0].x + values[1].x) / 2,
+    y: (values[0].y + values[1].y) / 2,
+  });
+  const distance = values => Math.hypot(values[1].x - values[0].x, values[1].y - values[0].y);
+
+  stage.addEventListener("wheel", event => {
+    event.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const anchorX = event.clientX - rect.left - rect.width / 2;
+    const anchorY = event.clientY - rect.top - rect.height / 2;
+    setScaleAt(scale * Math.exp(-event.deltaY * 0.0015), anchorX, anchorY);
+  }, {passive: false});
+
+  stage.onpointerdown = event => {
+    pointers.set(event.pointerId, point(event));
+    stage.setPointerCapture?.(event.pointerId);
+    if (pointers.size === 1) {
+      gestureStart = {x: event.clientX, y: event.clientY, panX, panY};
+      hadPinch = false;
+    } else if (pointers.size === 2) {
+      const values = [...pointers.values()];
+      const center = midpoint(values);
+      const rect = stage.getBoundingClientRect();
+      pinchStart = {
+        distance: Math.max(1, distance(values)),
+        scale,
+        panX,
+        panY,
+        anchorX: center.x - rect.left - rect.width / 2,
+        anchorY: center.y - rect.top - rect.height / 2,
+      };
+      hadPinch = true;
+    }
+  };
+  stage.onpointermove = event => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, point(event));
+    if (pointers.size >= 2 && pinchStart) {
+      event.preventDefault();
+      const values = [...pointers.values()].slice(0, 2);
+      const center = midpoint(values);
+      const rect = stage.getBoundingClientRect();
+      const currentAnchorX = center.x - rect.left - rect.width / 2;
+      const currentAnchorY = center.y - rect.top - rect.height / 2;
+      const sourceX = (pinchStart.anchorX - pinchStart.panX) / pinchStart.scale;
+      const sourceY = (pinchStart.anchorY - pinchStart.panY) / pinchStart.scale;
+      scale = clamp(pinchStart.scale * distance(values) / pinchStart.distance, 1, 6);
+      panX = currentAnchorX - sourceX * scale;
+      panY = currentAnchorY - sourceY * scale;
+      render();
+    } else if (scale > 1 && gestureStart) {
+      event.preventDefault();
+      panX = gestureStart.panX + event.clientX - gestureStart.x;
+      panY = gestureStart.panY + event.clientY - gestureStart.y;
+      render();
+    }
+  };
+  const finishPointer = event => {
+    if (!pointers.has(event.pointerId)) return;
+    const start = gestureStart;
+    pointers.delete(event.pointerId);
+    if (!hadPinch && scale === 1 && start && matchMedia("(max-width: 850px)").matches) {
+      const deltaX = event.clientX - start.x;
+      const deltaY = event.clientY - start.y;
+      if (Math.abs(deltaX) >= 55 && Math.abs(deltaX) >= Math.abs(deltaY) * 1.2) {
+        if (deltaX < 0) next();
+        else previous();
+      }
+    }
+    if (pointers.size === 1) {
+      const remaining = [...pointers.values()][0];
+      gestureStart = {x: remaining.x, y: remaining.y, panX, panY};
+    } else if (!pointers.size) {
+      gestureStart = null;
+      pinchStart = null;
+      hadPinch = false;
+    }
+  };
+  stage.onpointerup = finishPointer;
+  stage.onpointercancel = finishPointer;
+  stage.ondblclick = reset;
+  render();
+  return {reset};
+}
+
 function viewerTagGroup(title, type, items, detailed = false) {
   const rows = items.length ? items.map(item => {
     const score = item.scoring_excluded ? "off" : Number(item.score || 0).toFixed(1);
@@ -710,8 +838,13 @@ async function openViewer(postId, push = true, historyMode = "append") {
     const openNextViewerPost = () => nextId != null
       ? openViewer(nextId, true, historyNextId != null ? "forward" : "append")
       : null;
+    const imageGestures = installViewerImageGestures($("#viewer-stage"), $("#viewer-image"), {
+      previous: () => previousId != null && $("#viewer-prev").click(),
+      next: () => nextId != null && $("#viewer-next").click(),
+    });
     $("#viewer-fit").onchange = event => {
       const nativeSize = !event.target.checked;
+      imageGestures.reset();
       $("#viewer-stage").classList.toggle("native-size", nativeSize);
       $("#viewer-image").classList.toggle("native-size", nativeSize);
       event.target.blur();
@@ -796,23 +929,6 @@ async function openViewer(postId, push = true, historyMode = "append") {
     $$('[data-mobile-status]').forEach(button => {
       button.onclick = () => setViewerStatus(button.dataset.mobileStatus, true);
     });
-    const swipeStage = $("#viewer-stage");
-    let swipeStart = null;
-    swipeStage.onpointerdown = event => {
-      if (!matchMedia("(max-width: 850px)").matches || swipeStage.classList.contains("native-size")) return;
-      swipeStart = {pointerId: event.pointerId, x: event.clientX, y: event.clientY};
-      swipeStage.setPointerCapture?.(event.pointerId);
-    };
-    swipeStage.onpointerup = event => {
-      if (!swipeStart || swipeStart.pointerId !== event.pointerId) return;
-      const deltaX = event.clientX - swipeStart.x;
-      const deltaY = event.clientY - swipeStart.y;
-      swipeStart = null;
-      if (Math.abs(deltaX) < 55 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
-      if (deltaX < 0 && nextId != null) $("#viewer-next").click();
-      else if (deltaX > 0 && previousId != null) $("#viewer-prev").click();
-    };
-    swipeStage.onpointercancel = () => { swipeStart = null; };
     $$('[data-rating]').forEach(button => button.onclick = async () => {
       const stars = Number(button.dataset.rating);
       await api(`/api/posts/${data.id}`, {method: "PATCH", body: JSON.stringify({stars})});
