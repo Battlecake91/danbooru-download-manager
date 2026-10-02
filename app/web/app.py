@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import base64
+import dataclasses
+import hmac
 import json
+import os
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -122,6 +127,19 @@ class SettingsRequest(BaseModel):
     request_min_interval_seconds: float | None = Field(default=None, ge=0, le=60)
 
 
+class DesktopRpcRequest(BaseModel):
+    method: str = Field(min_length=1, max_length=120)
+    args: list[Any] = Field(default_factory=list)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
+
+
+class DesktopSqlRequest(BaseModel):
+    operation: str
+    sql: str = Field(min_length=1)
+    parameters: list[Any] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
+
+
 def _post_statuses_by_id(db: Any, post_ids: list[int], *, chunk_size: int = 500) -> dict[int, str]:
     statuses: dict[int, str] = {}
     for start in range(0, len(post_ids), chunk_size):
@@ -133,6 +151,39 @@ def _post_statuses_by_id(db: Any, post_ids: list[int], *, chunk_size: int = 500)
         ).fetchall()
         statuses.update({int(row["id"]): str(row["status"] or "new") for row in rows})
     return statuses
+
+
+def _desktop_encode(value: Any) -> Any:
+    if isinstance(value, sqlite3.Row):
+        return {key: _desktop_encode(value[key]) for key in value.keys()}
+    if dataclasses.is_dataclass(value):
+        return _desktop_encode(dataclasses.asdict(value))
+    if isinstance(value, Path):
+        return {"__remote_type__": "path", "value": str(value)}
+    if isinstance(value, bytes):
+        return {"__remote_type__": "bytes", "value": base64.b64encode(value).decode("ascii")}
+    if isinstance(value, dict):
+        return {str(key): _desktop_encode(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_desktop_encode(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "__dict__"):
+        return _desktop_encode(vars(value))
+    return str(value)
+
+
+def _desktop_decode(value: Any) -> Any:
+    if isinstance(value, dict):
+        marker = value.get("__remote_type__")
+        if marker == "path":
+            return Path(str(value.get("value") or ""))
+        if marker == "bytes":
+            return base64.b64decode(str(value.get("value") or ""))
+        return {key: _desktop_decode(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_desktop_decode(item) for item in value]
+    return value
 
 
 def create_app() -> FastAPI:
@@ -152,6 +203,7 @@ def create_app() -> FastAPI:
     app.state.fetch_controller = fetch_controller
     app.state.scheduler = scheduler
     app.state.recommendation_cache = RecommendationResultCache()
+    app.state.desktop_api_token = str(os.environ.get("DANBOORU_DESKTOP_API_TOKEN") or "").strip()
 
     def database(request: Request) -> Iterator[Any]:
         db = open_database(request.app.state.config)
@@ -159,6 +211,70 @@ def create_app() -> FastAPI:
             yield db
         finally:
             db.close()
+
+    def require_desktop_api(request: Request) -> None:
+        expected = str(request.app.state.desktop_api_token or "")
+        if not expected:
+            raise HTTPException(status_code=503, detail="Desktop API is disabled on this server")
+        authorization = str(request.headers.get("Authorization") or "")
+        provided = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+        if not provided or not hmac.compare_digest(provided, expected):
+            raise HTTPException(status_code=401, detail="Invalid Desktop API token")
+
+    @app.get("/api/desktop/health")
+    def desktop_health(request: Request) -> dict[str, Any]:
+        require_desktop_api(request)
+        return {"ok": True, "version": __version__}
+
+    @app.post("/api/desktop/sql")
+    def desktop_sql(payload: DesktopSqlRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+        require_desktop_api(request)
+        try:
+            if payload.operation == "execute":
+                cursor = db.execute(payload.sql, _desktop_decode(payload.parameters))
+            elif payload.operation == "executemany":
+                cursor = db.executemany(payload.sql, _desktop_decode(payload.rows))
+            elif payload.operation == "executescript":
+                cursor = db.executescript(payload.sql)
+            else:
+                raise ValueError("Unsupported SQL operation")
+            columns = [str(item[0]) for item in (cursor.description or [])]
+            rows = [_desktop_encode(row) for row in cursor.fetchall()] if cursor.description else []
+            db.commit()
+            return {
+                "columns": columns,
+                "rows": rows,
+                "rowcount": int(cursor.rowcount),
+                "lastrowid": cursor.lastrowid,
+            }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Remote SQL failed: {exc}") from exc
+
+    @app.post("/api/desktop/rpc")
+    def desktop_rpc(payload: DesktopRpcRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
+        require_desktop_api(request)
+        blocked = {
+            "connect",
+            "close",
+            "execute",
+            "executemany",
+            "executescript",
+            "commit",
+            "rollback",
+            "initialize_schema",
+        }
+        if payload.method.startswith("_") or payload.method in blocked:
+            raise HTTPException(status_code=403, detail="Database method is not available remotely")
+        target = getattr(db, payload.method, None)
+        if not callable(target):
+            raise HTTPException(status_code=404, detail="Unknown database method")
+        try:
+            result = target(*_desktop_decode(payload.args), **_desktop_decode(payload.kwargs))
+            return {"result": _desktop_encode(result)}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Remote database call failed: {exc}") from exc
 
     @app.get("/api/bootstrap")
     def bootstrap(request: Request, db=Depends(database)) -> dict[str, Any]:

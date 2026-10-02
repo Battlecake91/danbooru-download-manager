@@ -78,3 +78,26 @@ def writer_for_database(database_file: Path) -> AsyncSettingWriter:
 
 def enqueue_app_setting(database_file: Path, key: str, value: Any) -> None:
     writer_for_database(database_file).enqueue(key, value)
+
+
+def enqueue_database_setting(db: Any, key: str, value: Any) -> None:
+    if not bool(getattr(db, "is_remote", False)):
+        enqueue_app_setting(Path(db.path), key, value)
+        return
+
+    base_url = str(db.base_url)
+    token = str(db.token)
+
+    def write_remote() -> None:
+        from app.core.remote_database import RemoteDatabase
+
+        remote = RemoteDatabase(base_url, token)
+        try:
+            remote.connect()
+            remote.set_app_setting(str(key), json.dumps(value, ensure_ascii=False))
+        except Exception:
+            pass
+        finally:
+            remote.close()
+
+    threading.Thread(target=write_remote, name=f"RemoteSettingWriter:{key}", daemon=True).start()

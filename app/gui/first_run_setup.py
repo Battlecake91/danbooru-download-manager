@@ -16,14 +16,105 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QSpinBox,
     QVBoxLayout,
 )
 
+from app.core.connection_profile import LOCAL_MODE, REMOTE_MODE, save_connection_profile
 from app.core.database import Database
+from app.core.remote_database import RemoteDatabase
 from app.i18n.i18n import tr
 from app.services.post_import_service import PostImportService
 from app.services.tag_catalog_service import TagCatalogService
+
+
+class ConnectionSetupDialog(QDialog):
+    def __init__(self, config: dict[str, Any], profile: dict[str, Any]) -> None:
+        super().__init__()
+        self.config = config
+        self.profile = dict(profile)
+        self.setWindowTitle("Choose data source")
+        self.setMinimumWidth(560)
+
+        layout = QVBoxLayout(self)
+        intro = QLabel(
+            "Choose where the desktop application reads and writes its manager data. "
+            "Remote Docker keeps SQLite and the archive on the server."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        self.local_radio = QRadioButton("Local")
+        self.local_radio.setToolTip("Use the SQLite database and data directories on this computer.")
+        self.remote_radio = QRadioButton("Remote Docker")
+        self.remote_radio.setToolTip("Use the authenticated Desktop API of a Docker web server.")
+        layout.addWidget(self.local_radio)
+        layout.addWidget(self.remote_radio)
+
+        form = QFormLayout()
+        self.remote_url_edit = QLineEdit(str(profile.get("remote_url") or "http://127.0.0.1:8765"))
+        self.remote_url_edit.setPlaceholderText("http://server:8765")
+        self.remote_token_edit = QLineEdit(str(profile.get("remote_token") or ""))
+        self.remote_token_edit.setEchoMode(QLineEdit.Password)
+        self.remote_token_edit.setPlaceholderText("DANBOORU_DESKTOP_API_TOKEN")
+        self.test_button = QPushButton("Test connection")
+        self.test_button.clicked.connect(self.test_connection)
+        form.addRow("Server URL:", self.remote_url_edit)
+        form.addRow("API token:", self.remote_token_edit)
+        form.addRow("", self.test_button)
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Save).setText("Continue")
+        buttons.accepted.connect(self.accept_profile)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        is_remote = str(profile.get("mode") or LOCAL_MODE) == REMOTE_MODE
+        self.remote_radio.setChecked(is_remote)
+        self.local_radio.setChecked(not is_remote)
+        self.local_radio.toggled.connect(self.update_remote_fields)
+        self.remote_radio.toggled.connect(self.update_remote_fields)
+        self.update_remote_fields()
+
+    def update_remote_fields(self) -> None:
+        enabled = self.remote_radio.isChecked()
+        self.remote_url_edit.setEnabled(enabled)
+        self.remote_token_edit.setEnabled(enabled)
+        self.test_button.setEnabled(enabled)
+
+    def current_profile(self) -> dict[str, Any]:
+        return {
+            "mode": REMOTE_MODE if self.remote_radio.isChecked() else LOCAL_MODE,
+            "remote_url": self.remote_url_edit.text().strip().rstrip("/"),
+            "remote_token": self.remote_token_edit.text().strip(),
+        }
+
+    def test_connection(self) -> None:
+        profile = self.current_profile()
+        try:
+            if not profile["remote_url"].startswith(("http://", "https://")):
+                raise ValueError("Remote Docker URL must start with http:// or https://")
+            if not profile["remote_token"]:
+                raise ValueError("Remote Docker API token is required")
+            db = RemoteDatabase(profile["remote_url"], profile["remote_token"])
+            try:
+                db.connect()
+            finally:
+                db.close()
+        except Exception as exc:
+            QMessageBox.critical(self, "Connection failed", str(exc))
+            return
+        QMessageBox.information(self, "Connection successful", "The Remote Docker database is reachable.")
+
+    def accept_profile(self) -> None:
+        try:
+            save_connection_profile(self.config, self.current_profile())
+        except Exception as exc:
+            QMessageBox.critical(self, "Invalid connection", str(exc))
+            return
+        self.accept()
 
 
 class FirstRunSetupDialog(QDialog):

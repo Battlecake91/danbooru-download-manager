@@ -33,8 +33,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.connection_profile import database_from_config
 from app.core.database import Database
-from app.core.db.async_writer import enqueue_app_setting
+from app.core.db.async_writer import enqueue_database_setting
 from app.i18n.i18n import tr
 from app.services.llm_batch_service import LLMBatchPreselectionService
 from app.services.post_import_service import FetchProgress, PostImportService
@@ -88,8 +89,7 @@ class FetchWorker(QObject):
             self.log.emit(tr("fetch.log.started", config=self.config))
             self.log.emit(tr("fetch.log.worker_db_open", config=self.config))
 
-            database_file = Path(str(self.config["database_file"]))
-            worker_db = Database(database_file)
+            worker_db = database_from_config(self.config)
             worker_db.connect()
 
             service = PostImportService(
@@ -149,9 +149,9 @@ class TagSuggestionWorker(QObject):
     finished = Signal(str, list)
     failed = Signal(str, str)
 
-    def __init__(self, database_file: Path, prefix: str, limit: int = 120) -> None:
+    def __init__(self, config: dict[str, Any], prefix: str, limit: int = 120) -> None:
         super().__init__()
-        self.database_file = database_file
+        self.config = copy.deepcopy(config)
         self.prefix = prefix
         self.limit = limit
 
@@ -159,7 +159,7 @@ class TagSuggestionWorker(QObject):
     def run(self) -> None:
         worker_db: Database | None = None
         try:
-            worker_db = Database(self.database_file)
+            worker_db = database_from_config(self.config)
             worker_db.connect()
             tags = worker_db.suggest_tags(prefix=self.prefix, limit=self.limit)
             self.finished.emit(self.prefix, tags)
@@ -692,9 +692,8 @@ class FetchTab(QWidget):
         self.start_tag_suggestion_worker(token)
 
     def start_tag_suggestion_worker(self, token: str) -> None:
-        database_file = Path(str(self.config["database_file"]))
         self.suggestion_thread = QThread(self)
-        self.suggestion_worker = TagSuggestionWorker(database_file, token, limit=120)
+        self.suggestion_worker = TagSuggestionWorker(self.config, token, limit=120)
         self.suggestion_worker.moveToThread(self.suggestion_thread)
         self.suggestion_thread.started.connect(self.suggestion_worker.run)
         self.suggestion_worker.finished.connect(self.on_tag_suggestions_loaded)
@@ -767,7 +766,7 @@ class FetchTab(QWidget):
         # GUI state persistence must never write through the main-thread DB
         # connection while a fetch is active. Queue it on the shared background
         # settings writer instead.
-        enqueue_app_setting(Path(self.db.path), "fetch.last_payload", self.current_payload())
+        enqueue_database_setting(self.db, "fetch.last_payload", self.current_payload())
 
     def on_preset_selected(self, *_args: Any) -> None:
         name = self.current_preset_name()
@@ -1055,6 +1054,14 @@ class FetchTab(QWidget):
     def start_fetch(self) -> None:
         if self.thread is not None:
             QMessageBox.information(self, tr("fetch.already_running.title", config=self.config), tr("fetch.already_running.message", config=self.config))
+            return
+
+        if getattr(self.db, "is_remote", False):
+            QMessageBox.information(
+                self,
+                "Remote Docker",
+                "Fetch runs on the Docker server. Open the web interface to start or schedule it.",
+            )
             return
 
         try:

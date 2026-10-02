@@ -66,6 +66,16 @@ def main() -> int:
     config["debug_startup"] = bool(args.debug_startup)
     ensure_runtime_dirs(config)
 
+    cli_action_requested = bool(args.init_db or args.import_history or args.fetch)
+    should_start_gui = bool(args.gui or not cli_action_requested)
+
+    if should_start_gui:
+        # Choose the local or Remote Docker backend before opening a database.
+        # Explicit CLI maintenance operations intentionally remain local.
+        from app.gui.main_window import run_gui
+
+        return run_gui(config)
+
     db = Database(Path(config["database_file"]))
     db.connect()
     db.initialize_schema()
@@ -95,19 +105,6 @@ def main() -> int:
             result.updated_posts,
             result.cached_thumbnails,
         )
-
-    cli_action_requested = bool(args.init_db or args.import_history or args.fetch)
-    should_start_gui = bool(args.gui or not cli_action_requested)
-
-    if should_start_gui:
-        # Import only when the GUI is actually started, so CLI operations do not
-        # require Qt to be importable. A frozen .exe starts the GUI by default
-        # because double-click launches do not pass --gui. Shocking, I know.
-        from app.gui.main_window import run_gui
-
-        exit_code = run_gui(config, db)
-        db.close()
-        return exit_code
 
     db.close()
     return 0

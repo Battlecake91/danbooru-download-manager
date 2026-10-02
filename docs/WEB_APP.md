@@ -38,7 +38,14 @@ sudo chown -R 1000:1000 danbooru_manager_data danbooru_saved
 
 For a server using another account, set `PUID` and `PGID` before starting Compose.
 
-It binds port 8765 to localhost only. Put an authenticated reverse proxy in front of the container before exposing it to another machine or the internet.
+It binds port 8765 to localhost only by default. To permit a desktop application on the trusted LAN to connect, create a `.env` beside `docker-compose.yml`:
+
+```dotenv
+DANBOORU_WEB_BIND=0.0.0.0
+DANBOORU_DESKTOP_API_TOKEN=replace-with-a-long-random-secret
+```
+
+Then recreate the container with `docker compose up -d --build`. Select **Remote Docker** on the desktop application's first start, enter `http://SERVER-IP:8765`, and use the same token. The database stays in Docker; database operations and media are transferred through HTTP. Use HTTPS through a reverse proxy for untrusted networks because plain HTTP does not encrypt the token or content.
 
 ## Shared database
 
@@ -90,4 +97,6 @@ The existing-file importer remains desktop-only in this first web milestone. A l
 | `DANBOORU_DATA_DIR` | `./danbooru_manager_data` | Database and cache root |
 | `DANBOORU_DATABASE_FILE` | `<data>/danbooru_manager.db` | Optional explicit SQLite path |
 | `DANBOORU_OUTPUT_DIR` | `./danbooru_saved` | Saved-file root |
+| `DANBOORU_WEB_BIND` | `127.0.0.1` | Host address used by the Compose port mapping; use `0.0.0.0` for trusted-LAN access |
+| `DANBOORU_DESKTOP_API_TOKEN` | empty/disabled | Bearer token enabling the remote desktop database API |
 | `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID used by Docker Compose |

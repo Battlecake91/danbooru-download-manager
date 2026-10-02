@@ -40,6 +40,13 @@ class DownloadService:
         preview/large/sample image. It is intentionally *not* used for final saving.
         Humans naming this "original" was a tiny act of sabotage, naturally.
         """
+        if getattr(self.db, "is_remote", False):
+            try:
+                return self.db.cache_media(post_id, self.target_dir, "viewer", force)
+            except Exception:
+                LOGGER.exception("Viewer media could not be loaded from Remote Docker for post %s", post_id)
+                return None
+
         row = self.db.get_post_detail(post_id)
         if row is None:
             return None

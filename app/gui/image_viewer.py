@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 from app.core.archive_paths import resolve_archive_path
 from app.core.category_engine import CategoryMatch
 from app.core.database import Database
-from app.core.db.async_writer import enqueue_app_setting
+from app.core.db.async_writer import enqueue_database_setting
 from app.services.download_service import DownloadService
 from app.danbooru.api import DanbooruApi
 from app.gui.icon_utils import ensure_app_icon
@@ -753,7 +753,7 @@ class ImageViewerWindow(QMainWindow):
         performance_config["enabled"] = bool(enabled)
         self.viewer_perf_config = performance_config
         try:
-            enqueue_app_setting(Path(self.db.path), "viewer.performance.enabled", bool(enabled))
+            enqueue_database_setting(self.db, "viewer.performance.enabled", bool(enabled))
         except Exception:
             pass
 
@@ -1660,6 +1660,13 @@ class ImageViewerWindow(QMainWindow):
     def delete_current_final_file(self) -> None:
         if self.current_post_id is None:
             return
+        if getattr(self.db, "is_remote", False):
+            QMessageBox.information(
+                self,
+                self.t("viewer.delete_local_file_title", "Delete Local File"),
+                "The saved file belongs to the Docker server and cannot be deleted from the desktop filesystem.",
+            )
+            return
 
         post_id = self.current_post_id
         row = self.db.get_post_detail(post_id)
@@ -1699,6 +1706,13 @@ class ImageViewerWindow(QMainWindow):
 
     def refetch_current_post(self) -> None:
         if self.current_post_id is None:
+            return
+        if getattr(self.db, "is_remote", False):
+            QMessageBox.information(
+                self,
+                self.t("viewer.post_refetched_title", "Refetch Post"),
+                "Refetch this post through the Docker web interface so media and metadata stay on the server.",
+            )
             return
 
         self.refetch_button.setEnabled(False)

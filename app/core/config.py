@@ -6,6 +6,11 @@ from typing import Any
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    "connection": {
+        "mode": "local",
+        "remote_url": "http://127.0.0.1:8765",
+        "remote_token": "",
+    },
     "base_url": "https://danbooru.donmai.us",
     "search_tags": "order:id_desc",
     "use_saved_searches": False,

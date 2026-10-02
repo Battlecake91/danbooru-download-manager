@@ -10,6 +10,7 @@ from typing import Any, Callable
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QTabWidget, QVBoxLayout, QWidget
 
+from app.core.connection_profile import database_from_config
 from app.core.database import Database
 from app.gui.fetch_tab import FetchTab
 from app.gui.icon_utils import ensure_app_icon
@@ -23,16 +24,15 @@ class RejectedCachePurgeWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, database_file: Path, config: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
-        self.database_file = Path(database_file)
         self.config = copy.deepcopy(config)
 
     @Slot()
     def run(self) -> None:
         worker_db: Database | None = None
         try:
-            worker_db = Database(self.database_file)
+            worker_db = database_from_config(self.config)
             worker_db.connect()
             self.finished.emit(worker_db.purge_rejected_cache_files(self.config))
         except Exception:
@@ -158,12 +158,13 @@ class AppWindow(QMainWindow):
         super().closeEvent(event)
 
     def start_rejected_cache_purge(self) -> None:
+        if getattr(self.db, "is_remote", False):
+            return
         if self._cache_purge_thread is not None:
             return
 
-        database_file = Path(str(self.config["database_file"]))
         self._cache_purge_thread = QThread(self)
-        self._cache_purge_worker = RejectedCachePurgeWorker(database_file, self.config)
+        self._cache_purge_worker = RejectedCachePurgeWorker(self.config)
         self._cache_purge_worker.moveToThread(self._cache_purge_thread)
 
         self._cache_purge_thread.started.connect(self._cache_purge_worker.run)

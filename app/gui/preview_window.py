@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from app.core.archive_paths import resolve_archive_path
 from app.core.database import Database
-from app.core.db.async_writer import enqueue_app_setting
+from app.core.db.async_writer import enqueue_database_setting
 from app.core.category_engine import build_category_match_groups
 from app.core.recommendation_engine import RecommendationEngine
 from app.gui.image_viewer import ImageViewerWindow
@@ -556,9 +556,8 @@ class PreviewWindow(QMainWindow):
         self.start_tag_suggestion_worker(token)
 
     def start_tag_suggestion_worker(self, token: str) -> None:
-        database_file = Path(str(self.config["database_file"]))
         self.suggestion_thread = QThread(self)
-        self.suggestion_worker = TagSuggestionWorker(database_file, token, limit=120)
+        self.suggestion_worker = TagSuggestionWorker(self.config, token, limit=120)
         self.suggestion_worker.moveToThread(self.suggestion_thread)
         self.suggestion_thread.started.connect(self.suggestion_worker.run)
         self.suggestion_worker.finished.connect(self.on_tag_suggestions_loaded)
@@ -1076,7 +1075,7 @@ class PreviewWindow(QMainWindow):
         # Persist this small UI preference asynchronously. A direct write from
         # the Qt main thread can acquire the global write gate and then block
         # inside SQLite, starving the active fetch worker.
-        enqueue_app_setting(Path(self.db.path), "gui.preview_sort_order", sort_key)
+        enqueue_database_setting(self.db, "gui.preview_sort_order", sort_key)
 
         self.on_active_filter_changed()
 

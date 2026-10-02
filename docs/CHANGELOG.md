@@ -6,6 +6,9 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Added
 
+- Added a first-start **Local / Remote Docker** data-source choice and matching Config controls with connection testing and restart-safe persistence.
+- Added an authenticated Docker Desktop API so the standalone desktop application can use the server's SQLite data without exposing or network-mounting the database file.
+- Added background Remote Docker thumbnail loading and server-backed Viewer media caching for the desktop Preview and Viewer.
 - Added indexed tag completion to the web Preview search with current-token replacement, keyboard navigation and preserved negative-tag prefixes.
 - Added desktop action hotkeys to selected web Preview cards (`H`, `N`, `G`, `K`, `Delete` and `F`), including resilient multi-post final saving that continues after individual failures.
 - Added a phone-focused web Viewer with horizontal swipe navigation and large Reject, Save and Potential actions below the image. Mobile actions always advance and disappear after a final file has been stored.
@@ -29,6 +32,8 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Changed
 
+- Remote Docker mode executes final saving on the server; Fetch remains controlled by the web interface and the local-file importer is disabled in this mode.
+- Docker Compose can expose port 8765 on a configurable host address through `DANBOORU_WEB_BIND` while retaining localhost-only binding by default.
 - Automatic web Fetch now requires an existing saved Fetch preset and reloads that preset from SQLite for every scheduled run.
 - Container runtime paths now override desktop-specific absolute paths stored in SQLite so one database can move between Windows and Linux mounts.
 - The Docker container now runs as UID/GID `1000:1000` by default, with optional `PUID` and `PGID` overrides in Compose.

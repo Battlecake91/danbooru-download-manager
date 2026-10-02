@@ -8,8 +8,8 @@ from typing import Any
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal, QSize, QTimer
-from PySide6.QtGui import QAction, QGuiApplication, QImageReader, QKeyEvent, QMouseEvent, QPixmap
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal, QSize, QTimer
+from PySide6.QtGui import QAction, QGuiApplication, QImage, QImageReader, QKeyEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -168,6 +168,25 @@ def clear_cached_pixmap_for_path(path_text: str) -> None:
     for key in list(PIXMAP_CACHE.keys()):
         if key[0] == path:
             PIXMAP_CACHE.pop(key, None)
+
+
+class RemoteThumbnailSignals(QObject):
+    loaded = Signal(object)
+
+
+class RemoteThumbnailTask(QRunnable):
+    def __init__(self, db: Any, post_id: int) -> None:
+        super().__init__()
+        self.db = db
+        self.post_id = int(post_id)
+        self.signals = RemoteThumbnailSignals()
+
+    def run(self) -> None:
+        try:
+            data = self.db.media_bytes(self.post_id, "thumbnail")
+        except Exception:
+            data = b""
+        self.signals.loaded.emit(data)
 
 
 def read_preview_card_options(gui_config: dict[str, Any]) -> dict[str, bool]:
@@ -846,6 +865,8 @@ class ThumbnailCard(QFrame):
         self.current_status = str(self.value("status") or "new")
         self.current_category = str(self.value("preview_category_name") or "_unmatched")
         self.current_category_source = str(self.value("preview_category_source") or "auto")
+        self._remote_thumbnail_requested = False
+        self._remote_thumbnail_image: QImage | None = None
 
         gui_config = config.get("gui", {}) or {}
         self.card_width_extra = int(gui_config.get("card_width_extra", 100))
@@ -1204,6 +1225,14 @@ class ThumbnailCard(QFrame):
         self.image_label.update()
 
     def load_pixmap(self) -> QPixmap:
+        if self._remote_thumbnail_image is not None and not self._remote_thumbnail_image.isNull():
+            return QPixmap.fromImage(self._remote_thumbnail_image).scaled(
+                self.thumbnail_size,
+                self.thumbnail_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+
         candidates = [
             self.value("thumbnail_path"),
             self.value("rejected_thumbnail_path"),
@@ -1215,9 +1244,24 @@ class ThumbnailCard(QFrame):
                 if pixmap is not None and not pixmap.isNull():
                     return pixmap
 
+        if getattr(self.db, "is_remote", False) and not self._remote_thumbnail_requested:
+            self._remote_thumbnail_requested = True
+            task = RemoteThumbnailTask(self.db, self.post_id)
+            task.signals.loaded.connect(self.apply_remote_thumbnail)
+            QThreadPool.globalInstance().start(task)
+
         placeholder = QPixmap(self.thumbnail_size, self.thumbnail_size)
         placeholder.fill(Qt.darkGray)
         return placeholder
+
+    def apply_remote_thumbnail(self, data: object) -> None:
+        if not isinstance(data, bytes) or not data:
+            return
+        image = QImage()
+        if not image.loadFromData(data):
+            return
+        self._remote_thumbnail_image = image
+        self.image_label.setPixmap(self.load_pixmap())
 
     def compact_tags(self, tags: str) -> str:
         parts = tags.split()

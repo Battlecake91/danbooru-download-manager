@@ -4,7 +4,7 @@
 > Version `1.3.205` removes the remaining per-post metadata loop from large filtered Viewer result sets and expands end-to-end performance diagnostics. Development after this release includes the first independent Docker web application.
 > A local Danbooru collection manager for fetching, reviewing, importing, rating, categorizing and organizing posts with a database-backed workflow.
 
-Danbooru Download Manager is a Windows-oriented desktop application for managing a local Danbooru image collection. It uses a local SQLite database to keep metadata, thumbnails, ratings, statuses, categories, tag settings and file locations together instead of scattering state across filenames and folders.
+Danbooru Download Manager is a Windows-oriented desktop application for managing a Danbooru image collection. On first start it can use either its local SQLite database or the authenticated Desktop API of a Docker-hosted web installation. Metadata, thumbnails, ratings, statuses, categories, tag settings and file locations stay together instead of being scattered across filenames and folders.
 
 The central workflow is deliberately metadata-first:
 
@@ -159,7 +159,14 @@ Release ZIPs are written to `release/` and include the platform and bundle type 
 
 ## First-time setup
 
-On first start, the application creates its local data directory and SQLite database. The setup can configure:
+On first start, the desktop application first asks for its data source:
+
+- **Local** creates and uses the SQLite database and media directories on this computer.
+- **Remote Docker** connects to the Docker server URL and requires its `DANBOORU_DESKTOP_API_TOKEN`. SQLite remains inside the container; the desktop never opens the database file over a network share.
+
+The selection can later be changed under **Config > Base > Data source** and takes effect after restarting the desktop application. The local connection profile, including its API token, is stored in `danbooru_manager_data/desktop_connection.json`.
+
+For a local data source, the remaining setup can configure:
 
 - Danbooru username and API key,
 - Danbooru base URL,
@@ -168,6 +175,8 @@ On first start, the application creates its local data directory and SQLite data
 - initial access to the existing-file importer.
 
 Authenticated access is recommended for saved searches and account-specific API features. The default sample post is Danbooru post `11199825`.
+
+In Remote Docker mode, Preview, Viewer, status, rating, category, tag and final-save changes are performed on the server. Fetch is started or scheduled in the web interface. The existing-file importer remains local-only because the server cannot access arbitrary folders on the desktop computer.
 
 See [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md).
 

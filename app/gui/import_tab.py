@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.connection_profile import database_from_config
 from app.core.database import Database
 from app.i18n.i18n import tr
 from app.gui.import_compare_viewer import ImportCompareViewer
@@ -90,8 +91,7 @@ class ExistingFileImportWorker(QObject):
     def run(self) -> None:
         worker_db: Database | None = None
         try:
-            database_file = Path(str(self.config["database_file"]))
-            worker_db = Database(database_file)
+            worker_db = database_from_config(self.config)
             worker_db.connect()
 
             service = ExistingFileImportService(self.config, worker_db, progress_callback=self.progress.emit)
@@ -874,6 +874,13 @@ class ImportTab(QWidget):
         replacement_path: str | None = None,
         replacement_post_id: int | None = None,
     ) -> None:
+        if getattr(self.db, "is_remote", False):
+            QMessageBox.information(
+                self,
+                "Remote Docker",
+                "The importer works on local files and is unavailable with a Remote Docker data source.",
+            )
+            return
         if self.thread is not None:
             QMessageBox.information(self, tr("import.importer_title", config=self.config), tr("import.info.already_running", config=self.config))
             return

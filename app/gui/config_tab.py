@@ -30,8 +30,16 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.archive_paths import archive_root_path, set_archive_root_path
+from app.core.connection_profile import (
+    LOCAL_MODE,
+    REMOTE_MODE,
+    database_from_config,
+    save_connection_profile,
+    validate_connection_profile,
+)
 from app.core.config import DEFAULT_CONFIG, flatten_config
 from app.core.database import Database
+from app.core.remote_database import RemoteDatabase
 from app.gui.thumbnail_grid import ThumbnailGrid
 from app.i18n.i18n import available_languages, language_from_config, tr
 from app.services.post_import_service import PostImportService
@@ -237,16 +245,16 @@ class ConfigSaveWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, database_file: Path, values: dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any], values: dict[str, Any]) -> None:
         super().__init__()
-        self.database_file = Path(database_file)
+        self.config = copy.deepcopy(config)
         self.values = dict(values)
 
     @Slot()
     def run(self) -> None:
         worker_db: Database | None = None
         try:
-            worker_db = Database(self.database_file)
+            worker_db = database_from_config(self.config)
             worker_db.connect()
             for key, value in self.values.items():
                 encoded = json.dumps(value, ensure_ascii=False)
@@ -311,6 +319,32 @@ class ConfigTab(QWidget):
         self.config_tabs.addTab(self.filename_page, tr("config.tabs.filename", config=self.config))
         self.config_tabs.addTab(self.scoring_page, tr("config.tabs.scoring", config=self.config))
         self.config_tabs.addTab(self.custom_page, tr("config.tabs.custom", config=self.config))
+
+        connection = config.get("connection", {}) or {}
+        self.connection_group = QGroupBox("Data source")
+        self.connection_form = QFormLayout(self.connection_group)
+        self.connection_mode_combo = QComboBox()
+        self.connection_mode_combo.addItem("Local", LOCAL_MODE)
+        self.connection_mode_combo.addItem("Remote Docker", REMOTE_MODE)
+        connection_index = self.connection_mode_combo.findData(str(connection.get("mode") or LOCAL_MODE))
+        self.connection_mode_combo.setCurrentIndex(max(0, connection_index))
+        self.remote_url_edit = QLineEdit(str(connection.get("remote_url") or "http://127.0.0.1:8765"))
+        self.remote_url_edit.setPlaceholderText("http://server:8765")
+        self.remote_token_edit = QLineEdit(str(connection.get("remote_token") or ""))
+        self.remote_token_edit.setEchoMode(QLineEdit.Password)
+        self.remote_token_edit.setPlaceholderText("DANBOORU_DESKTOP_API_TOKEN")
+        self.remote_test_button = QPushButton("Test connection")
+        self.connection_mode_combo.currentIndexChanged.connect(self.update_connection_fields)
+        self.remote_test_button.clicked.connect(self.test_remote_connection)
+        self.connection_form.addRow("Mode:", self.connection_mode_combo)
+        self.connection_form.addRow("Server URL:", self.remote_url_edit)
+        self.connection_form.addRow("API token:", self.remote_token_edit)
+        self.connection_form.addRow("", self.remote_test_button)
+        connection_hint = QLabel("Changing the data source takes effect after restarting the desktop application.")
+        connection_hint.setWordWrap(True)
+        self.connection_form.addRow("", connection_hint)
+        self.basis_layout.addWidget(self.connection_group)
+        self.update_connection_fields()
 
         self.general_group = QGroupBox(tr("config.group.paths", config=self.config))
         self.general_form = QFormLayout(self.general_group)
@@ -1552,19 +1586,51 @@ class ConfigTab(QWidget):
             "workflow.rejected_thumbnail_retention_days": int(self.rejected_retention_spin.value()),
         }
 
+    def connection_profile_from_form(self) -> dict[str, str]:
+        return {
+            "mode": str(self.connection_mode_combo.currentData() or LOCAL_MODE),
+            "remote_url": self.remote_url_edit.text().strip().rstrip("/"),
+            "remote_token": self.remote_token_edit.text().strip(),
+        }
+
+    def update_connection_fields(self) -> None:
+        remote = self.connection_mode_combo.currentData() == REMOTE_MODE
+        self.remote_url_edit.setEnabled(remote)
+        self.remote_token_edit.setEnabled(remote)
+        self.remote_test_button.setEnabled(remote)
+
+    def test_remote_connection(self) -> None:
+        try:
+            profile = validate_connection_profile(self.connection_profile_from_form())
+            if profile["mode"] != REMOTE_MODE:
+                raise ValueError("Select Remote Docker before testing the connection")
+            remote = RemoteDatabase(profile["remote_url"], profile["remote_token"])
+            try:
+                remote.connect()
+            finally:
+                remote.close()
+        except Exception as exc:
+            QMessageBox.critical(self, "Connection failed", str(exc))
+            return
+        QMessageBox.information(self, "Connection successful", "The Remote Docker database is reachable.")
+
     def save_config(self) -> None:
         if self._save_thread is not None:
             return
 
+        try:
+            self._pending_connection_profile = validate_connection_profile(self.connection_profile_from_form())
+        except Exception as exc:
+            QMessageBox.critical(self, "Invalid connection", str(exc))
+            return
         values = self.collect_values()
-        database_file = Path(self.db.path)
         set_archive_root_path(self.config, self.archive_root_edit.text().strip() or None)
 
         self.save_button.setEnabled(False)
         self.save_button.setText(tr("config.saving", "Saving…", config=self.config))
 
         self._save_thread = QThread(self)
-        self._save_worker = ConfigSaveWorker(database_file, values)
+        self._save_worker = ConfigSaveWorker(self.config, values)
         self._save_worker.moveToThread(self._save_thread)
         self._save_thread.started.connect(self._save_worker.run)
         self._save_worker.finished.connect(self._on_config_save_finished)
@@ -1579,6 +1645,10 @@ class ConfigTab(QWidget):
         saved_values = values if isinstance(values, dict) else {}
         for key, value in saved_values.items():
             self.set_runtime_value(str(key), value)
+
+        profile = getattr(self, "_pending_connection_profile", None)
+        if isinstance(profile, dict):
+            save_connection_profile(self.config, profile)
 
         self.refresh_raw_settings()
         self.config_changed.emit()

@@ -111,6 +111,10 @@ class FinalSaveService:
         category: CategoryMatch | None = None,
         overwrite_existing: bool = False,
     ) -> SaveResult:
+        if bool(getattr(self.db, "is_remote", False)):
+            category_id = int(category.id) if category is not None and category.id is not None else None
+            return self.db.save_post_remote(post_id, category_id, overwrite_existing)
+
         row = self.db.get_post_detail(post_id)
         old_final_path = resolve_archive_path(self.config, row["final_file_path"]) if row is not None and row["final_file_path"] else None
 
