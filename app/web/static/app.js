@@ -1,4 +1,4 @@
-const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, previewActionRunning: false, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null, tagSuggestions: [], tagSuggestionIndex: -1, tagSuggestionTimer: null, tagSuggestionRequest: 0, slideshowRunning: false, slideshowLoading: false, slideshowTimer: null, slideshowHistory: [], slideshowHistoryIndex: -1, slideshowSignature: "" };
+const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, previewActionRunning: false, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerReturnTab: "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null, tagSuggestions: [], tagSuggestionIndex: -1, tagSuggestionTimer: null, tagSuggestionRequest: 0, slideshowRunning: false, slideshowLoading: false, slideshowTimer: null, slideshowHistory: [], slideshowHistoryIndex: -1, slideshowSignature: "", slideshowInfoVisible: false };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -287,6 +287,10 @@ function renderSlideshowEntry(entry) {
     empty.textContent = "Keine passenden Posts gefunden";
     empty.classList.remove("hidden");
     $("#slideshow-meta").classList.add("hidden");
+    $("#slideshow-original").classList.add("hidden");
+    $("#slideshow-original").removeAttribute("href");
+    $("#slideshow-open-viewer").disabled = true;
+    $("#slideshow-info").disabled = true;
     $("#slideshow-count").textContent = "0 Treffer";
     return;
   }
@@ -295,10 +299,28 @@ function renderSlideshowEntry(entry) {
   image.alt = `Post ${item.id}`;
   image.dataset.fallback = item.thumbnail_url;
   image.src = item.image_url;
+  $("#slideshow-original").href = item.original_post_url;
+  $("#slideshow-original").classList.remove("hidden");
+  $("#slideshow-open-viewer").disabled = false;
+  $("#slideshow-info").disabled = false;
   $("#slideshow-count").textContent = `${Number(total).toLocaleString()} Treffer · Post #${item.id}`;
   const localPath = item.local_file_path || "Keine lokale Datei";
-  $("#slideshow-meta").innerHTML = `<strong>#${item.id}</strong><span>${esc(item.status || "")}</span><span>Rating ${esc(item.rating || "-")}</span><span>Score ${item.score ?? 0}</span><span>${item.image_width || 0} x ${item.image_height || 0}</span><a href="${esc(item.original_post_url)}" target="_blank" rel="noreferrer">Original Post</a><span class="slideshow-file-path" title="${esc(localPath)}">Datei: ${esc(localPath)}</span><div class="slideshow-tags">${esc(item.tags || "Keine Tags")}</div>`;
-  $("#slideshow-meta").classList.remove("hidden");
+  $("#slideshow-meta").innerHTML = `<strong>#${item.id}</strong><span>${esc(item.status || "")}</span><span>Rating ${esc(item.rating || "-")}</span><span>Score ${item.score ?? 0}</span><span>${item.image_width || 0} x ${item.image_height || 0}</span><span class="slideshow-file-path" title="${esc(localPath)}">Datei: ${esc(localPath)}</span><div class="slideshow-tags"><strong>Tags</strong> ${esc(item.tags || "Keine Tags")}</div>`;
+  $("#slideshow-meta").classList.toggle("hidden", !state.slideshowInfoVisible);
+  $("#slideshow-info").textContent = state.slideshowInfoVisible ? "Infos ausblenden" : "Infos";
+}
+
+function toggleSlideshowInfo() {
+  state.slideshowInfoVisible = !state.slideshowInfoVisible;
+  $("#slideshow-meta").classList.toggle("hidden", !state.slideshowInfoVisible);
+  $("#slideshow-info").textContent = state.slideshowInfoVisible ? "Infos ausblenden" : "Infos";
+}
+
+function openSlideshowPostInViewer() {
+  const postId = state.slideshowHistory[state.slideshowHistoryIndex]?.item?.id;
+  if (!postId) return;
+  pauseSlideshow();
+  openViewer(Number(postId));
 }
 
 function scheduleSlideshow() {
@@ -903,6 +925,7 @@ async function runTagContextAction(action) {
 
 async function openViewer(postId, push = true, historyMode = "append") {
   try {
+    if (state.tab !== "viewer") state.viewerReturnTab = state.tab === "slideshow" ? "slideshow" : "preview";
     state.tab = "viewer";
     const params = new URLSearchParams(location.search);
     const filters = {
@@ -997,7 +1020,7 @@ async function openViewer(postId, push = true, historyMode = "append") {
     </div>`;
     $("#viewer-filename-filter").checked = state.viewerFilenameFilter;
     $("#viewer").classList.toggle("hide-filename-excluded", state.viewerFilenameFilter);
-    $("#viewer-back").onclick = () => showTab("preview");
+    $("#viewer-back").onclick = () => showTab(state.viewerReturnTab);
     $("#viewer-prev").onclick = () => previousId != null && openViewer(previousId, true, historyPreviousId != null ? "back" : "append");
     $("#viewer-next").onclick = () => nextId != null && openViewer(nextId, true, historyNextId != null ? "forward" : "append");
     const openNextViewerPost = () => nextId != null
@@ -1401,6 +1424,8 @@ $("#slideshow-start").onclick = () => startSlideshow().catch(error => toast(erro
 $("#slideshow-pause").onclick = pauseSlideshow;
 $("#slideshow-next").onclick = () => slideshowNext().catch(error => toast(error.message));
 $("#slideshow-previous").onclick = slideshowPrevious;
+$("#slideshow-open-viewer").onclick = openSlideshowPostInViewer;
+$("#slideshow-info").onclick = toggleSlideshowInfo;
 $("#slideshow-fullscreen").onclick = () => $("#view-slideshow").requestFullscreen?.().catch(error => toast(error.message));
 $("#slideshow-search").onkeydown = event => {
   if (event.key !== "Enter") return;
@@ -1412,12 +1437,14 @@ $("#slideshow-interval").onchange = () => {
   if (state.slideshowRunning) scheduleSlideshow();
 };
 $("#slideshow-mode").onchange = saveSlideshowSettings;
-$("#slideshow-stage").onclick = event => {
-  if (event.button !== 0) return;
+$("#slideshow-stage").onpointerup = event => {
+  if (event.pointerType !== "mouse" || event.button !== 0) return;
+  event.preventDefault();
   slideshowPrevious();
 };
 $("#slideshow-stage").oncontextmenu = event => {
   event.preventDefault();
+  event.stopPropagation();
   slideshowNext().catch(error => toast(error.message));
 };
 $("#slideshow-image").onerror = event => {
@@ -1432,7 +1459,7 @@ $("#slideshow-image").onerror = event => {
 };
 
 new IntersectionObserver(entries => { if (entries[0].isIntersecting) loadMorePosts(); }, {rootMargin:"500px"}).observe($("#preview-sentinel"));
-window.addEventListener("popstate", () => { const match = location.pathname.match(/^\/viewer\/(\d+)/); if (match) openViewer(Number(match[1]), false, "select"); else showTab("preview"); });
+window.addEventListener("popstate", () => { const match = location.pathname.match(/^\/viewer\/(\d+)/); if (match) openViewer(Number(match[1]), false, "select"); else showTab(state.viewerReturnTab); });
 function isTypingTarget(target) {
   if (target instanceof HTMLInputElement) {
     return !["button", "checkbox", "color", "radio", "range", "reset", "submit"].includes(target.type);

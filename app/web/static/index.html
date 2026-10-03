@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=slideshow-21">
+  <link rel="stylesheet" href="/app.css?v=slideshow-controls-23">
 </head>
 <body>
   <header class="app-header">
@@ -158,11 +158,16 @@
         <button id="slideshow-pause" disabled>Pause</button>
         <button id="slideshow-previous" title="Vorheriges Bild (Pfeil links)" disabled>&#8592;</button>
         <button id="slideshow-next" title="N&auml;chstes Bild (Pfeil rechts)">&#8594;</button>
-        <button id="slideshow-fullscreen" class="icon-button" title="Vollbild" aria-label="Vollbild">&#x26F6;</button>
       </div>
       <div class="slideshow-summary"><span id="slideshow-count">Noch nicht gestartet</span><span>Linksklick: zur&uuml;ck &middot; Rechtsklick: weiter &middot; Entf: reject &middot; Leertaste: Start/Pause</span></div>
+      <div class="slideshow-actionbar">
+        <a id="slideshow-original" class="button-link hidden" target="_blank" rel="noreferrer">Original Post</a>
+        <button id="slideshow-open-viewer" disabled>Im Viewer &ouml;ffnen</button>
+        <button id="slideshow-info" disabled>Infos</button>
+        <button id="slideshow-fullscreen" class="icon-button" title="Vollbild" aria-label="Vollbild">&#x26F6;</button>
+      </div>
       <div id="slideshow-stage" class="slideshow-stage">
-        <img id="slideshow-image" class="hidden" alt="Diashow">
+        <img id="slideshow-image" class="hidden" alt="Diashow" draggable="false">
         <div id="slideshow-empty" class="slideshow-empty">Tags festlegen und Start dr&uuml;cken</div>
       </div>
       <div id="slideshow-meta" class="slideshow-meta hidden"></div>
@@ -211,6 +216,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=slideshow-21" defer></script>
+  <script src="/app.js?v=slideshow-controls-23" defer></script>
 </body>
 </html>

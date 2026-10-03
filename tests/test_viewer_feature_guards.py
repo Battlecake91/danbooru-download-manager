@@ -144,14 +144,21 @@ def test_web_slideshow_has_tag_logic_timing_and_navigation_controls() -> None:
     assert 'value="random"' in html_source
     assert 'id="slideshow-start"' in html_source
     assert 'id="slideshow-pause"' in html_source
+    assert 'id="slideshow-original"' in html_source
+    assert 'id="slideshow-open-viewer"' in html_source
+    assert 'id="slideshow-info"' in html_source
     assert 'localStorage.setItem("danbooru.slideshow"' in web_source
     assert "function scheduleSlideshow" in web_source
     assert "function slideshowPrevious" in web_source
     assert "function rejectSlideshowCurrent" in web_source
+    assert "function toggleSlideshowInfo" in web_source
+    assert "function openSlideshowPostInViewer" in web_source
+    assert '$("#slideshow-stage").onpointerup' in web_source
     assert '$("#slideshow-stage").oncontextmenu' in web_source
     assert 'event.key === "Delete"' in web_source
     assert "item.original_post_url" in web_source
     assert "item.local_file_path" in web_source
+    assert 'showTab(state.viewerReturnTab)' in web_source
     assert 'api(`/api/slideshow?' in web_source
     assert 'api(`/api/posts/${postId}/local-file`, {method: "DELETE"})' in web_source
     assert '@app.get("/api/slideshow")' in api_source

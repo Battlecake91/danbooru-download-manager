@@ -72,7 +72,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Automatic Fetch with a configurable interval.
 - Consecutive-known-post stopping through the shared Fetch service.
 - Endless Preview loading with a configurable batch size.
-- A dedicated slideshow tab with AND (`tag +tag`), exclusion (`-tag`) and comma-separated OR filters, a configurable interval, sequential/random playback, history navigation and fullscreen mode. Left click goes back and right click advances. `Delete` removes an existing final file, clears its saved path, rejects the database post and advances; an unsaved post is only rejected. The view shows the original-post link and stored server file location; slideshow settings persist in the browser.
+- A dedicated slideshow tab with AND (`tag +tag`), exclusion (`-tag`) and comma-separated OR filters, a configurable interval, sequential/random playback, history navigation and fullscreen mode. Left click goes back and right click advances. `Delete` removes an existing final file, clears its saved path, rejects the database post and advances; an unsaved post is only rejected. Dedicated controls open the original post, toggle metadata/tags or open the current post in the full Viewer and return to the slideshow. Slideshow settings persist in the browser.
 - Persisted Preview controls for 50-200 posts per endless-scroll request and 120-600 px thumbnail tiles.
 - Desktop-equivalent sorting for post ID, Danbooru score, live tag-based Preselection, LLM score, personal rating, rating class, status, category, save/seen time, resolution and file size.
 - Combinable status checkboxes matching the desktop Preview filter, with New and Potential enabled by default.
