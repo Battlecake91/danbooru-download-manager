@@ -15,6 +15,8 @@ from app.web.repository import (
     post_detail,
     recommendation_results,
     resolve_media_path,
+    slideshow_matching_post_ids,
+    slideshow_post,
 )
 from app.web.app import BulkPostStatusRequest, _post_statuses_by_id
 from app.web.runtime import fetch_overrides_from_payload, open_database
@@ -392,6 +394,58 @@ def test_negative_tag_filter_is_parameterized() -> None:
     sql, params = build_post_filter("worklist", "blue_hair -comic")
     assert "NOT EXISTS" in sql
     assert params == ["new", "potential", "%blue_hair%", "blue_hair", "comic"]
+
+
+def test_slideshow_tag_filter_supports_and_exclude_and_or_groups(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "slideshow-filter.db")
+    db.executemany(
+        "INSERT INTO posts (id, status, preview_url) VALUES (?, 'new', ?)",
+        ((10, "https://example.test/10.jpg"), (11, "https://example.test/11.jpg"),
+         (12, "https://example.test/12.jpg"), (13, "https://example.test/13.jpg")),
+    )
+    db.executemany(
+        "INSERT INTO post_tags (post_id, tag, tag_type) VALUES (?, ?, 'general')",
+        (
+            (10, "1girl"), (10, "smile"),
+            (11, "1girl"), (11, "smile"), (11, "nude"),
+            (12, "2girls"),
+            (13, "1girl"),
+        ),
+    )
+    db.commit()
+    try:
+        strict = slideshow_matching_post_ids(db, "1girl +smile -nude")
+        alternatives = slideshow_matching_post_ids(db, "1girl, 2girls")
+        next_alternative = slideshow_post(
+            db,
+            search="1girl, 2girls",
+            mode="sequential",
+            current_id=13,
+        )
+    finally:
+        db.close()
+
+    assert strict == [10]
+    assert alternatives == [13, 12, 11, 10]
+    assert next_alternative["item"]["id"] == 12
+
+
+def test_slideshow_navigation_wraps_and_random_avoids_current_post(tmp_path: Path) -> None:
+    db = make_db(tmp_path / "slideshow-navigation.db")
+    try:
+        first = slideshow_post(db, search="blue_hair", mode="sequential")
+        second = slideshow_post(db, search="blue_hair", mode="sequential", current_id=first["item"]["id"])
+        wrapped = slideshow_post(db, search="blue_hair", mode="sequential", current_id=second["item"]["id"])
+        random_item = slideshow_post(db, search="blue_hair", mode="random", current_id=3)
+    finally:
+        db.close()
+
+    assert first["total"] == 2
+    assert first["item"]["id"] == 3
+    assert first["item"]["image_url"] == "/api/media/3/viewer"
+    assert second["item"]["id"] == 2
+    assert wrapped["item"]["id"] == 3
+    assert random_item["item"]["id"] == 2
 
 
 def test_web_status_filter_accepts_multiple_checkbox_values() -> None:

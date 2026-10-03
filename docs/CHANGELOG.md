@@ -6,6 +6,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Added
 
+- Added a web slideshow tab with compound tag filtering, exclusions, comma-separated alternatives, configurable timing, sequential/random playback, history navigation and fullscreen mode.
 - Added a first-start **Local / Remote Docker** data-source choice and matching Config controls with connection testing and restart-safe persistence.
 - Added an authenticated Docker Desktop API so the standalone desktop application can use the server's SQLite data without exposing or network-mounting the database file.
 - Added background Remote Docker thumbnail loading and server-backed Viewer media caching for the desktop Preview and Viewer.

@@ -131,6 +131,29 @@ def test_web_viewer_supports_wheel_and_pinch_zoom() -> None:
     assert "will-change: transform" in css_source
 
 
+def test_web_slideshow_has_tag_logic_timing_and_navigation_controls() -> None:
+    html_source = read_source("app/web/static/index.html")
+    web_source = read_source("app/web/static/app.js")
+    css_source = read_source("app/web/static/app.css")
+    api_source = read_source("app/web/app.py")
+    repository_source = read_source("app/web/repository.py")
+
+    assert 'data-tab="slideshow"' in html_source
+    assert 'id="slideshow-search"' in html_source
+    assert 'id="slideshow-interval"' in html_source
+    assert 'value="random"' in html_source
+    assert 'id="slideshow-start"' in html_source
+    assert 'id="slideshow-pause"' in html_source
+    assert 'localStorage.setItem("danbooru.slideshow"' in web_source
+    assert "function scheduleSlideshow" in web_source
+    assert "function slideshowPrevious" in web_source
+    assert 'api(`/api/slideshow?' in web_source
+    assert '@app.get("/api/slideshow")' in api_source
+    assert 'str(search or "").split(",")' in repository_source
+    assert "NOT EXISTS (SELECT 1 FROM post_tags sn" in repository_source
+    assert ".slideshow-stage img" in css_source
+
+
 def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:
     html_source = read_source("app/web/static/index.html")
     web_source = read_source("app/web/static/app.js")

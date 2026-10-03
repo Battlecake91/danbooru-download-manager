@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=viewer-zoom-20">
+  <link rel="stylesheet" href="/app.css?v=slideshow-21">
 </head>
 <body>
   <header class="app-header">
@@ -15,6 +15,7 @@
   <nav id="tabs" class="tabs" aria-label="Main navigation">
     <button data-tab="fetch">Fetch</button>
     <button data-tab="preview" class="active">Preview</button>
+    <button data-tab="slideshow">Diashow</button>
     <button data-tab="import">Importer</button>
     <button data-tab="tags">Tags</button>
     <button data-tab="categories">Categories</button>
@@ -144,6 +145,29 @@
       </div>
     </section>
 
+    <section id="view-slideshow" class="view slideshow-view hidden">
+      <div class="toolbar slideshow-toolbar">
+        <label class="wide">Tags
+          <input id="slideshow-search" placeholder="1girl +smile -nude, 2girls" autocomplete="off">
+        </label>
+        <label>Intervall (Sek.) <input id="slideshow-interval" type="number" min="1" max="3600" step="1" value="5"></label>
+        <label>Reihenfolge
+          <select id="slideshow-mode"><option value="sequential">Der Reihe nach</option><option value="random">Zuf&auml;llig</option></select>
+        </label>
+        <button id="slideshow-start" class="primary">Start</button>
+        <button id="slideshow-pause" disabled>Pause</button>
+        <button id="slideshow-previous" title="Vorheriges Bild (Pfeil links)" disabled>&#8592;</button>
+        <button id="slideshow-next" title="N&auml;chstes Bild (Pfeil rechts)">&#8594;</button>
+        <button id="slideshow-fullscreen" class="icon-button" title="Vollbild" aria-label="Vollbild">&#x26F6;</button>
+      </div>
+      <div class="slideshow-summary"><span id="slideshow-count">Noch nicht gestartet</span><span>Leertaste: Start/Pause &middot; Pfeiltasten: Vor/Zur&uuml;ck</span></div>
+      <div id="slideshow-stage" class="slideshow-stage">
+        <img id="slideshow-image" class="hidden" alt="Diashow">
+        <div id="slideshow-empty" class="slideshow-empty">Tags festlegen und Start dr&uuml;cken</div>
+      </div>
+      <div id="slideshow-meta" class="slideshow-meta hidden"></div>
+    </section>
+
     <section id="view-import" class="view hidden empty-state">
       <h2>Importer</h2>
       <p>The web importer will work with files mounted on the server. Until that workflow is added, importing remains available in the desktop application.</p>
@@ -187,6 +211,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=viewer-zoom-20" defer></script>
+  <script src="/app.js?v=slideshow-21" defer></script>
 </body>
 </html>

@@ -26,6 +26,7 @@ from app.web.repository import (
     post_detail,
     resolve_media_path,
     row_dict,
+    slideshow_post,
 )
 from app.web.runtime import FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
 
@@ -397,6 +398,17 @@ def create_app() -> FastAPI:
             limit=limit,
             recommendation_cache=cache,
         )
+
+    @app.get("/api/slideshow")
+    def slideshow(
+        search: str = Query(default="", max_length=500),
+        mode: str = "sequential",
+        current_id: int | None = Query(default=None, ge=1),
+        db=Depends(database),
+    ) -> dict[str, Any]:
+        if mode not in {"sequential", "random"}:
+            raise HTTPException(status_code=422, detail="Mode must be sequential or random")
+        return slideshow_post(db, search=search.strip(), mode=mode, current_id=current_id)
 
     @app.patch("/api/posts/status")
     def update_post_statuses(

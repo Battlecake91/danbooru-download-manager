@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from pathlib import Path, PurePosixPath, PureWindowsPath
+import secrets
 import threading
 import time
 from typing import Any
@@ -235,6 +236,112 @@ def build_post_filter(status: str, search: str, rating: str = "all") -> tuple[st
             )
             params.extend([f"%{term}%", term])
     return ("WHERE " + " AND ".join(parts), params) if parts else ("", params)
+
+
+def build_slideshow_filter(search: str) -> tuple[str, list[Any]]:
+    """Build an OR-of-ANDs tag filter used by the web slideshow."""
+    groups: list[tuple[list[str], list[str]]] = []
+    for raw_group in str(search or "").split(","):
+        included: list[str] = []
+        excluded: list[str] = []
+        for raw_term in raw_group.split():
+            term = raw_term.strip()
+            if not term:
+                continue
+            if term.startswith("-") and len(term) > 1:
+                excluded.append(term[1:])
+            else:
+                included.append(term[1:] if term.startswith("+") else term)
+        if included or excluded:
+            groups.append((included, excluded))
+
+    if not groups:
+        return "", []
+
+    group_sql: list[str] = []
+    params: list[Any] = []
+    for included, excluded in groups:
+        terms: list[str] = []
+        for tag in included:
+            terms.append(
+                "EXISTS (SELECT 1 FROM post_tags si WHERE si.post_id = p.id AND si.tag = ? COLLATE NOCASE)"
+            )
+            params.append(tag)
+        for tag in excluded:
+            terms.append(
+                "NOT EXISTS (SELECT 1 FROM post_tags sn WHERE sn.post_id = p.id AND sn.tag = ? COLLATE NOCASE)"
+            )
+            params.append(tag)
+        group_sql.append("(" + " AND ".join(terms) + ")")
+    return "WHERE (" + " OR ".join(group_sql) + ")", params
+
+
+def slideshow_matching_post_ids(db: Database, search: str) -> list[int]:
+    where_sql, params = build_slideshow_filter(search)
+    rows = db.execute(
+        f"SELECT p.id FROM posts p {where_sql} ORDER BY p.id DESC",
+        params,
+    ).fetchall()
+    return [int(row["id"]) for row in rows]
+
+
+def slideshow_post(
+    db: Database,
+    *,
+    search: str,
+    mode: str,
+    current_id: int | None = None,
+) -> dict[str, Any]:
+    where_sql, params = build_slideshow_filter(search)
+    count_row = db.execute(f"SELECT COUNT(*) AS total FROM posts p {where_sql}", params).fetchone()
+    total = int(count_row["total"] if count_row else 0)
+    if not total:
+        return {"item": None, "total": 0}
+
+    if mode == "random":
+        offset = secrets.randbelow(total)
+        row = db.execute(
+            f"SELECT p.id FROM posts p {where_sql} ORDER BY p.id DESC LIMIT 1 OFFSET ?",
+            [*params, offset],
+        ).fetchone()
+        if total > 1 and row is not None and int(row["id"]) == current_id:
+            row = db.execute(
+                f"SELECT p.id FROM posts p {where_sql} ORDER BY p.id DESC LIMIT 1 OFFSET ?",
+                [*params, (offset + 1) % total],
+            ).fetchone()
+    else:
+        next_where = where_sql
+        next_params = list(params)
+        if current_id is not None:
+            next_where += (" AND " if next_where else "WHERE ") + "p.id < ?"
+            next_params.append(current_id)
+        row = db.execute(
+            f"SELECT p.id FROM posts p {next_where} ORDER BY p.id DESC LIMIT 1",
+            next_params,
+        ).fetchone()
+        if row is None:
+            row = db.execute(
+                f"SELECT p.id FROM posts p {where_sql} ORDER BY p.id DESC LIMIT 1",
+                params,
+            ).fetchone()
+
+    if row is None:
+        return {"item": None, "total": total}
+    post_id = int(row["id"])
+    detail = db.execute(
+        """
+        SELECT p.id, p.status, p.rating, p.score, p.fav_count,
+               p.image_width, p.image_height,
+               (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
+        FROM posts p
+        WHERE p.id = ?
+        """,
+        (post_id,),
+    ).fetchone()
+    item = row_dict(detail)
+    item["image_url"] = f"/api/media/{post_id}/viewer"
+    item["thumbnail_url"] = f"/api/media/{post_id}/thumbnail"
+    return {"item": item, "total": total}
 
 
 def recommendation_results(
