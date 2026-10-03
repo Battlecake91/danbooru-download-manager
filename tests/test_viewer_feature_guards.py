@@ -147,8 +147,17 @@ def test_web_slideshow_has_tag_logic_timing_and_navigation_controls() -> None:
     assert 'localStorage.setItem("danbooru.slideshow"' in web_source
     assert "function scheduleSlideshow" in web_source
     assert "function slideshowPrevious" in web_source
+    assert "function rejectSlideshowCurrent" in web_source
+    assert '$("#slideshow-stage").oncontextmenu' in web_source
+    assert 'event.key === "Delete"' in web_source
+    assert "item.original_post_url" in web_source
+    assert "item.local_file_path" in web_source
     assert 'api(`/api/slideshow?' in web_source
+    assert 'api(`/api/posts/${postId}/local-file`, {method: "DELETE"})' in web_source
     assert '@app.get("/api/slideshow")' in api_source
+    assert '@app.delete("/api/posts/{post_id}/local-file")' in api_source
+    assert "final_path.unlink()" in api_source
+    assert "db.clear_post_final_file_path(post_id)" in api_source
     assert 'str(search or "").split(",")' in repository_source
     assert "NOT EXISTS (SELECT 1 FROM post_tags sn" in repository_source
     assert ".slideshow-stage img" in css_source

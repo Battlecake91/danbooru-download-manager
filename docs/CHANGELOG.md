@@ -7,6 +7,7 @@ This changelog groups development into user-facing milestones instead of preserv
 ### Added
 
 - Added a web slideshow tab with compound tag filtering, exclusions, comma-separated alternatives, configurable timing, sequential/random playback, history navigation and fullscreen mode.
+- Added mouse navigation and original-post/local-file location details to the web slideshow. `Delete` now removes an existing final file, clears its stored path, rejects the post and advances automatically.
 - Added a first-start **Local / Remote Docker** data-source choice and matching Config controls with connection testing and restart-safe persistence.
 - Added an authenticated Docker Desktop API so the standalone desktop application can use the server's SQLite data without exposing or network-mounting the database file.
 - Added background Remote Docker thumbnail loading and server-backed Viewer media caching for the desktop Preview and Viewer.
@@ -33,6 +34,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Changed
 
+- Docker Compose now allows the host archive mount and active output subdirectory to be configured independently, supporting year-based paths such as `/archive/2026/<category>` without moving older files.
 - Remote Docker mode executes final saving on the server; Fetch remains controlled by the web interface and the local-file importer is disabled in this mode.
 - Docker Compose can expose port 8765 on a configurable host address through `DANBOORU_WEB_BIND` while retaining localhost-only binding by default.
 - Automatic web Fetch now requires an existing saved Fetch preset and reloads that preset from SQLite for every scheduled run.

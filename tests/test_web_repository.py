@@ -437,6 +437,8 @@ def test_slideshow_navigation_wraps_and_random_avoids_current_post(tmp_path: Pat
         second = slideshow_post(db, search="blue_hair", mode="sequential", current_id=first["item"]["id"])
         wrapped = slideshow_post(db, search="blue_hair", mode="sequential", current_id=second["item"]["id"])
         random_item = slideshow_post(db, search="blue_hair", mode="random", current_id=3)
+        db.set_post_status(3, "rejected")
+        without_rejected = slideshow_matching_post_ids(db, "blue_hair")
     finally:
         db.close()
 
@@ -446,6 +448,7 @@ def test_slideshow_navigation_wraps_and_random_avoids_current_post(tmp_path: Pat
     assert second["item"]["id"] == 2
     assert wrapped["item"]["id"] == 3
     assert random_item["item"]["id"] == 2
+    assert without_rejected == [2]
 
 
 def test_web_status_filter_accepts_multiple_checkbox_values() -> None:

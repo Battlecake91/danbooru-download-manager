@@ -278,6 +278,7 @@ def build_slideshow_filter(search: str) -> tuple[str, list[Any]]:
 
 def slideshow_matching_post_ids(db: Database, search: str) -> list[int]:
     where_sql, params = build_slideshow_filter(search)
+    where_sql += (" AND " if where_sql else "WHERE ") + "p.status NOT IN ('rejected', 'auto_rejected')"
     rows = db.execute(
         f"SELECT p.id FROM posts p {where_sql} ORDER BY p.id DESC",
         params,
@@ -293,6 +294,7 @@ def slideshow_post(
     current_id: int | None = None,
 ) -> dict[str, Any]:
     where_sql, params = build_slideshow_filter(search)
+    where_sql += (" AND " if where_sql else "WHERE ") + "p.status NOT IN ('rejected', 'auto_rejected')"
     count_row = db.execute(f"SELECT COUNT(*) AS total FROM posts p {where_sql}", params).fetchone()
     total = int(count_row["total"] if count_row else 0)
     if not total:
@@ -331,7 +333,8 @@ def slideshow_post(
     detail = db.execute(
         """
         SELECT p.id, p.status, p.rating, p.score, p.fav_count,
-               p.image_width, p.image_height,
+               p.image_width, p.image_height, p.final_file_path,
+               p.original_path, p.original_cache_path,
                (SELECT GROUP_CONCAT(pt.tag, ' ') FROM post_tags pt WHERE pt.post_id = p.id) AS tags
         FROM posts p
         WHERE p.id = ?

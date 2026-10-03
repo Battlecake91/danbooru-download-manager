@@ -296,7 +296,8 @@ function renderSlideshowEntry(entry) {
   image.dataset.fallback = item.thumbnail_url;
   image.src = item.image_url;
   $("#slideshow-count").textContent = `${Number(total).toLocaleString()} Treffer · Post #${item.id}`;
-  $("#slideshow-meta").innerHTML = `<strong>#${item.id}</strong><span>${esc(item.status || "")}</span><span>Rating ${esc(item.rating || "-")}</span><span>Score ${item.score ?? 0}</span><span>${item.image_width || 0} x ${item.image_height || 0}</span><div>${esc(item.tags || "Keine Tags")}</div>`;
+  const localPath = item.local_file_path || "Keine lokale Datei";
+  $("#slideshow-meta").innerHTML = `<strong>#${item.id}</strong><span>${esc(item.status || "")}</span><span>Rating ${esc(item.rating || "-")}</span><span>Score ${item.score ?? 0}</span><span>${item.image_width || 0} x ${item.image_height || 0}</span><a href="${esc(item.original_post_url)}" target="_blank" rel="noreferrer">Original Post</a><span class="slideshow-file-path" title="${esc(localPath)}">Datei: ${esc(localPath)}</span><div class="slideshow-tags">${esc(item.tags || "Keine Tags")}</div>`;
   $("#slideshow-meta").classList.remove("hidden");
 }
 
@@ -315,7 +316,7 @@ function pauseSlideshow() {
   updateSlideshowButtons();
 }
 
-async function slideshowNext(resetTimer = true) {
+async function slideshowNext(resetTimer = true, currentOverride = null) {
   if (state.slideshowLoading) return;
   const settings = saveSlideshowSettings();
   const signature = `${settings.mode}\n${settings.search}`;
@@ -333,7 +334,7 @@ async function slideshowNext(resetTimer = true) {
     $("#slideshow-empty").textContent = "Lade Bild...";
     if (!state.slideshowHistory.length) $("#slideshow-empty").classList.remove("hidden");
     try {
-      const current = state.slideshowHistory[state.slideshowHistoryIndex]?.item?.id;
+      const current = currentOverride || state.slideshowHistory[state.slideshowHistoryIndex]?.item?.id;
       const params = new URLSearchParams({search: settings.search, mode: settings.mode});
       if (current) params.set("current_id", current);
       const entry = await api(`/api/slideshow?${params}`);
@@ -353,6 +354,27 @@ async function slideshowNext(resetTimer = true) {
   }
   updateSlideshowButtons();
   if (resetTimer && state.slideshowRunning) scheduleSlideshow();
+}
+
+async function rejectSlideshowCurrent() {
+  const entry = state.slideshowHistory[state.slideshowHistoryIndex];
+  const postId = entry?.item?.id;
+  if (!postId || state.slideshowLoading) return;
+  state.slideshowLoading = true;
+  updateSlideshowButtons();
+  try {
+    const result = await api(`/api/posts/${postId}/local-file`, {method: "DELETE"});
+    state.slideshowHistory.splice(state.slideshowHistoryIndex, 1);
+    state.slideshowHistoryIndex -= 1;
+    state.slideshowHistory.forEach(item => { item.total = Math.max(0, Number(item.total) - 1); });
+    state.slideshowLoading = false;
+    await slideshowNext(true, postId);
+    toast(result.file_deleted ? `Post #${postId} rejected and local file deleted` : `Post #${postId} rejected`);
+  } catch (error) {
+    state.slideshowLoading = false;
+    updateSlideshowButtons();
+    throw error;
+  }
 }
 
 function slideshowPrevious() {
@@ -1390,6 +1412,14 @@ $("#slideshow-interval").onchange = () => {
   if (state.slideshowRunning) scheduleSlideshow();
 };
 $("#slideshow-mode").onchange = saveSlideshowSettings;
+$("#slideshow-stage").onclick = event => {
+  if (event.button !== 0) return;
+  slideshowPrevious();
+};
+$("#slideshow-stage").oncontextmenu = event => {
+  event.preventDefault();
+  slideshowNext().catch(error => toast(error.message));
+};
 $("#slideshow-image").onerror = event => {
   const image = event.currentTarget;
   if (image.dataset.fallback && image.src !== new URL(image.dataset.fallback, location.href).href) {
@@ -1419,7 +1449,10 @@ document.addEventListener("keydown", event => {
   }
   if ($("#viewer").classList.contains("hidden")) {
     if (state.tab === "slideshow" && !isTypingTarget(event.target) && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      if (event.key === " ") {
+      if (event.key === "Delete") {
+        event.preventDefault();
+        rejectSlideshowCurrent().catch(error => toast(error.message));
+      } else if (event.key === " ") {
         event.preventDefault();
         if (state.slideshowRunning) pauseSlideshow();
         else startSlideshow().catch(error => toast(error.message));

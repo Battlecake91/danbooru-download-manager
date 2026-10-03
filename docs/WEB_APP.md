@@ -30,6 +30,15 @@ Compose mounts these directories:
 - `./danbooru_manager_data` as `/data` for SQLite, thumbnails and cached originals.
 - `./danbooru_saved` as `/archive` for saved files.
 
+The archive mount and current output subdirectory can be selected in `.env`. Mount the complete long-lived archive at `/archive`, then change only the output year:
+
+```dotenv
+DANBOORU_ARCHIVE_DIR=/path/to/archive
+DANBOORU_OUTPUT_DIR=/archive/2026
+```
+
+Categories without an explicit output path are then saved as `/archive/2026/<category-folder>`. Changing the output directory to `/archive/2027` affects future saves only. Existing posts retain their stored final paths and remain in their previous year directories. Categories with an explicit output path continue using that override and must be changed separately if they should follow the year switch.
+
 The container runs as UID/GID `1000:1000` by default. Make sure both bind-mounted directories are writable by that account:
 
 ```bash
@@ -63,7 +72,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Automatic Fetch with a configurable interval.
 - Consecutive-known-post stopping through the shared Fetch service.
 - Endless Preview loading with a configurable batch size.
-- A dedicated slideshow tab with AND (`tag +tag`), exclusion (`-tag`) and comma-separated OR filters, a configurable interval, sequential/random playback, history navigation and fullscreen mode. Slideshow settings persist in the browser.
+- A dedicated slideshow tab with AND (`tag +tag`), exclusion (`-tag`) and comma-separated OR filters, a configurable interval, sequential/random playback, history navigation and fullscreen mode. Left click goes back and right click advances. `Delete` removes an existing final file, clears its saved path, rejects the database post and advances; an unsaved post is only rejected. The view shows the original-post link and stored server file location; slideshow settings persist in the browser.
 - Persisted Preview controls for 50-200 posts per endless-scroll request and 120-600 px thumbnail tiles.
 - Desktop-equivalent sorting for post ID, Danbooru score, live tag-based Preselection, LLM score, personal rating, rating class, status, category, save/seen time, resolution and file size.
 - Combinable status checkboxes matching the desktop Preview filter, with New and Potential enabled by default.
@@ -98,6 +107,7 @@ The existing-file importer remains desktop-only in this first web milestone. A l
 | `DANBOORU_DATA_DIR` | `./danbooru_manager_data` | Database and cache root |
 | `DANBOORU_DATABASE_FILE` | `<data>/danbooru_manager.db` | Optional explicit SQLite path |
 | `DANBOORU_OUTPUT_DIR` | `./danbooru_saved` | Saved-file root |
+| `DANBOORU_ARCHIVE_DIR` | `./danbooru_saved` | Host directory mounted as `/archive` by Docker Compose |
 | `DANBOORU_WEB_BIND` | `127.0.0.1` | Host address used by the Compose port mapping; use `0.0.0.0` for trusted-LAN access |
 | `DANBOORU_DESKTOP_API_TOKEN` | empty/disabled | Bearer token enabling the remote desktop database API |
 | `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID used by Docker Compose |

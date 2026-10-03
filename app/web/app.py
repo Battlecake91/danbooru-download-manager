@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.version import __version__
+from app.core.archive_paths import resolve_archive_path
 from app.danbooru.api import DanbooruApi
 from app.danbooru.thumbnail_cache import ThumbnailCache
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
@@ -401,6 +402,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/slideshow")
     def slideshow(
+        request: Request,
         search: str = Query(default="", max_length=500),
         mode: str = "sequential",
         current_id: int | None = Query(default=None, ge=1),
@@ -408,7 +410,18 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         if mode not in {"sequential", "random"}:
             raise HTTPException(status_code=422, detail="Mode must be sequential or random")
-        return slideshow_post(db, search=search.strip(), mode=mode, current_id=current_id)
+        result = slideshow_post(db, search=search.strip(), mode=mode, current_id=current_id)
+        item = result.get("item")
+        if item is not None:
+            base_url = str(request.app.state.config.get("base_url") or "https://danbooru.donmai.us").rstrip("/")
+            item["original_post_url"] = f"{base_url}/posts/{item['id']}"
+            archive_value = item.get("final_file_path") or item.get("original_path")
+            cache_value = item.get("original_cache_path")
+            local_path = resolve_archive_path(request.app.state.config, archive_value) if archive_value else None
+            if local_path is None and cache_value:
+                local_path = Path(str(cache_value)).expanduser()
+            item["local_file_path"] = str(local_path) if local_path is not None else None
+        return result
 
     @app.patch("/api/posts/status")
     def update_post_statuses(
@@ -535,6 +548,37 @@ def create_app() -> FastAPI:
                 "category_source": "manual-web",
             }
         return {"ok": True}
+
+    @app.delete("/api/posts/{post_id}/local-file")
+    def reject_and_delete_local_file(post_id: int, request: Request, db=Depends(database)) -> dict[str, Any]:
+        row = db.get_post_detail(post_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Post not found")
+
+        old_status = str(row["status"] or "new")
+        final_value = row["final_file_path"]
+        deleted = False
+        final_path = resolve_archive_path(request.app.state.config, final_value) if final_value else None
+        if final_path is not None and final_path.exists():
+            if not final_path.is_file():
+                raise HTTPException(status_code=409, detail="Stored final path is not a file")
+            try:
+                final_path.unlink()
+            except OSError as exc:
+                raise HTTPException(status_code=409, detail=f"Could not delete local file: {exc}") from exc
+            deleted = True
+
+        if final_value:
+            db.clear_post_final_file_path(post_id)
+        db.set_post_status(post_id, "rejected", request.app.state.config)
+        request.app.state.recommendation_cache.apply_status_change(post_id, old_status, "rejected")
+        return {
+            "ok": True,
+            "post_id": post_id,
+            "status": "rejected",
+            "file_deleted": deleted,
+            "previous_path": str(final_path) if final_path is not None else None,
+        }
 
     @app.post("/api/posts/{post_id}/save")
     def save_post(post_id: int, payload: PostSaveRequest, request: Request, db=Depends(database)) -> dict[str, Any]:
