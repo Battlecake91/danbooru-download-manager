@@ -196,6 +196,37 @@ class RemoteDatabase:
     def app_settings_as_values(self) -> dict[str, Any]:
         return dict(self._rpc("app_settings_as_values") or {})
 
+    def set_post_status(
+        self,
+        post_id: int,
+        status: str,
+        config: dict[str, Any] | None = None,
+    ) -> None:
+        # The desktop config contains Windows cache paths. The web endpoint uses
+        # the Docker runtime config instead and moves thumbnails inside /data.
+        _ = config
+        self._request(
+            "PATCH",
+            f"/api/posts/{int(post_id)}",
+            json={"status": str(status)},
+        )
+
+    def set_post_statuses(
+        self,
+        post_ids: list[int],
+        status: str,
+        config: dict[str, Any] | None = None,
+    ) -> None:
+        _ = config
+        clean_ids = list(dict.fromkeys(int(post_id) for post_id in post_ids))
+        if not clean_ids:
+            return
+        self._request(
+            "PATCH",
+            "/api/posts/status",
+            json={"post_ids": clean_ids, "status": str(status)},
+        )
+
     def apply_app_settings_to_config(self, config: dict[str, Any]) -> None:
         local_only = {
             "connection",

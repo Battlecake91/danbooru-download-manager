@@ -16,6 +16,8 @@ def test_viewer_has_configurable_list_preview_strip() -> None:
     config_tab_source = read_source("app/gui/config_tab.py")
 
     assert "class RelatedPreviewTile" in source
+    assert "RemoteThumbnailTask(self.db, self.post_id)" in source
+    assert "RelatedPreviewTile(self.db, related_id" in source
     assert "self.related_strip_area = QScrollArea()" in source
     assert "def update_related_preview_strip" in source
     assert "def open_related_preview_post" in source
@@ -115,11 +117,16 @@ def test_web_viewer_supports_wheel_and_pinch_zoom() -> None:
     assert "function installViewerImageGestures" in web_source
     assert 'stage.addEventListener("wheel"' in web_source
     assert "event.preventDefault()" in web_source
-    assert "Math.exp(-event.deltaY * 0.0015)" in web_source
+    assert "event.deltaMode === WheelEvent.DOM_DELTA_LINE" in web_source
+    assert "Math.exp(-deltaPixels * 0.0015)" in web_source
     assert "pointers.size >= 2" in web_source
     assert "pinchStart.scale * distance(values) / pinchStart.distance" in web_source
     assert "scale = clamp" in web_source
     assert "stage.ondblclick = reset" in web_source
+    assert 'id="viewer-zoom-in"' in web_source
+    assert 'id="viewer-zoom-out"' in web_source
+    assert 'id="viewer-zoom-reset"' in web_source
+    assert "zoomIn: () => setScaleAt" in web_source
     assert ".viewer-stage.zoomed { cursor: grab; touch-action: none; }" in css_source
     assert "will-change: transform" in css_source
 

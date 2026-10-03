@@ -43,6 +43,9 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Fixed
 
+- Web Viewer zoom now exposes visible zoom/reset controls and normalizes wheel delta modes so mouse-wheel zoom behaves consistently across browsers while retaining pinch and drag gestures.
+- Remote desktop status changes now use the server's Docker cache paths; rejecting or saving a post no longer sends Windows thumbnail directories to the server.
+- Desktop Viewer Previous/Current/Next tiles now load thumbnails through the Remote Docker media endpoint instead of trying to open server-side Linux paths on the desktop computer.
 - Filename-excluded Viewer tags are no longer crossed out; the existing filename-only filter still hides them on demand.
 - Tag context actions now use an exact-tag request body and verify the stored result, fixing exclusions that could not be removed for tags containing URL or normalization-sensitive characters.
 - Prevented automatic web Fetch from silently using the unrestricted global query when no saved preset was applied.

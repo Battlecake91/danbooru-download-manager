@@ -176,7 +176,7 @@ For a local data source, the remaining setup can configure:
 
 Authenticated access is recommended for saved searches and account-specific API features. The default sample post is Danbooru post `11199825`.
 
-In Remote Docker mode, Preview, Viewer, status, rating, category, tag and final-save changes are performed on the server. Fetch is started or scheduled in the web interface. The existing-file importer remains local-only because the server cannot access arbitrary folders on the desktop computer.
+In Remote Docker mode, Preview, Viewer, status, rating, category, tag and final-save changes are performed on the server. Pressing `F` in the desktop Viewer saves the final file into the Docker archive mount (`/archive`, normally `danbooru_saved`) and records it in the server database. The desktop may keep a temporary local display copy in its Viewer cache, but that copy is not the final archived file. Fetch is started or scheduled in the web interface. The existing-file importer remains local-only because the server cannot access arbitrary folders on the desktop computer.
 
 See [`docs/FIRST_TIME_USAGE.md`](docs/FIRST_TIME_USAGE.md).
 

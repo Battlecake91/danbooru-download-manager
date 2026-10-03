@@ -466,7 +466,7 @@ async function loadMorePosts() {
 
 function viewerUrl(id) { return `/viewer/${id}?${queryString()}`; }
 
-function installViewerImageGestures(stage, image, {previous, next}) {
+function installViewerImageGestures(stage, image, {previous, next, onScaleChange}) {
   const pointers = new Map();
   let scale = 1;
   let panX = 0;
@@ -491,6 +491,7 @@ function installViewerImageGestures(stage, image, {previous, next}) {
     constrainPan();
     image.style.transform = scale === 1 ? "" : `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
     stage.classList.toggle("zoomed", scale > 1);
+    onScaleChange?.(scale);
   };
   const setScaleAt = (nextScale, anchorX, anchorY) => {
     const boundedScale = clamp(nextScale, 1, 6);
@@ -519,7 +520,12 @@ function installViewerImageGestures(stage, image, {previous, next}) {
     const rect = stage.getBoundingClientRect();
     const anchorX = event.clientX - rect.left - rect.width / 2;
     const anchorY = event.clientY - rect.top - rect.height / 2;
-    setScaleAt(scale * Math.exp(-event.deltaY * 0.0015), anchorX, anchorY);
+    const deltaPixels = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? event.deltaY * 16
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? event.deltaY * Math.max(1, stage.clientHeight)
+        : event.deltaY;
+    setScaleAt(scale * Math.exp(-deltaPixels * 0.0015), anchorX, anchorY);
   }, {passive: false});
 
   stage.onpointerdown = event => {
@@ -591,7 +597,11 @@ function installViewerImageGestures(stage, image, {previous, next}) {
   stage.onpointercancel = finishPointer;
   stage.ondblclick = reset;
   render();
-  return {reset};
+  return {
+    reset,
+    zoomIn: () => setScaleAt(scale * 1.25, 0, 0),
+    zoomOut: () => setScaleAt(scale / 1.25, 0, 0),
+  };
 }
 
 function viewerTagGroup(title, type, items, detailed = false) {
@@ -792,6 +802,11 @@ async function openViewer(postId, push = true, historyMode = "append") {
       <a class="button-link" id="viewer-original" href="${esc(data.original_post_url)}" target="_blank" rel="noreferrer" title="Open original post (O)">Original Post</a>
       <button type="button" id="viewer-copy-link">Copy Link</button>
       <button type="button" class="primary" id="viewer-save" data-viewer-save title="Save final file (F)">Save</button>
+      <div class="viewer-zoom-controls" aria-label="Image zoom">
+        <button type="button" class="icon-button" id="viewer-zoom-out" title="Zoom out" aria-label="Zoom out">&#8722;</button>
+        <button type="button" id="viewer-zoom-reset" title="Reset zoom"><span id="viewer-zoom-value">100%</span></button>
+        <button type="button" class="icon-button" id="viewer-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      </div>
       <span class="viewer-toolbar-spacer"></span>
       <strong>Post #${data.id}</strong>
     </div>
@@ -841,7 +856,11 @@ async function openViewer(postId, push = true, historyMode = "append") {
     const imageGestures = installViewerImageGestures($("#viewer-stage"), $("#viewer-image"), {
       previous: () => previousId != null && $("#viewer-prev").click(),
       next: () => nextId != null && $("#viewer-next").click(),
+      onScaleChange: scale => { $("#viewer-zoom-value").textContent = `${Math.round(scale * 100)}%`; },
     });
+    $("#viewer-zoom-in").onclick = imageGestures.zoomIn;
+    $("#viewer-zoom-out").onclick = imageGestures.zoomOut;
+    $("#viewer-zoom-reset").onclick = imageGestures.reset;
     $("#viewer-fit").onchange = event => {
       const nativeSize = !event.target.checked;
       imageGestures.reset();

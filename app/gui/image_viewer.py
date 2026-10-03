@@ -7,7 +7,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, QRectF, QSize, Signal, QTimer
+from PySide6.QtCore import QThreadPool, Qt, QRectF, QSize, Signal, QTimer
 from PySide6.QtGui import QAction, QBrush, QColor, QFont, QGuiApplication, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -43,6 +43,7 @@ from app.services.download_service import DownloadService
 from app.danbooru.api import DanbooruApi
 from app.gui.icon_utils import ensure_app_icon
 from app.gui.platform_open import open_local_path as open_os_local_path
+from app.gui.thumbnail_grid import RemoteThumbnailTask
 from app.i18n.i18n import tr
 from app.gui.tag_display import TypedTagListWidget, typed_tags_for_post
 from app.services.final_save_service import AlreadySavedError, FinalSaveService
@@ -128,8 +129,9 @@ class StatusChipBar(QWidget):
 class RelatedPreviewTile(QFrame):
     clicked = Signal(int)
 
-    def __init__(self, post_id: int, label: str, row: Any, thumbnail_size: int, *, active: bool) -> None:
+    def __init__(self, db: Database, post_id: int, label: str, row: Any, thumbnail_size: int, *, active: bool) -> None:
         super().__init__()
+        self.db = db
         self.post_id = int(post_id)
         self.thumbnail_size = max(48, min(320, int(thumbnail_size)))
         tile_width = self.thumbnail_size + 12
@@ -147,16 +149,20 @@ class RelatedPreviewTile(QFrame):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(4)
 
-        thumbnail = QLabel()
-        thumbnail.setAlignment(Qt.AlignCenter)
-        thumbnail.setFixedSize(QSize(self.thumbnail_size, self.thumbnail_size))
-        thumbnail.setStyleSheet("QLabel { background: #151515; border: none; color: #aaaaaa; }")
+        self.thumbnail = QLabel()
+        self.thumbnail.setAlignment(Qt.AlignCenter)
+        self.thumbnail.setFixedSize(QSize(self.thumbnail_size, self.thumbnail_size))
+        self.thumbnail.setStyleSheet("QLabel { background: #151515; border: none; color: #aaaaaa; }")
         pixmap = self.load_preview_pixmap(row)
         if pixmap is not None and not pixmap.isNull():
-            thumbnail.setPixmap(pixmap)
+            self.thumbnail.setPixmap(pixmap)
         else:
-            thumbnail.setText("no preview")
-        layout.addWidget(thumbnail)
+            self.thumbnail.setText("loading…" if getattr(self.db, "is_remote", False) else "no preview")
+            if getattr(self.db, "is_remote", False):
+                self._remote_thumbnail_task = RemoteThumbnailTask(self.db, self.post_id)
+                self._remote_thumbnail_task.signals.loaded.connect(self.apply_remote_thumbnail)
+                QThreadPool.globalInstance().start(self._remote_thumbnail_task)
+        layout.addWidget(self.thumbnail)
 
         caption = QLabel(label)
         caption.setAlignment(Qt.AlignCenter)
@@ -193,6 +199,23 @@ class RelatedPreviewTile(QFrame):
                 continue
             return pixmap.scaled(self.thumbnail_size, self.thumbnail_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         return None
+
+    def apply_remote_thumbnail(self, data: object) -> None:
+        if not isinstance(data, bytes) or not data:
+            self.thumbnail.setText("no preview")
+            return
+        image = QImage()
+        if not image.loadFromData(data):
+            self.thumbnail.setText("no preview")
+            return
+        pixmap = QPixmap.fromImage(image).scaled(
+            self.thumbnail_size,
+            self.thumbnail_size,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+        self.thumbnail.clear()
+        self.thumbnail.setPixmap(pixmap)
 
 
 def make_preview_strip_placeholder_tile(thumbnail_size: int) -> QFrame:
@@ -1102,7 +1125,7 @@ class ImageViewerWindow(QMainWindow):
     def add_preview_strip_tile(self, relation_label: str, related_id: int, row: Any, active: bool, thumbnail_size: int) -> RelatedPreviewTile:
         status = str(self.row_value(row, "status", "-") or "-")
         label = f"{relation_label}\n{related_id}\n{status}"
-        tile = RelatedPreviewTile(related_id, label, row, thumbnail_size, active=active)
+        tile = RelatedPreviewTile(self.db, related_id, label, row, thumbnail_size, active=active)
         tile.setToolTip(
             self.t(
                 "viewer.preview_strip_tooltip",

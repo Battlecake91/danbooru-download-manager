@@ -63,6 +63,32 @@ def test_remote_cursor_supports_sqlite_style_key_and_index_access() -> None:
     assert row["status"] == "potential"
 
 
+def test_remote_status_updates_never_send_desktop_paths(monkeypatch) -> None:
+    database = RemoteDatabase("http://docker.test:8765", "secret")
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    def fake_request(method: str, endpoint: str, **kwargs):
+        calls.append((method, endpoint, kwargs))
+        return {"ok": True}
+
+    monkeypatch.setattr(database, "_request", fake_request)
+    desktop_config = {"rejected_thumbnail_dir": r"C:\desktop\thumbnails\rejected"}
+
+    database.set_post_status(12, "rejected", desktop_config)
+    database.set_post_statuses([12, 13, 12], "potential", desktop_config)
+
+    assert calls == [
+        ("PATCH", "/api/posts/12", {"json": {"status": "rejected"}}),
+        (
+            "PATCH",
+            "/api/posts/status",
+            {"json": {"post_ids": [12, 13], "status": "potential"}},
+        ),
+    ]
+    assert "C:\\desktop" not in repr(calls)
+    database.close()
+
+
 def test_desktop_health_requires_configured_matching_token(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("DANBOORU_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DANBOORU_OUTPUT_DIR", str(tmp_path / "archive"))

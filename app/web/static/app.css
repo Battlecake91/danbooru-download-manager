@@ -112,6 +112,9 @@ td input[type="text"], td input[type="number"] { width: 120px; min-height: 30px;
 .viewer-toolbar-spacer { flex: 1; }
 .viewer-fit { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 .viewer-fit input { min-height: auto; }
+.viewer-zoom-controls { display: flex; align-items: center; gap: 3px; }
+.viewer-zoom-controls .icon-button { width: 34px; height: 34px; font-size: 19px; }
+#viewer-zoom-reset { width: 62px; height: 34px; padding: 0 6px; font-variant-numeric: tabular-nums; }
 .button-link { display: inline-flex; align-items: center; min-height: 36px; padding: 7px 11px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); color: var(--text); text-decoration: none; }
 .button-link:hover { border-color: var(--teal); }
 .viewer-info { min-height: 30px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: #191c1a; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; }
