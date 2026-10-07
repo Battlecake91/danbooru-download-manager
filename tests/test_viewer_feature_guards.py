@@ -147,12 +147,15 @@ def test_web_slideshow_has_tag_logic_timing_and_navigation_controls() -> None:
     assert 'id="slideshow-original"' in html_source
     assert 'id="slideshow-open-viewer"' in html_source
     assert 'id="slideshow-info"' in html_source
+    assert 'id="slideshow-fullscreen-exit"' in html_source
     assert 'localStorage.setItem("danbooru.slideshow"' in web_source
     assert "function scheduleSlideshow" in web_source
     assert "function slideshowPrevious" in web_source
     assert "function rejectSlideshowCurrent" in web_source
     assert "function toggleSlideshowInfo" in web_source
     assert "function openSlideshowPostInViewer" in web_source
+    assert "function toggleSlideshowFullscreen" in web_source
+    assert "document.exitFullscreen()" in web_source
     assert '$("#slideshow-stage").onpointerup' in web_source
     assert '$("#slideshow-stage").oncontextmenu' in web_source
     assert 'event.key === "Delete"' in web_source
@@ -167,7 +170,9 @@ def test_web_slideshow_has_tag_logic_timing_and_navigation_controls() -> None:
     assert "db.clear_post_final_file_path(post_id)" in api_source
     assert 'str(search or "").split(",")' in repository_source
     assert "NOT EXISTS (SELECT 1 FROM post_tags sn" in repository_source
+    assert 'p.status = \'saved\'' in repository_source
     assert ".slideshow-stage img" in css_source
+    assert ".slideshow-view:fullscreen > :not(.slideshow-stage):not(.slideshow-fullscreen-exit)" in css_source
 
 
 def test_web_preview_exposes_desktop_sorting_and_persisted_sizes() -> None:

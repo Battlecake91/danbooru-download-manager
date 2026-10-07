@@ -323,6 +323,15 @@ function openSlideshowPostInViewer() {
   openViewer(Number(postId));
 }
 
+async function toggleSlideshowFullscreen() {
+  const view = $("#view-slideshow");
+  if (document.fullscreenElement === view) {
+    await document.exitFullscreen();
+  } else {
+    await view.requestFullscreen();
+  }
+}
+
 function scheduleSlideshow() {
   clearTimeout(state.slideshowTimer);
   if (!state.slideshowRunning) return;
@@ -1426,7 +1435,8 @@ $("#slideshow-next").onclick = () => slideshowNext().catch(error => toast(error.
 $("#slideshow-previous").onclick = slideshowPrevious;
 $("#slideshow-open-viewer").onclick = openSlideshowPostInViewer;
 $("#slideshow-info").onclick = toggleSlideshowInfo;
-$("#slideshow-fullscreen").onclick = () => $("#view-slideshow").requestFullscreen?.().catch(error => toast(error.message));
+$("#slideshow-fullscreen").onclick = () => toggleSlideshowFullscreen().catch(error => toast(error.message));
+$("#slideshow-fullscreen-exit").onclick = () => toggleSlideshowFullscreen().catch(error => toast(error.message));
 $("#slideshow-search").onkeydown = event => {
   if (event.key !== "Enter") return;
   event.preventDefault();

@@ -399,9 +399,13 @@ def test_negative_tag_filter_is_parameterized() -> None:
 def test_slideshow_tag_filter_supports_and_exclude_and_or_groups(tmp_path: Path) -> None:
     db = make_db(tmp_path / "slideshow-filter.db")
     db.executemany(
-        "INSERT INTO posts (id, status, preview_url) VALUES (?, 'new', ?)",
+        "INSERT INTO posts (id, status, preview_url) VALUES (?, 'saved', ?)",
         ((10, "https://example.test/10.jpg"), (11, "https://example.test/11.jpg"),
          (12, "https://example.test/12.jpg"), (13, "https://example.test/13.jpg")),
+    )
+    db.execute(
+        "INSERT INTO posts (id, status, preview_url) VALUES (14, 'already_known', ?)",
+        ("https://example.test/14.jpg",),
     )
     db.executemany(
         "INSERT INTO post_tags (post_id, tag, tag_type) VALUES (?, ?, 'general')",
@@ -410,6 +414,7 @@ def test_slideshow_tag_filter_supports_and_exclude_and_or_groups(tmp_path: Path)
             (11, "1girl"), (11, "smile"), (11, "nude"),
             (12, "2girls"),
             (13, "1girl"),
+            (14, "1girl"), (14, "smile"),
         ),
     )
     db.commit()
@@ -432,6 +437,7 @@ def test_slideshow_tag_filter_supports_and_exclude_and_or_groups(tmp_path: Path)
 
 def test_slideshow_navigation_wraps_and_random_avoids_current_post(tmp_path: Path) -> None:
     db = make_db(tmp_path / "slideshow-navigation.db")
+    db.set_post_status(3, "saved")
     try:
         first = slideshow_post(db, search="blue_hair", mode="sequential")
         second = slideshow_post(db, search="blue_hair", mode="sequential", current_id=first["item"]["id"])

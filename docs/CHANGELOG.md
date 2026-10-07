@@ -9,6 +9,7 @@ This changelog groups development into user-facing milestones instead of preserv
 - Added a web slideshow tab with compound tag filtering, exclusions, comma-separated alternatives, configurable timing, sequential/random playback, history navigation and fullscreen mode.
 - Added mouse navigation and original-post/local-file location details to the web slideshow. `Delete` now removes an existing final file, clears its stored path, rejects the post and advances automatically.
 - Added persistent slideshow controls for opening the original post, toggling metadata/tags and opening the current post in the full Viewer with return navigation back to the slideshow.
+- Restricted the web slideshow to saved posts and changed fullscreen mode to show only the image with a dedicated exit control.
 - Added a first-start **Local / Remote Docker** data-source choice and matching Config controls with connection testing and restart-safe persistence.
 - Added an authenticated Docker Desktop API so the standalone desktop application can use the server's SQLite data without exposing or network-mounting the database file.
 - Added background Remote Docker thumbnail loading and server-backed Viewer media caching for the desktop Preview and Viewer.
