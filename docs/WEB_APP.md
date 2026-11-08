@@ -25,11 +25,12 @@ The default address is `http://127.0.0.1:8765`.
 docker compose up --build
 ```
 
-Compose mounts one long-lived library directory as `/archive` and one regenerable SSD cache as `/cache`. SQLite is stored in the archive's hidden `.danbooru_manager` subdirectory, saved images use year and category directories, and thumbnails plus Viewer/original downloads stay in the SSD cache.
+Compose mounts low-latency persistent SQLite state as `/state`, the image library as `/archive`, and regenerable SSD caches as `/cache`. Keeping the database off an HDD-backed archive is important for responsive Preview, Viewer and slideshow queries.
 
 Copy `.env.example` to `.env` and select the library root:
 
 ```dotenv
+DANBOORU_STATE_DIR=/srv/danbooru-manager-state
 DANBOORU_ARCHIVE_DIR=/path/to/images
 DANBOORU_CACHE_DIR=/srv/danbooru-manager-cache
 DANBOORU_IMPORT_DIR=/path/to/existing/images
@@ -38,9 +39,10 @@ DANBOORU_IMPORT_DIR=/path/to/existing/images
 The resulting host layout is:
 
 ```text
+/srv/danbooru-manager-state/
+  danbooru_manager.db
+
 /path/to/images/
-  .danbooru_manager/
-    danbooru_manager.db
   2026/
     <category-folder>/
 
@@ -51,37 +53,32 @@ The resulting host layout is:
     rejected/
   originals/
     cache/
-  2027/
-    <category-folder>/
 ```
 
 Categories without an explicit output path are saved as `/archive/<current-year>/<category-folder>`. The current year is evaluated for every save, so a continuously running container switches years automatically. The year directory is created during startup and also on demand when saving. Existing posts retain their stored `/archive/<old-year>/...` paths and remain in their previous year directories. Categories with an explicit output path continue using that override and must be cleared if they should follow the automatic year layout.
 
 ### Migrate an existing Compose installation
 
-Stop the container before moving the SQLite database and caches. Replace `/path/to/images` below with the same absolute host path used for `DANBOORU_ARCHIVE_DIR` in `.env`:
+Stop the container before copying SQLite so its WAL is cleanly checkpointed. Keep the old database as a backup until the new state mount is verified:
 
 ```bash
 sudo docker compose down
 ARCHIVE_DIR=/path/to/images
+STATE_DIR=/srv/danbooru-manager-state
 CACHE_DIR=/srv/danbooru-manager-cache
 CURRENT_YEAR=$(date +%Y)
-sudo mkdir -p "$ARCHIVE_DIR/.danbooru_manager" "$ARCHIVE_DIR/$CURRENT_YEAR"
-sudo mkdir -p "$CACHE_DIR"
-sudo cp -a ./danbooru_manager_data/. "$ARCHIVE_DIR/.danbooru_manager/"
-sudo cp -a "$ARCHIVE_DIR/.danbooru_manager/thumbnails" "$CACHE_DIR/" 2>/dev/null || true
-sudo cp -a "$ARCHIVE_DIR/.danbooru_manager/originals" "$CACHE_DIR/" 2>/dev/null || true
-sudo chown -R 1000:1000 "$ARCHIVE_DIR/.danbooru_manager" "$ARCHIVE_DIR/$CURRENT_YEAR" "$CACHE_DIR"
+sudo mkdir -p "$STATE_DIR" "$ARCHIVE_DIR/$CURRENT_YEAR" "$CACHE_DIR"
+sudo cp -a "$ARCHIVE_DIR/.danbooru_manager/danbooru_manager.db" "$STATE_DIR/danbooru_manager.db"
+sudo chown -R 1000:1000 "$STATE_DIR" "$ARCHIVE_DIR/$CURRENT_YEAR" "$CACHE_DIR"
 sudo docker compose up -d --build
 ```
 
-Keep the old `danbooru_manager_data` directory as a backup until the web interface shows the existing posts, presets and configuration. Do not start with an empty `.danbooru_manager` directory unless a new database is intended.
-After Preview and Viewer successfully use the SSD cache, the copied `thumbnails` and `originals` directories below `.danbooru_manager` can be removed; they are no longer runtime locations.
+Set `DANBOORU_STATE_DIR=/srv/danbooru-manager-state` in `.env` before starting. Keep the old `.danbooru_manager` directory as a backup until the web interface shows the existing posts, presets and configuration. Do not start with an empty state directory unless a new database is intended.
 
 The container runs as UID/GID `1000:1000` by default. Make sure the Manager data, current year and SSD cache directories are writable by that account:
 
 ```bash
-sudo chown -R 1000:1000 /path/to/images/.danbooru_manager
+sudo chown -R 1000:1000 /srv/danbooru-manager-state
 sudo chown -R 1000:1000 /srv/danbooru-manager-cache
 ```
 
@@ -100,7 +97,7 @@ Then recreate the container with `docker compose up -d --build`. Select **Remote
 
 The desktop and web applications use the same SQLite schema. SQLite WAL mode and the existing write coordinator keep access orderly inside each process. For the first deployment, avoid running Fetch or maintenance writes in both applications at the same time. Read-only Preview and Viewer access can coexist with a Fetch.
 
-Container paths override path values stored by a desktop installation. This allows a Windows-created database to be mounted into the Linux container while all persistent data remains below `/archive`.
+Container paths override path values stored by a desktop installation. This allows a Windows-created database to be mounted into the Linux container while database state, archived images and regenerable caches use storage appropriate to their access patterns.
 Stored Windows thumbnail paths are matched by their portable filename inside the active, saved and rejected thumbnail mounts.
 Viewer media prefers local originals and archived files, then Danbooru's large/original URL. Grid thumbnails are used in the Viewer only as a final fallback.
 With **Fit** enabled, Viewer media is contained within both the available width and height. Disabling **Fit** shows the native image size in a scrollable area.
@@ -144,7 +141,7 @@ The web Importer scans `DANBOORU_IMPORT_DIR`, which Compose mounts read-only as 
 | --- | --- | --- |
 | `DANBOORU_WEB_HOST` | `127.0.0.1` | Listen address outside Docker |
 | `DANBOORU_WEB_PORT` | `8765` | HTTP port |
-| `DANBOORU_DATA_DIR` | `./danbooru_manager_data` outside Compose; `/archive/.danbooru_manager` in Compose | Database and cache root |
+| `DANBOORU_DATA_DIR` | `./danbooru_manager_data` outside Compose; `/state` in Compose | Database state root |
 | `DANBOORU_DATABASE_FILE` | `<data>/danbooru_manager.db` | Optional explicit SQLite path |
 | `DANBOORU_OUTPUT_DIR` | `./danbooru_saved` | Saved-file root |
 | `DANBOORU_ARCHIVE_DIR` | required by Compose | Host library directory mounted as `/archive` |
@@ -156,3 +153,4 @@ The web Importer scans `DANBOORU_IMPORT_DIR`, which Compose mounts read-only as 
 | `DANBOORU_WEB_BIND` | `127.0.0.1` | Host address used by the Compose port mapping; use `0.0.0.0` for trusted-LAN access |
 | `DANBOORU_DESKTOP_API_TOKEN` | empty/disabled | Bearer token enabling the remote desktop database API |
 | `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID used by Docker Compose |
+| `DANBOORU_STATE_DIR` | required by Compose | Host SSD directory mounted as `/state` for persistent SQLite state |

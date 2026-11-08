@@ -50,6 +50,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Fixed
 
+- Docker now stores SQLite on a dedicated low-latency `/state` mount instead of the HDD-backed image archive; Preview, Viewer and slideshow queries no longer depend on archive filesystem latency.
 - Docker startup no longer performs several filesystem checks per cached image; legacy cache paths are rebased from one directory index and the completed migration is skipped on later starts.
 - The headless Docker web image can now load the shared existing-file importer without PySide6; image dimensions use Pillow when Qt is unavailable.
 - Docker cache-path migration now extracts filenames from legacy Windows paths correctly, allowing restored thumbnail and Viewer caches to be rebound directly to `/cache` instead of taking repeated fallback lookups.
