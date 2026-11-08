@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DANBOORU_WEB_PORT=8765 \
     DANBOORU_DATA_DIR=/archive/.danbooru_manager \
     DANBOORU_ARCHIVE_ROOT=/archive \
-    DANBOORU_CACHE_ROOT=/cache
+    DANBOORU_CACHE_ROOT=/cache \
+    DANBOORU_IMPORT_ROOT=/import
 
 WORKDIR /app
 
@@ -16,13 +17,13 @@ RUN pip install --no-cache-dir --upgrade -r requirements-web.txt
 COPY app ./app
 COPY web_main.py ./
 
-RUN mkdir -p /archive/.danbooru_manager /cache \
+RUN mkdir -p /archive/.danbooru_manager /cache /import \
     && groupadd --gid 1000 manager \
     && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin manager \
     && chown -R manager:manager /archive /cache
 USER manager
 
 EXPOSE 8765
-VOLUME ["/archive", "/cache"]
+VOLUME ["/archive", "/cache", "/import"]
 
 CMD ["python", "web_main.py"]

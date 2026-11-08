@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Danbooru Manager</title>
-  <link rel="stylesheet" href="/app.css?v=slideshow-saved-fullscreen-24">
+  <link rel="stylesheet" href="/app.css?v=server-importer-25">
 </head>
 <body>
   <header class="app-header">
@@ -174,9 +174,26 @@
       <div id="slideshow-meta" class="slideshow-meta hidden"></div>
     </section>
 
-    <section id="view-import" class="view hidden empty-state">
-      <h2>Importer</h2>
-      <p>The web importer will work with files mounted on the server. Until that workflow is added, importing remains available in the desktop application.</p>
+    <section id="view-import" class="view hidden">
+      <form id="import-scan-form" class="toolbar section-toolbar">
+        <label class="wide">Quellordner unterhalb des Import-Mounts <input id="import-path" value="." placeholder="z. B. alte_sammlung/2024"></label>
+        <label class="toggle"><input id="import-recursive" type="checkbox" checked> Unterordner</label>
+        <button id="import-scan" type="submit" class="primary">Scannen</button>
+      </form>
+      <div class="import-summary">
+        <span id="import-state">Noch nicht gescannt</span>
+        <span id="import-count">0 Dateien</span>
+      </div>
+      <div id="import-review" class="table-wrap import-review">
+        <table><thead><tr><th><input id="import-select-all" type="checkbox" title="Alle importierbaren auswählen"></th><th>Bewertung</th><th>Post</th><th>Datei</th><th>Auflösung</th><th>Begründung</th></tr></thead><tbody id="import-rows"></tbody></table>
+      </div>
+      <form id="import-run-form" class="toolbar import-actions">
+        <label>Kategorie <select id="import-category" required></select></label>
+        <label class="toggle"><input id="import-thumbnails" type="checkbox"> Thumbnails laden</label>
+        <span id="import-selected">0 ausgewählt</span>
+        <button id="import-run" type="submit" class="primary" disabled>Auswahl ins Archiv kopieren</button>
+      </form>
+      <pre id="import-result" class="log-output hidden"></pre>
     </section>
 
     <section id="view-tags" class="view hidden">
@@ -217,6 +234,6 @@
 
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="tag-context-menu" class="context-menu hidden" role="menu"></div>
-  <script src="/app.js?v=slideshow-saved-fullscreen-24" defer></script>
+  <script src="/app.js?v=server-importer-25" defer></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Added
 
+- Added a server-side web Importer that scans a read-only mounted collection, reviews Post-ID/MD5 candidates and copies selected files into the current year/category Manager archive without modifying the source.
 - Added a web slideshow tab with compound tag filtering, exclusions, comma-separated alternatives, configurable timing, sequential/random playback, history navigation and fullscreen mode.
 - Added mouse navigation and original-post/local-file location details to the web slideshow. `Delete` now removes an existing final file, clears its stored path, rejects the post and advances automatically.
 - Added persistent slideshow controls for opening the original post, toggling metadata/tags and opening the current post in the full Viewer with return navigation back to the slideshow.

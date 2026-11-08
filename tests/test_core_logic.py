@@ -153,6 +153,7 @@ class CoreLogicTests(unittest.TestCase):
                     root,
                     category_id,
                     recursive=False,
+                    copy_to_archive=True,
                     candidate_paths=[str(image_path)],
                 )
 
@@ -161,7 +162,12 @@ class CoreLogicTests(unittest.TestCase):
                 row = db.execute("SELECT status, final_file_path FROM posts WHERE id = 12345").fetchone()
                 self.assertIsNotNone(row)
                 self.assertEqual(row["status"], "saved")
-                self.assertTrue(str(row["final_file_path"]).endswith("without_hash_name.jpg"))
+                imported_path = Path(str(row["final_file_path"]))
+                self.assertNotEqual(imported_path, image_path)
+                self.assertTrue(imported_path.is_file())
+                self.assertEqual(imported_path.read_bytes(), b"abc")
+                self.assertTrue(image_path.is_file())
+                self.assertEqual(imported_path.parent, Path(config["default_output_dir"]) / "md5-test")
             finally:
                 db.close()
 

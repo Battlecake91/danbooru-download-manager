@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shutil
 
 import requests
 from PySide6.QtGui import QImageReader
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from app.core.archive_paths import resolve_archive_path
+from app.core.archive_paths import active_output_directory, resolve_archive_path
 from app.core.category_engine import CategoryEngine, CategoryMatch
 from app.core.database import Database
 from app.core.filename_builder import FilenameBuilder
@@ -226,6 +227,7 @@ class ExistingFileImportService:
         rename_after_import: bool = False,
         update_existing: bool = True,
         fetch_thumbnails: bool = False,
+        copy_to_archive: bool = False,
         candidate_paths: list[str] | None = None,
     ) -> ExistingFileImportResult:
         root = Path(folder).expanduser()
@@ -392,10 +394,24 @@ class ExistingFileImportService:
                     filename=path.name,
                 )
                 self.emit_progress(base_progress)
+                imported_path = path
+                if copy_to_archive:
+                    output_dir = active_output_directory(self.config) / category.folder_name
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    target_name = self.filename_builder.build_filename(post_id, path)
+                    desired_path = output_dir / target_name
+                    try:
+                        same_path = path.resolve() == desired_path.resolve()
+                    except OSError:
+                        same_path = False
+                    if not same_path:
+                        imported_path = unique_path(desired_path)
+                        shutil.copy2(path, imported_path)
+
                 self.db.import_existing_saved_file(
                     post_id=post_id,
                     category_id=int(category_id),
-                    file_path=str(path),
+                    file_path=str(imported_path),
                     source="existing-file-import-update" if existing is not None else "existing-file-import",
                     config=self.config,
                 )
@@ -428,7 +444,7 @@ class ExistingFileImportService:
                     )
                     self.emit_progress(base_progress)
 
-                current_path = path
+                current_path = imported_path
                 rename_message = ""
                 if rename_after_import:
                     try:

@@ -13,6 +13,7 @@ from typing import Any
 from app.core.archive_paths import active_output_directory
 from app.core.config import load_config
 from app.core.database import Database
+from app.services.existing_file_import_service import ExistingFileImportProgress, ExistingFileImportService
 from app.services.post_import_service import FetchProgress, PostImportService
 
 
@@ -26,10 +27,13 @@ def build_web_config() -> dict[str, Any]:
     cache_dir = Path(os.environ.get("DANBOORU_CACHE_ROOT", str(data_dir))).resolve()
     database_file = Path(os.environ.get("DANBOORU_DATABASE_FILE", str(data_dir / "danbooru_manager.db"))).resolve()
     yearly_output_root = os.environ.get("DANBOORU_ARCHIVE_ROOT", "").strip()
+    import_root = os.environ.get("DANBOORU_IMPORT_ROOT", "").strip()
     default_output_dir = os.environ.get("DANBOORU_OUTPUT_DIR", "./danbooru_saved")
     if yearly_output_root:
         config["yearly_output_root"] = yearly_output_root
         default_output_dir = str(active_output_directory(config))
+    if import_root:
+        config["import_root"] = str(Path(import_root).resolve())
 
     config.update(
         {
@@ -88,6 +92,143 @@ def build_web_config() -> dict[str, Any]:
     finally:
         db.close()
     return config
+
+
+@dataclass
+class ImportState:
+    running: bool = False
+    phase: str = "idle"
+    message: str = ""
+    progress: dict[str, Any] = field(default_factory=dict)
+    candidates: list[dict[str, Any]] = field(default_factory=list)
+    result: dict[str, Any] | None = None
+    error: str | None = None
+
+
+class ImportController:
+    def __init__(self, config: dict[str, Any]) -> None:
+        self.config = config
+        self._state = ImportState()
+        self._lock = threading.RLock()
+        self._thread: threading.Thread | None = None
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return copy.deepcopy(asdict(self._state))
+
+    def source_folder(self, relative_path: str) -> Path:
+        root_value = self.config.get("import_root")
+        if not root_value:
+            raise ValueError("Server import directory is not configured")
+        root = Path(str(root_value)).resolve()
+        requested = Path(str(relative_path or ".").strip() or ".")
+        if requested.is_absolute():
+            raise ValueError("Use a path relative to the mounted import directory")
+        folder = (root / requested).resolve()
+        try:
+            folder.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Import path must stay inside the mounted import directory") from exc
+        if not folder.is_dir():
+            raise ValueError("Import directory does not exist")
+        return folder
+
+    def start_scan(self, relative_path: str, recursive: bool) -> bool:
+        folder = self.source_folder(relative_path)
+        with self._lock:
+            if self._state.running:
+                return False
+            self._state = ImportState(running=True, phase="scan", message="Scanning import directory")
+            self._thread = threading.Thread(
+                target=self._scan,
+                args=(folder, recursive),
+                name="web-import-scan",
+                daemon=True,
+            )
+            self._thread.start()
+            return True
+
+    def start_import(self, category_id: int, candidate_paths: list[str], fetch_thumbnails: bool) -> bool:
+        with self._lock:
+            if self._state.running:
+                return False
+            allowed = {
+                str(item.get("path")): item
+                for item in self._state.candidates
+                if item.get("importable") and item.get("path")
+            }
+            selected = [path for path in dict.fromkeys(candidate_paths) if path in allowed]
+            if not selected:
+                raise ValueError("Select at least one importable candidate")
+            root = Path(str(self.config.get("import_root"))).resolve()
+            for value in selected:
+                Path(value).resolve().relative_to(root)
+            self._state.running = True
+            self._state.phase = "import"
+            self._state.message = "Copying selected files into the Manager archive"
+            self._state.result = None
+            self._state.error = None
+            self._thread = threading.Thread(
+                target=self._import,
+                args=(category_id, selected, fetch_thumbnails),
+                name="web-import-copy",
+                daemon=True,
+            )
+            self._thread.start()
+            return True
+
+    def _progress(self, progress: ExistingFileImportProgress) -> None:
+        with self._lock:
+            self._state.progress = asdict(progress)
+            self._state.message = progress.message
+
+    def _scan(self, folder: Path, recursive: bool) -> None:
+        db = open_database(self.config)
+        try:
+            result = ExistingFileImportService(self.config, db, progress_callback=self._progress).scan_folder(
+                folder, recursive=recursive
+            )
+            with self._lock:
+                self._state.candidates = [asdict(item) for item in result.candidates]
+                self._state.result = {"scanned_files": len(result.candidates)}
+                self._state.phase = "review"
+                self._state.message = f"Scan complete: {len(result.candidates)} files"
+        except Exception as exc:
+            with self._lock:
+                self._state.phase = "failed"
+                self._state.error = f"{type(exc).__name__}: {exc}"
+                self._state.message = "Import scan failed"
+        finally:
+            db.close()
+            with self._lock:
+                self._state.running = False
+
+    def _import(self, category_id: int, selected: list[str], fetch_thumbnails: bool) -> None:
+        db = open_database(self.config)
+        try:
+            root = Path(str(self.config["import_root"]))
+            result = ExistingFileImportService(self.config, db, progress_callback=self._progress).import_folder(
+                root,
+                category_id,
+                recursive=True,
+                update_existing=True,
+                fetch_thumbnails=fetch_thumbnails,
+                copy_to_archive=True,
+                candidate_paths=selected,
+            )
+            with self._lock:
+                self._state.result = asdict(result)
+                self._state.phase = "done"
+                self._state.message = "Import complete"
+        except Exception as exc:
+            with self._lock:
+                self._state.phase = "failed"
+                self._state.error = f"{type(exc).__name__}: {exc}"
+                self._state.message = "Import failed"
+        finally:
+            db.close()
+            with self._lock:
+                self._state.running = False
 
 
 def _rebase_existing_cache_paths(db: Database, config: dict[str, Any]) -> None:

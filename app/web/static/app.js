@@ -1,4 +1,4 @@
-const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, previewActionRunning: false, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerReturnTab: "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null, tagSuggestions: [], tagSuggestionIndex: -1, tagSuggestionTimer: null, tagSuggestionRequest: 0, slideshowRunning: false, slideshowLoading: false, slideshowTimer: null, slideshowHistory: [], slideshowHistoryIndex: -1, slideshowSignature: "", slideshowInfoVisible: false };
+const state = { ready: false, offset: 0, loading: false, hasMore: true, total: 0, batch: 75, thumbnailSize: 280, selectedPostIds: new Set(), selectionAnchorId: null, previewActionRunning: false, tab: location.pathname.startsWith("/viewer/") ? "viewer" : "preview", viewerReturnTab: "preview", viewerPostId: null, viewerFilenameFilter: false, viewerHistory: [], viewerHistoryIndex: -1, viewerHistoryLimit: 12, nextAfterStatusChange: true, fetchPresets: new Map(), fetchPresetPayload: {}, scheduledPresetName: "", historyFinishedAt: null, tagSuggestions: [], tagSuggestionIndex: -1, tagSuggestionTimer: null, tagSuggestionRequest: 0, slideshowRunning: false, slideshowLoading: false, slideshowTimer: null, slideshowHistory: [], slideshowHistoryIndex: -1, slideshowSignature: "", slideshowInfoVisible: false, importCandidates: [], importSignature: "" };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -440,6 +440,7 @@ function showTab(tab) {
     loadFetchHistory();
   }
   if (tab === "tags") loadTags();
+  if (tab === "import") loadImportStatus();
   if (tab === "categories") loadCategories();
   if (tab === "config") loadConfig();
   if (tab === "maintenance") loadMaintenance();
@@ -1286,6 +1287,68 @@ async function deleteFetchPreset() {
   toast("Fetch preset deleted");
 }
 
+function updateImportSelection() {
+  const selected = $$('#import-rows input[type="checkbox"]:checked').length;
+  const selectable = $$('#import-rows input[type="checkbox"]:not(:disabled)').length;
+  $("#import-selected").textContent = `${selected} ausgewählt`;
+  $("#import-run").disabled = selected === 0 || !$("#import-category").value;
+  $("#import-select-all").checked = selectable > 0 && selected === selectable;
+}
+
+function renderImportState(data) {
+  const progress = data.progress || {};
+  $("#import-state").textContent = data.error || data.message || data.phase || "Bereit";
+  $("#import-count").textContent = data.running && progress.total
+    ? `${progress.current || 0} / ${progress.total}`
+    : `${(data.candidates || []).length} Dateien`;
+  $("#import-scan").disabled = data.running || !data.configured;
+  $("#import-run").disabled = data.running;
+  const categories = data.categories || [];
+  const previousCategory = $("#import-category").value;
+  $("#import-category").innerHTML = `<option value="">Kategorie wählen</option>${categories.map(item => `<option value="${item.id}">${esc(item.name)} (${esc(item.folder_name)})</option>`).join("")}`;
+  if (categories.some(item => String(item.id) === previousCategory)) $("#import-category").value = previousCategory;
+
+  const candidates = data.candidates || [];
+  const signature = candidates.map(item => `${item.path}:${item.confidence}:${item.importable}`).join("\n");
+  if (signature !== state.importSignature) {
+    state.importSignature = signature;
+    state.importCandidates = candidates;
+    $("#import-rows").innerHTML = candidates.map((item, index) => {
+      const enabled = Boolean(item.importable);
+      const checked = enabled && item.confidence === "high";
+      const resolution = item.local_width && item.local_height ? `${item.local_width} × ${item.local_height}` : "-";
+      const confidenceLabel = item.confidence === "high" ? "Match" : item.confidence === "questionable" ? "Prüfen" : "Kein Match";
+      return `<tr class="confidence-${esc(item.confidence)}"><td><input type="checkbox" data-import-index="${index}" ${checked ? "checked" : ""} ${enabled ? "" : "disabled"}></td><td>${confidenceLabel}</td><td>${item.post_id || "-"}</td><td title="${esc(item.path)}">${esc(item.filename)}</td><td>${resolution}</td><td title="${esc(item.reason)}">${esc(item.reason)}</td></tr>`;
+    }).join("") || `<tr><td colspan="6">Keine Dateien gescannt</td></tr>`;
+  }
+  if (data.result && data.phase === "done") {
+    $("#import-result").textContent = JSON.stringify(data.result, null, 2);
+    $("#import-result").classList.remove("hidden");
+  } else if (data.phase !== "done") {
+    $("#import-result").classList.add("hidden");
+  }
+  if (!data.configured) $("#import-state").textContent = "DANBOORU_IMPORT_DIR ist nicht konfiguriert";
+  updateImportSelection();
+}
+
+async function loadImportStatus() {
+  try { renderImportState(await api("/api/import")); } catch (error) { toast(error.message); }
+}
+
+async function scanImport(event) {
+  event.preventDefault();
+  state.importSignature = "";
+  await api("/api/import/scan", {method: "POST", body: JSON.stringify({path: $("#import-path").value.trim() || ".", recursive: $("#import-recursive").checked})});
+  await loadImportStatus();
+}
+
+async function runImport(event) {
+  event.preventDefault();
+  const paths = $$('#import-rows input[type="checkbox"]:checked').map(input => state.importCandidates[Number(input.dataset.importIndex)]?.path).filter(Boolean);
+  await api("/api/import/run", {method: "POST", body: JSON.stringify({category_id: Number($("#import-category").value), candidate_paths: paths, fetch_thumbnails: $("#import-thumbnails").checked})});
+  await loadImportStatus();
+}
+
 async function loadTags() {
   try {
     const params = new URLSearchParams({search: $("#tag-search").value, tag_type: $("#tag-type").value, limit: 200});
@@ -1428,6 +1491,14 @@ $("#fetch-start").onclick = async () => {
 $("#fetch-cancel").onclick = () => api("/api/fetch/cancel", {method:"POST"}).then(renderFetch).catch(error => toast(error.message));
 $("#schedule-form").onsubmit = async event => { event.preventDefault(); try { applySchedule(await api("/api/scheduler", {method:"PUT", body:JSON.stringify({enabled:$("#schedule-enabled").checked, interval_hours:Number($("#schedule-hours").value), preset_name:$("#schedule-preset").value || null})})); toast("Schedule saved"); } catch(error) { toast(error.message); } };
 $("#category-form").onsubmit = async event => { event.preventDefault(); try { await api("/api/categories", {method:"POST", body:JSON.stringify({name:$("#category-name").value, folder_name:$("#category-folder").value || null})}); event.target.reset(); loadCategories(); } catch(error) { toast(error.message); } };
+$("#import-scan-form").onsubmit = event => scanImport(event).catch(error => toast(error.message));
+$("#import-run-form").onsubmit = event => runImport(event).catch(error => toast(error.message));
+$("#import-rows").onchange = updateImportSelection;
+$("#import-category").onchange = updateImportSelection;
+$("#import-select-all").onchange = event => {
+  $$('#import-rows input[type="checkbox"]:not(:disabled)').forEach(input => { input.checked = event.target.checked; });
+  updateImportSelection();
+};
 $("#config-form").onsubmit = async event => { event.preventDefault(); const form = new FormData(event.target); const payload = Object.fromEntries(form.entries()); if (!payload.api_key) delete payload.api_key; payload.request_timeout_seconds = Number(payload.request_timeout_seconds); payload.request_min_interval_seconds = Number(payload.request_min_interval_seconds); try { await api("/api/settings", {method:"PATCH", body:JSON.stringify(payload)}); toast("Configuration saved"); } catch(error) { toast(error.message); } };
 $("#slideshow-start").onclick = () => startSlideshow().catch(error => toast(error.message));
 $("#slideshow-pause").onclick = pauseSlideshow;
@@ -1554,3 +1625,4 @@ bootstrap().then(() => {
   if (match) openViewer(Number(match[1]), false); else resetPreview();
 }).catch(error => toast(error.message));
 setInterval(pollFetch, 1500);
+setInterval(() => { if (state.tab === "import") loadImportStatus(); }, 1200);

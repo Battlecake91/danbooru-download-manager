@@ -32,6 +32,7 @@ Copy `.env.example` to `.env` and select the library root:
 ```dotenv
 DANBOORU_ARCHIVE_DIR=/path/to/images
 DANBOORU_CACHE_DIR=/srv/danbooru-manager-cache
+DANBOORU_IMPORT_DIR=/path/to/existing/images
 ```
 
 The resulting host layout is:
@@ -135,7 +136,7 @@ With **Fit** enabled, Viewer media is contained within both the available width 
 - Category creation and deletion.
 - Basic configuration and database maintenance status.
 
-The existing-file importer remains desktop-only in this first web milestone. A later web importer will scan explicitly mounted server directories, so it operates on data already present on the server instead of depending on browser filesystem selection.
+The web Importer scans `DANBOORU_IMPORT_DIR`, which Compose mounts read-only as `/import`. Paths entered in the web interface are relative to that root and cannot escape it. After Post-ID/MD5 review, selected files are copied with the current filename rules into the active `<current-year>/<category>` archive; source files remain untouched.
 
 ## Environment variables
 
@@ -148,8 +149,10 @@ The existing-file importer remains desktop-only in this first web milestone. A l
 | `DANBOORU_OUTPUT_DIR` | `./danbooru_saved` | Saved-file root |
 | `DANBOORU_ARCHIVE_DIR` | required by Compose | Host library directory mounted as `/archive` |
 | `DANBOORU_CACHE_DIR` | required by Compose | Host SSD directory mounted as `/cache` for thumbnails and downloaded media cache |
+| `DANBOORU_IMPORT_DIR` | required by Compose | Existing collection mounted read-only as `/import` |
 | `DANBOORU_ARCHIVE_ROOT` | `/archive` in Docker | Container library root used for automatic `<current-year>/<category>` output |
 | `DANBOORU_CACHE_ROOT` | `/cache` in Docker | Container cache root; Compose maps this to `DANBOORU_CACHE_DIR` |
+| `DANBOORU_IMPORT_ROOT` | `/import` in Docker | Read-only server source root used by the web Importer |
 | `DANBOORU_WEB_BIND` | `127.0.0.1` | Host address used by the Compose port mapping; use `0.0.0.0` for trusted-LAN access |
 | `DANBOORU_DESKTOP_API_TOKEN` | empty/disabled | Bearer token enabling the remote desktop database API |
 | `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID used by Docker Compose |

@@ -29,7 +29,7 @@ from app.web.repository import (
     row_dict,
     slideshow_post,
 )
-from app.web.runtime import FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
+from app.web.runtime import ImportController, FetchController, FetchScheduler, build_web_config, fetch_overrides_from_payload, open_database
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -129,6 +129,17 @@ class SettingsRequest(BaseModel):
     request_min_interval_seconds: float | None = Field(default=None, ge=0, le=60)
 
 
+class ImportScanRequest(BaseModel):
+    path: str = Field(default=".", max_length=500)
+    recursive: bool = True
+
+
+class ImportRunRequest(BaseModel):
+    category_id: int = Field(ge=1)
+    candidate_paths: list[str] = Field(min_length=1)
+    fetch_thumbnails: bool = False
+
+
 class DesktopRpcRequest(BaseModel):
     method: str = Field(min_length=1, max_length=120)
     args: list[Any] = Field(default_factory=list)
@@ -191,6 +202,7 @@ def _desktop_decode(value: Any) -> Any:
 def create_app() -> FastAPI:
     config = build_web_config()
     fetch_controller = FetchController(config)
+    import_controller = ImportController(config)
     scheduler = FetchScheduler(config, fetch_controller)
 
     @asynccontextmanager
@@ -203,6 +215,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Danbooru Download Manager Web", version=__version__, lifespan=lifespan)
     app.state.config = config
     app.state.fetch_controller = fetch_controller
+    app.state.import_controller = import_controller
     app.state.scheduler = scheduler
     app.state.recommendation_cache = RecommendationResultCache()
     app.state.desktop_api_token = str(os.environ.get("DANBOORU_DESKTOP_API_TOKEN") or "").strip()
@@ -313,6 +326,35 @@ def create_app() -> FastAPI:
     @app.get("/api/fetch")
     def fetch_status(request: Request) -> dict[str, Any]:
         return request.app.state.fetch_controller.snapshot()
+
+    @app.get("/api/import")
+    def import_status(request: Request, db=Depends(database)) -> dict[str, Any]:
+        state = request.app.state.import_controller.snapshot()
+        state["configured"] = bool(request.app.state.config.get("import_root"))
+        state["categories"] = [row_dict(row) for row in db.list_categories_full()]
+        return state
+
+    @app.post("/api/import/scan", status_code=202)
+    def import_scan(payload: ImportScanRequest, request: Request) -> dict[str, Any]:
+        try:
+            started = request.app.state.import_controller.start_scan(payload.path, payload.recursive)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if not started:
+            raise HTTPException(status_code=409, detail="An import job is already running")
+        return request.app.state.import_controller.snapshot()
+
+    @app.post("/api/import/run", status_code=202)
+    def import_run(payload: ImportRunRequest, request: Request) -> dict[str, Any]:
+        try:
+            started = request.app.state.import_controller.start_import(
+                payload.category_id, payload.candidate_paths, payload.fetch_thumbnails
+            )
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if not started:
+            raise HTTPException(status_code=409, detail="An import job is already running")
+        return request.app.state.import_controller.snapshot()
 
     @app.post("/api/fetch", status_code=202)
     def start_fetch(payload: FetchRequest, request: Request, db=Depends(database)) -> dict[str, Any]:

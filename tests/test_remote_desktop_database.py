@@ -17,7 +17,7 @@ from app.core.connection_profile import (
     validate_connection_profile,
 )
 from app.core.remote_database import RemoteCursor, RemoteDatabase
-from app.web.runtime import build_web_config, open_database
+from app.web.runtime import ImportController, build_web_config, open_database
 
 
 def test_web_config_creates_current_year_directory(tmp_path: Path, monkeypatch) -> None:
@@ -80,6 +80,18 @@ def test_web_config_rebases_copied_cache_files(tmp_path: Path, monkeypatch) -> N
 
     assert row["thumbnail_path"] == str(thumbnail)
     assert row["original_cache_path"] == str(original)
+
+
+def test_import_controller_rejects_paths_outside_mount(tmp_path: Path) -> None:
+    import_root = tmp_path / "import"
+    import_root.mkdir()
+    controller = ImportController({"import_root": str(import_root)})
+
+    assert controller.source_folder(".") == import_root.resolve()
+    with pytest.raises(ValueError, match="inside"):
+        controller.source_folder("../outside")
+    with pytest.raises(ValueError, match="relative"):
+        controller.source_folder(str(import_root.resolve()))
 
 
 def test_connection_profile_round_trip_and_factory(tmp_path: Path) -> None:
