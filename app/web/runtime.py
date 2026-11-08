@@ -238,6 +238,17 @@ def _rebase_existing_cache_paths(db: Database, config: dict[str, Any]) -> None:
         "rejected": Path(str(config["rejected_thumbnail_dir"])),
     }
     original_root = Path(str(config["original_cache_dir"]))
+    marker_key = "maintenance.web_cache_paths_rebased_v3"
+    marker_value = json.dumps(
+        {
+            "thumbnail_roots": {key: str(value) for key, value in roots.items()},
+            "original_root": str(original_root),
+        },
+        sort_keys=True,
+    )
+    if db.get_app_setting(marker_key) == marker_value:
+        return
+
     rows = db.execute(
         """
         SELECT id, status, thumbnail_path, rejected_thumbnail_path, original_cache_path
@@ -247,12 +258,27 @@ def _rebase_existing_cache_paths(db: Database, config: dict[str, Any]) -> None:
            OR original_cache_path IS NOT NULL
         """
     ).fetchall()
+    if not rows:
+        # Do not mark a new/empty database as migrated. Tests, restores and
+        # first-run imports can add legacy rows before the next application start.
+        return
+
+    root_files = {
+        root: _cache_files_by_name(root)
+        for root in {*roots.values(), original_root}
+    }
     updates: list[tuple[str | None, str | None, str | None, int]] = []
 
     for row in rows:
-        thumbnail_value = _rebased_cache_file(row["thumbnail_path"], roots, str(row["status"] or ""))
-        rejected_value = _rebased_cache_file(row["rejected_thumbnail_path"], roots, "rejected")
-        original_value = _rebased_cache_file(row["original_cache_path"], {"original": original_root}, "original")
+        thumbnail_value = _rebased_cache_file(
+            row["thumbnail_path"], roots, str(row["status"] or ""), root_files
+        )
+        rejected_value = _rebased_cache_file(
+            row["rejected_thumbnail_path"], roots, "rejected", root_files
+        )
+        original_value = _rebased_cache_file(
+            row["original_cache_path"], {"original": original_root}, "original", root_files
+        )
         current = (
             str(row["thumbnail_path"]) if row["thumbnail_path"] else None,
             str(row["rejected_thumbnail_path"]) if row["rejected_thumbnail_path"] else None,
@@ -271,22 +297,41 @@ def _rebase_existing_cache_paths(db: Database, config: dict[str, Any]) -> None:
             """,
             updates,
         )
-        db.commit()
+    db.execute(
+        """
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (marker_key, marker_value),
+    )
+    db.commit()
 
 
-def _rebased_cache_file(value: Any, roots: dict[str, Path], preferred: str) -> str | None:
+def _cache_files_by_name(root: Path) -> dict[str, str]:
+    try:
+        # Directory enumeration obtains every candidate in one pass. Calling
+        # Path.is_file() for every database row made startup perform hundreds
+        # of thousands of separate filesystem lookups on large libraries.
+        return {entry.name: str(entry) for entry in root.iterdir()}
+    except OSError:
+        return {}
+
+
+def _rebased_cache_file(
+    value: Any,
+    roots: dict[str, Path],
+    preferred: str,
+    root_files: dict[Path, dict[str, str]] | None = None,
+) -> str | None:
     if not value:
         return None
     current = Path(str(value)).expanduser()
 
     ordered_roots = [roots[preferred]] if preferred in roots else []
     ordered_roots.extend(root for key, root in roots.items() if key != preferred)
-    for root in ordered_roots:
-        try:
-            if current.is_file() and current.resolve().is_relative_to(root.resolve()):
-                return str(current)
-        except OSError:
-            continue
     raw_value = str(value)
     portable_names = {
         current.name,
@@ -294,13 +339,19 @@ def _rebased_cache_file(value: Any, roots: dict[str, Path], preferred: str) -> s
         PurePosixPath(raw_value).name,
     }
     for root in ordered_roots:
+        files = root_files.get(root, {}) if root_files is not None else None
         for name in portable_names:
             if not name:
                 continue
-            candidate = root / name
-            if candidate.is_file():
-                return str(candidate)
-    if current.is_file():
+            if files is not None:
+                candidate = files.get(name)
+                if candidate is not None:
+                    return candidate
+            else:
+                candidate = root / name
+                if candidate.is_file():
+                    return str(candidate)
+    if root_files is None and current.is_file():
         return str(current)
     return str(current)
 

@@ -81,6 +81,12 @@ def test_web_config_rebases_copied_cache_files(tmp_path: Path, monkeypatch) -> N
     assert row["thumbnail_path"] == str(thumbnail)
     assert row["original_cache_path"] == str(original)
 
+    def fail_if_rescanned(_root: Path) -> dict[str, str]:
+        raise AssertionError("completed cache migration must not rescan directories")
+
+    monkeypatch.setattr("app.web.runtime._cache_files_by_name", fail_if_rescanned)
+    build_web_config()
+
 
 def test_import_controller_rejects_paths_outside_mount(tmp_path: Path) -> None:
     import_root = tmp_path / "import"
