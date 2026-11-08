@@ -22,8 +22,10 @@ from app.web.runtime import build_web_config, open_database
 
 def test_web_config_creates_current_year_directory(tmp_path: Path, monkeypatch) -> None:
     archive_root = tmp_path / "library"
+    cache_root = tmp_path / "ssd-cache"
     monkeypatch.setenv("DANBOORU_DATA_DIR", str(archive_root / ".danbooru_manager"))
     monkeypatch.setenv("DANBOORU_ARCHIVE_ROOT", str(archive_root))
+    monkeypatch.setenv("DANBOORU_CACHE_ROOT", str(cache_root))
     monkeypatch.delenv("DANBOORU_OUTPUT_DIR", raising=False)
 
     config = build_web_config()
@@ -32,6 +34,52 @@ def test_web_config_creates_current_year_directory(tmp_path: Path, monkeypatch) 
     assert expected.is_dir()
     assert config["default_output_dir"] == str(expected)
     assert config["yearly_output_root"] == str(archive_root)
+    assert config["active_thumbnail_dir"] == str(cache_root / "thumbnails" / "active")
+    assert config["original_cache_dir"] == str(cache_root / "originals" / "cache")
+    assert (cache_root / "thumbnails" / "saved").is_dir()
+    assert (cache_root / "originals" / "cache").is_dir()
+
+
+def test_web_config_rebases_copied_cache_files(tmp_path: Path, monkeypatch) -> None:
+    archive_root = tmp_path / "library"
+    cache_root = tmp_path / "ssd-cache"
+    data_dir = archive_root / ".danbooru_manager"
+    monkeypatch.setenv("DANBOORU_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("DANBOORU_ARCHIVE_ROOT", str(archive_root))
+    monkeypatch.setenv("DANBOORU_CACHE_ROOT", str(cache_root))
+
+    config = build_web_config()
+    thumbnail = cache_root / "thumbnails" / "active" / "123_large.jpg"
+    original = cache_root / "originals" / "cache" / "123_preview.jpg"
+    thumbnail.write_bytes(b"thumbnail")
+    original.write_bytes(b"preview")
+    db = open_database(config)
+    try:
+        db.execute(
+            """
+            INSERT INTO posts (id, status, thumbnail_path, original_cache_path)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                123,
+                "new",
+                "/archive/.danbooru_manager/thumbnails/active/123_large.jpg",
+                "/archive/.danbooru_manager/originals/cache/123_preview.jpg",
+            ),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    build_web_config()
+    db = open_database(config)
+    try:
+        row = db.get_post_detail(123)
+    finally:
+        db.close()
+
+    assert row["thumbnail_path"] == str(thumbnail)
+    assert row["original_cache_path"] == str(original)
 
 
 def test_connection_profile_round_trip_and_factory(tmp_path: Path) -> None:

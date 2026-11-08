@@ -36,7 +36,8 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Changed
 
-- Docker Compose now uses one archive-library mount for all persistent data: Manager SQLite/cache data lives in `.danbooru_manager`, and new images are saved below an automatically selected `<current-year>/<category>` hierarchy with on-demand directory creation.
+- Docker Compose now keeps authoritative Manager SQLite data in the archive's `.danbooru_manager` directory, while new images are saved below an automatically selected `<current-year>/<category>` hierarchy with on-demand directory creation.
+- Docker thumbnail and downloaded-media caches now use a separate configurable SSD mount instead of consuming archive storage; copied cache files are automatically rebound from their old database paths.
 - Remote Docker mode executes final saving on the server; Fetch remains controlled by the web interface and the local-file importer is disabled in this mode.
 - Docker Compose can expose port 8765 on a configurable host address through `DANBOORU_WEB_BIND` while retaining localhost-only binding by default.
 - Automatic web Fetch now requires an existing saved Fetch preset and reloads that preset from SQLite for every scheduled run.

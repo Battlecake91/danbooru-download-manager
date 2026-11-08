@@ -11,6 +11,8 @@ services:
     environment:
       DANBOORU_DATA_DIR: /archive/.danbooru_manager
       DANBOORU_ARCHIVE_ROOT: /archive
+      DANBOORU_CACHE_ROOT: /cache
       DANBOORU_DESKTOP_API_TOKEN: "${DANBOORU_DESKTOP_API_TOKEN:-}"
     volumes:
       - "${DANBOORU_ARCHIVE_DIR:?Set DANBOORU_ARCHIVE_DIR in .env}:/archive"
+      - "${DANBOORU_CACHE_DIR:?Set DANBOORU_CACHE_DIR in .env}:/cache"

@@ -23,6 +23,7 @@ def utc_now_iso() -> str:
 def build_web_config() -> dict[str, Any]:
     config = load_config()
     data_dir = Path(os.environ.get("DANBOORU_DATA_DIR", "./danbooru_manager_data")).resolve()
+    cache_dir = Path(os.environ.get("DANBOORU_CACHE_ROOT", str(data_dir))).resolve()
     database_file = Path(os.environ.get("DANBOORU_DATABASE_FILE", str(data_dir / "danbooru_manager.db"))).resolve()
     yearly_output_root = os.environ.get("DANBOORU_ARCHIVE_ROOT", "").strip()
     default_output_dir = os.environ.get("DANBOORU_OUTPUT_DIR", "./danbooru_saved")
@@ -34,15 +35,16 @@ def build_web_config() -> dict[str, Any]:
         {
             "work_dir": str(data_dir),
             "database_file": str(database_file),
-            "thumbnail_dir": str(data_dir / "thumbnails" / "active"),
-            "active_thumbnail_dir": str(data_dir / "thumbnails" / "active"),
-            "saved_thumbnail_dir": str(data_dir / "thumbnails" / "saved"),
-            "rejected_thumbnail_dir": str(data_dir / "thumbnails" / "rejected"),
-            "original_cache_dir": str(data_dir / "originals" / "cache"),
+            "thumbnail_dir": str(cache_dir / "thumbnails" / "active"),
+            "active_thumbnail_dir": str(cache_dir / "thumbnails" / "active"),
+            "saved_thumbnail_dir": str(cache_dir / "thumbnails" / "saved"),
+            "rejected_thumbnail_dir": str(cache_dir / "thumbnails" / "rejected"),
+            "original_cache_dir": str(cache_dir / "originals" / "cache"),
             "default_output_dir": default_output_dir,
         }
     )
     data_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.mkdir(parents=True, exist_ok=True)
     database_file.parent.mkdir(parents=True, exist_ok=True)
     Path(default_output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -60,17 +62,97 @@ def build_web_config() -> dict[str, Any]:
         {
             "work_dir": str(data_dir),
             "database_file": str(database_file),
-            "thumbnail_dir": str(data_dir / "thumbnails" / "active"),
-            "active_thumbnail_dir": str(data_dir / "thumbnails" / "active"),
-            "saved_thumbnail_dir": str(data_dir / "thumbnails" / "saved"),
-            "rejected_thumbnail_dir": str(data_dir / "thumbnails" / "rejected"),
-            "original_cache_dir": str(data_dir / "originals" / "cache"),
+            "thumbnail_dir": str(cache_dir / "thumbnails" / "active"),
+            "active_thumbnail_dir": str(cache_dir / "thumbnails" / "active"),
+            "saved_thumbnail_dir": str(cache_dir / "thumbnails" / "saved"),
+            "rejected_thumbnail_dir": str(cache_dir / "thumbnails" / "rejected"),
+            "original_cache_dir": str(cache_dir / "originals" / "cache"),
             "default_output_dir": default_output_dir,
         }
     )
     if yearly_output_root:
         config["yearly_output_root"] = yearly_output_root
+
+    for path_key in (
+        "active_thumbnail_dir",
+        "saved_thumbnail_dir",
+        "rejected_thumbnail_dir",
+        "original_cache_dir",
+    ):
+        Path(str(config[path_key])).mkdir(parents=True, exist_ok=True)
+
+    db = Database(database_file)
+    db.connect()
+    try:
+        _rebase_existing_cache_paths(db, config)
+    finally:
+        db.close()
     return config
+
+
+def _rebase_existing_cache_paths(db: Database, config: dict[str, Any]) -> None:
+    roots = {
+        "active": Path(str(config["active_thumbnail_dir"])),
+        "saved": Path(str(config["saved_thumbnail_dir"])),
+        "rejected": Path(str(config["rejected_thumbnail_dir"])),
+    }
+    original_root = Path(str(config["original_cache_dir"]))
+    rows = db.execute(
+        """
+        SELECT id, status, thumbnail_path, rejected_thumbnail_path, original_cache_path
+        FROM posts
+        WHERE thumbnail_path IS NOT NULL
+           OR rejected_thumbnail_path IS NOT NULL
+           OR original_cache_path IS NOT NULL
+        """
+    ).fetchall()
+    updates: list[tuple[str | None, str | None, str | None, int]] = []
+
+    for row in rows:
+        thumbnail_value = _rebased_cache_file(row["thumbnail_path"], roots, str(row["status"] or ""))
+        rejected_value = _rebased_cache_file(row["rejected_thumbnail_path"], roots, "rejected")
+        original_value = _rebased_cache_file(row["original_cache_path"], {"original": original_root}, "original")
+        current = (
+            str(row["thumbnail_path"]) if row["thumbnail_path"] else None,
+            str(row["rejected_thumbnail_path"]) if row["rejected_thumbnail_path"] else None,
+            str(row["original_cache_path"]) if row["original_cache_path"] else None,
+        )
+        rebased = (thumbnail_value, rejected_value, original_value)
+        if rebased != current:
+            updates.append((*rebased, int(row["id"])))
+
+    if updates:
+        db.executemany(
+            """
+            UPDATE posts
+            SET thumbnail_path = ?, rejected_thumbnail_path = ?, original_cache_path = ?
+            WHERE id = ?
+            """,
+            updates,
+        )
+        db.commit()
+
+
+def _rebased_cache_file(value: Any, roots: dict[str, Path], preferred: str) -> str | None:
+    if not value:
+        return None
+    current = Path(str(value)).expanduser()
+
+    ordered_roots = [roots[preferred]] if preferred in roots else []
+    ordered_roots.extend(root for key, root in roots.items() if key != preferred)
+    for root in ordered_roots:
+        try:
+            if current.is_file() and current.resolve().is_relative_to(root.resolve()):
+                return str(current)
+        except OSError:
+            continue
+    for root in ordered_roots:
+        candidate = root / current.name
+        if candidate.is_file():
+            return str(candidate)
+    if current.is_file():
+        return str(current)
+    return str(current)
 
 
 def open_database(config: dict[str, Any]) -> Database:
