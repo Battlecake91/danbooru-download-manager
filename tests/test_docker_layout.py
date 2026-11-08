@@ -37,3 +37,9 @@ def test_dockerfile_has_no_separate_data_volume() -> None:
     assert "DANBOORU_IMPORT_ROOT=/import" in dockerfile
     assert 'VOLUME ["/archive", "/cache", "/import"]' in dockerfile
     assert 'VOLUME ["/data", "/archive"]' not in dockerfile
+
+
+def test_web_importer_uses_headless_image_reader_dependency() -> None:
+    requirements = (ROOT / "requirements-web.txt").read_text(encoding="utf-8")
+
+    assert "Pillow" in requirements

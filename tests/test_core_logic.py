@@ -64,6 +64,16 @@ class CoreLogicTests(unittest.TestCase):
 
             self.assertEqual(calculate_file_md5(path), "900150983cd24fb0d6963f7d28e17f72")
 
+    def test_importer_reads_image_size_without_qt(self) -> None:
+        from PIL import Image
+        from app.services.existing_file_import_service import local_image_size
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "headless.png"
+            Image.new("RGB", (37, 19)).save(path)
+            with patch("app.services.existing_file_import_service.QImageReader", None):
+                self.assertEqual(local_image_size(path), (37, 19))
+
     def test_file_md5_lookup_test_uses_calculated_hash_without_importing(self) -> None:
         from app.services.existing_file_import_service import ExistingFileImportService
 

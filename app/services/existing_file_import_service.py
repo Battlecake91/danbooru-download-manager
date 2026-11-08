@@ -5,7 +5,6 @@ import re
 import shutil
 
 import requests
-from PySide6.QtGui import QImageReader
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
@@ -18,6 +17,11 @@ from app.core.filename_builder import FilenameBuilder
 from app.danbooru.api import DanbooruApi
 from app.i18n.i18n import tr
 from app.services.post_import_service import PostImportService
+
+try:
+    from PySide6.QtGui import QImageReader
+except ImportError:  # The headless web image deliberately does not install Qt.
+    QImageReader = None
 
 IMAGE_EXTENSIONS = {
     ".jpg",
@@ -101,11 +105,20 @@ def extract_known_filename_tags(filename: str, known_tags: set[str]) -> tuple[li
 
 
 def local_image_size(path: Path) -> tuple[int | None, int | None]:
-    reader = QImageReader(str(path))
-    size = reader.size()
-    if not size.isValid():
+    if QImageReader is not None:
+        reader = QImageReader(str(path))
+        size = reader.size()
+        if size.isValid():
+            return int(size.width()), int(size.height())
+
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            width, height = image.size
+        return int(width), int(height)
+    except Exception:
         return None, None
-    return int(size.width()), int(size.height())
 
 
 @dataclass
