@@ -9,9 +9,8 @@ services:
     ports:
       - "${DANBOORU_WEB_BIND:-127.0.0.1}:8765:8765"
     environment:
-      DANBOORU_DATA_DIR: /data
-      DANBOORU_OUTPUT_DIR: "${DANBOORU_OUTPUT_DIR:-/archive}"
+      DANBOORU_DATA_DIR: /archive/.danbooru_manager
+      DANBOORU_OUTPUT_DIR: "/archive/${DANBOORU_ARCHIVE_YEAR:?Set DANBOORU_ARCHIVE_YEAR in .env}"
       DANBOORU_DESKTOP_API_TOKEN: "${DANBOORU_DESKTOP_API_TOKEN:-}"
     volumes:
-      - ./danbooru_manager_data:/data
-      - "${DANBOORU_ARCHIVE_DIR:-./danbooru_saved}:/archive"
+      - "${DANBOORU_ARCHIVE_DIR:?Set DANBOORU_ARCHIVE_DIR in .env}:/archive"

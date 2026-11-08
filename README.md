@@ -125,7 +125,7 @@ python web_main.py
 
 Open `http://127.0.0.1:8765`. See [Web application](docs/WEB_APP.md) for Docker, volume and shared-database details.
 
-For year-based archives, mount the complete archive through `DANBOORU_ARCHIVE_DIR` and set `DANBOORU_OUTPUT_DIR` to a container path such as `/archive/2026`. Existing posts keep their stored locations when the output year changes.
+For year-based archives, set `DANBOORU_ARCHIVE_DIR` to the common image-library root and `DANBOORU_ARCHIVE_YEAR` to the active year. Docker keeps its SQLite database and caches in `<archive>/.danbooru_manager` and saves new files below `<archive>/<year>/<category>`. Existing posts keep their stored locations when the year changes.
 
 The web application also includes a dedicated slideshow tab for posts with status `saved`; New, Potential, Rejected and Already Known posts are excluded. Slideshow filters use spaces or `+` for AND, `-tag` for exclusions and commas for OR groups. For example, `1girl +smile -nude` requires both positive tags and excludes `nude`, while `1girl, 2girls` accepts either tag. The interval and sequential/random order are configurable and retained by the browser. Left click returns to slideshow history and right click advances. `Delete` removes an existing final file, clears its stored path, rejects the post and advances. Dedicated controls open the original post, toggle path/metadata/tags and open the current post in the full Viewer. Fullscreen mode shows only the image and an exit button.
 
@@ -141,7 +141,7 @@ On phones, the Viewer uses a touch-focused layout with horizontal swipe navigati
 docker compose up --build
 ```
 
-The container runs as `1000:1000` by default. Bind-mounted data directories must be writable by that UID/GID; `PUID` and `PGID` can override it when needed.
+The container runs as `1000:1000` by default. The single bind-mounted archive directory must be writable by that UID/GID; `PUID` and `PGID` can override it when needed. Copy `.env.example` to `.env`, set `DANBOORU_ARCHIVE_DIR=/path/to/images`, and change only `DANBOORU_ARCHIVE_YEAR` for each new year.
 
 ### Building releases
 
