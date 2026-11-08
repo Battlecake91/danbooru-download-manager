@@ -7,7 +7,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from app.core.archive_paths import active_output_directory
@@ -287,10 +287,19 @@ def _rebased_cache_file(value: Any, roots: dict[str, Path], preferred: str) -> s
                 return str(current)
         except OSError:
             continue
+    raw_value = str(value)
+    portable_names = {
+        current.name,
+        PureWindowsPath(raw_value).name,
+        PurePosixPath(raw_value).name,
+    }
     for root in ordered_roots:
-        candidate = root / current.name
-        if candidate.is_file():
-            return str(candidate)
+        for name in portable_names:
+            if not name:
+                continue
+            candidate = root / name
+            if candidate.is_file():
+                return str(candidate)
     if current.is_file():
         return str(current)
     return str(current)

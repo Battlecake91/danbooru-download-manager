@@ -63,8 +63,8 @@ def test_web_config_rebases_copied_cache_files(tmp_path: Path, monkeypatch) -> N
             (
                 123,
                 "new",
-                "/archive/.danbooru_manager/thumbnails/active/123_large.jpg",
-                "/archive/.danbooru_manager/originals/cache/123_preview.jpg",
+                r"D:\old\manager\thumbnails\active\123_large.jpg",
+                r"D:\old\manager\originals\cache\123_preview.jpg",
             ),
         )
         db.commit()

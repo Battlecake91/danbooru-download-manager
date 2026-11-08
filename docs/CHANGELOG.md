@@ -50,6 +50,7 @@ This changelog groups development into user-facing milestones instead of preserv
 
 ### Fixed
 
+- Docker cache-path migration now extracts filenames from legacy Windows paths correctly, allowing restored thumbnail and Viewer caches to be rebound directly to `/cache` instead of taking repeated fallback lookups.
 - Web Viewer zoom now exposes visible zoom/reset controls and normalizes wheel delta modes so mouse-wheel zoom behaves consistently across browsers while retaining pinch and drag gestures.
 - Remote desktop status changes now use the server's Docker cache paths; rejecting or saving a post no longer sends Windows thumbnail directories to the server.
 - Desktop Viewer Previous/Current/Next tiles now load thumbnails through the Remote Docker media endpoint instead of trying to open server-side Linux paths on the desktop computer.
