@@ -27,11 +27,10 @@ docker compose up --build
 
 Compose mounts one long-lived library directory as `/archive`. SQLite, thumbnails and cached originals are stored in its hidden `.danbooru_manager` subdirectory, while saved images use year and category directories.
 
-Copy `.env.example` to `.env`, select the library root and set the current output year:
+Copy `.env.example` to `.env` and select the library root:
 
 ```dotenv
 DANBOORU_ARCHIVE_DIR=/path/to/images
-DANBOORU_ARCHIVE_YEAR=2026
 ```
 
 The resulting host layout is:
@@ -48,7 +47,7 @@ The resulting host layout is:
     <category-folder>/
 ```
 
-Categories without an explicit output path are saved as `/archive/<year>/<category-folder>`. Changing `DANBOORU_ARCHIVE_YEAR` affects future saves only. Existing posts retain their stored `/archive/<old-year>/...` paths and remain in their previous year directories. Categories with an explicit output path continue using that override and must be cleared if they should follow the global year switch.
+Categories without an explicit output path are saved as `/archive/<current-year>/<category-folder>`. The current year is evaluated for every save, so a continuously running container switches years automatically. The year directory is created during startup and also on demand when saving. Existing posts retain their stored `/archive/<old-year>/...` paths and remain in their previous year directories. Categories with an explicit output path continue using that override and must be cleared if they should follow the automatic year layout.
 
 ### Migrate an existing Compose installation
 
@@ -57,10 +56,10 @@ Stop the container before moving the SQLite database and caches. Replace `/path/
 ```bash
 sudo docker compose down
 ARCHIVE_DIR=/path/to/images
-ARCHIVE_YEAR=2026
-sudo mkdir -p "$ARCHIVE_DIR/.danbooru_manager" "$ARCHIVE_DIR/$ARCHIVE_YEAR"
+CURRENT_YEAR=$(date +%Y)
+sudo mkdir -p "$ARCHIVE_DIR/.danbooru_manager" "$ARCHIVE_DIR/$CURRENT_YEAR"
 sudo cp -a ./danbooru_manager_data/. "$ARCHIVE_DIR/.danbooru_manager/"
-sudo chown -R 1000:1000 "$ARCHIVE_DIR/.danbooru_manager" "$ARCHIVE_DIR/$ARCHIVE_YEAR"
+sudo chown -R 1000:1000 "$ARCHIVE_DIR/.danbooru_manager" "$ARCHIVE_DIR/$CURRENT_YEAR"
 sudo docker compose up -d --build
 ```
 
@@ -135,7 +134,7 @@ The existing-file importer remains desktop-only in this first web milestone. A l
 | `DANBOORU_DATABASE_FILE` | `<data>/danbooru_manager.db` | Optional explicit SQLite path |
 | `DANBOORU_OUTPUT_DIR` | `./danbooru_saved` | Saved-file root |
 | `DANBOORU_ARCHIVE_DIR` | required by Compose | Host library directory mounted as `/archive` |
-| `DANBOORU_ARCHIVE_YEAR` | required by Compose | Active year below `/archive`; future saves use `/archive/<year>/<category>` |
+| `DANBOORU_ARCHIVE_ROOT` | `/archive` in Docker | Container library root used for automatic `<current-year>/<category>` output |
 | `DANBOORU_WEB_BIND` | `127.0.0.1` | Host address used by the Compose port mapping; use `0.0.0.0` for trusted-LAN access |
 | `DANBOORU_DESKTOP_API_TOKEN` | empty/disabled | Bearer token enabling the remote desktop database API |
 | `PUID` / `PGID` | `1000` / `1000` | Runtime UID/GID used by Docker Compose |

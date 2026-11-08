@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
-from app.core.archive_paths import migrate_archive_paths, resolve_archive_path, set_archive_root_path
+from app.core.archive_paths import active_output_directory, migrate_archive_paths, resolve_archive_path, set_archive_root_path
 from app.core.category_engine import CategoryEngine, build_category_match_groups, build_category_rule_set
 from app.core.db.common import calculate_computed_tag_score, calculate_rejected_percent, parse_preview_search_terms
 from app.core.filename_builder import safe_filename, truncate_filename
@@ -553,6 +555,17 @@ class CategoryTagHintModeTests(unittest.TestCase):
 
 
 class ArchivePathStorageTests(unittest.TestCase):
+    def test_yearly_output_directory_uses_current_year_on_every_call(self) -> None:
+        config = {"yearly_output_root": "/archive"}
+        with patch("app.core.archive_paths.date") as mocked_date:
+            mocked_date.today.side_effect = [date(2030, 12, 31), date(2031, 1, 1)]
+
+            first = active_output_directory(config)
+            second = active_output_directory(config)
+
+        self.assertEqual(first, Path("/archive/2030"))
+        self.assertEqual(second, Path("/archive/2031"))
+
     def test_update_final_file_path_can_store_relative_archive_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

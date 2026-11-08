@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 import math
 
-from app.core.archive_paths import resolve_archive_path
+from app.core.archive_paths import active_output_directory, resolve_archive_path
 from app.core.database import Database
 from app.core.tag_privacy import canonicalize_tag, normalize_tag_token
 
@@ -702,5 +702,5 @@ class CategoryEngine:
         if category.output_path:
             return resolve_archive_path(self.config, category.output_path) or Path(str(category.output_path))
 
-        default_output_dir = Path(str(self.config.get("default_output_dir", "./danbooru_saved")))
+        default_output_dir = active_output_directory(self.config)
         return default_output_dir / category.folder_name

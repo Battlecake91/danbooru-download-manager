@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.core.archive_paths import active_output_directory
 from app.core.config import load_config
 from app.core.database import Database
 from app.services.post_import_service import FetchProgress, PostImportService
@@ -23,6 +24,11 @@ def build_web_config() -> dict[str, Any]:
     config = load_config()
     data_dir = Path(os.environ.get("DANBOORU_DATA_DIR", "./danbooru_manager_data")).resolve()
     database_file = Path(os.environ.get("DANBOORU_DATABASE_FILE", str(data_dir / "danbooru_manager.db"))).resolve()
+    yearly_output_root = os.environ.get("DANBOORU_ARCHIVE_ROOT", "").strip()
+    default_output_dir = os.environ.get("DANBOORU_OUTPUT_DIR", "./danbooru_saved")
+    if yearly_output_root:
+        config["yearly_output_root"] = yearly_output_root
+        default_output_dir = str(active_output_directory(config))
 
     config.update(
         {
@@ -33,11 +39,12 @@ def build_web_config() -> dict[str, Any]:
             "saved_thumbnail_dir": str(data_dir / "thumbnails" / "saved"),
             "rejected_thumbnail_dir": str(data_dir / "thumbnails" / "rejected"),
             "original_cache_dir": str(data_dir / "originals" / "cache"),
-            "default_output_dir": os.environ.get("DANBOORU_OUTPUT_DIR", "./danbooru_saved"),
+            "default_output_dir": default_output_dir,
         }
     )
     data_dir.mkdir(parents=True, exist_ok=True)
     database_file.parent.mkdir(parents=True, exist_ok=True)
+    Path(default_output_dir).mkdir(parents=True, exist_ok=True)
 
     db = Database(database_file)
     db.connect()
@@ -58,9 +65,11 @@ def build_web_config() -> dict[str, Any]:
             "saved_thumbnail_dir": str(data_dir / "thumbnails" / "saved"),
             "rejected_thumbnail_dir": str(data_dir / "thumbnails" / "rejected"),
             "original_cache_dir": str(data_dir / "originals" / "cache"),
-            "default_output_dir": os.environ.get("DANBOORU_OUTPUT_DIR", "./danbooru_saved"),
+            "default_output_dir": default_output_dir,
         }
     )
+    if yearly_output_root:
+        config["yearly_output_root"] = yearly_output_root
     return config
 
 

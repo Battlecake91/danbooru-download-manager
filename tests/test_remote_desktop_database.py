@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import date
 
 import pytest
 from fastapi import HTTPException
@@ -16,7 +17,21 @@ from app.core.connection_profile import (
     validate_connection_profile,
 )
 from app.core.remote_database import RemoteCursor, RemoteDatabase
-from app.web.runtime import open_database
+from app.web.runtime import build_web_config, open_database
+
+
+def test_web_config_creates_current_year_directory(tmp_path: Path, monkeypatch) -> None:
+    archive_root = tmp_path / "library"
+    monkeypatch.setenv("DANBOORU_DATA_DIR", str(archive_root / ".danbooru_manager"))
+    monkeypatch.setenv("DANBOORU_ARCHIVE_ROOT", str(archive_root))
+    monkeypatch.delenv("DANBOORU_OUTPUT_DIR", raising=False)
+
+    config = build_web_config()
+
+    expected = archive_root / str(date.today().year)
+    assert expected.is_dir()
+    assert config["default_output_dir"] == str(expected)
+    assert config["yearly_output_root"] == str(archive_root)
 
 
 def test_connection_profile_round_trip_and_factory(tmp_path: Path) -> None:

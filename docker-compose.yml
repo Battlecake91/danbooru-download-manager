@@ -10,7 +10,7 @@ services:
       - "${DANBOORU_WEB_BIND:-127.0.0.1}:8765:8765"
     environment:
       DANBOORU_DATA_DIR: /archive/.danbooru_manager
-      DANBOORU_OUTPUT_DIR: "/archive/${DANBOORU_ARCHIVE_YEAR:?Set DANBOORU_ARCHIVE_YEAR in .env}"
+      DANBOORU_ARCHIVE_ROOT: /archive
       DANBOORU_DESKTOP_API_TOKEN: "${DANBOORU_DESKTOP_API_TOKEN:-}"
     volumes:
       - "${DANBOORU_ARCHIVE_DIR:?Set DANBOORU_ARCHIVE_DIR in .env}:/archive"

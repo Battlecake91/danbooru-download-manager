@@ -5,6 +5,7 @@ import os
 import sqlite3
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,14 @@ from app.core.paths import app_base_dir
 ARCHIVE_PATH_MODES = {"absolute", "relative"}
 ARCHIVE_ROOT_KEY = "archive.root_path"
 LOCAL_SETTINGS_FILENAME = "danbooru_manager_local_settings.db"
+
+
+def active_output_directory(config: dict[str, Any], *, year: int | None = None) -> Path:
+    yearly_root = config.get("yearly_output_root")
+    if yearly_root:
+        active_year = int(year if year is not None else date.today().year)
+        return Path(str(yearly_root)).expanduser() / str(active_year)
+    return Path(str(config.get("default_output_dir", "./danbooru_saved"))).expanduser()
 
 
 def archive_storage_mode(config: dict[str, Any]) -> str:
